@@ -115,13 +115,14 @@ app.use('/api/customer', require('./routes/customer'));
 app.use('/api/payment', require('./routes/payment'));
 app.use('/api/webhooks', require('./routes/webhook'));
 
-// ─── 404 HANDLER ─────────────────────────────────────────────────────────────
+// ─── SERVE REACT FRONTEND ─────────────────────────────────────────────────────
 
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: `Route not found: ${req.method} ${req.originalUrl}`,
-  });
+const frontendDist = path.join(__dirname, '../frontend/dist');
+app.use(express.static(frontendDist));
+
+// Any non-API route serves index.html so React Router handles it
+app.get(/^(?!\/api).*$/, (req, res) => {
+  res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
 // ─── GLOBAL ERROR HANDLER ─────────────────────────────────────────────────────
