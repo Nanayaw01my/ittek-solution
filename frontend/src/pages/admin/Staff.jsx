@@ -12,7 +12,7 @@ export default function AdminStaff() {
   const [addLoading, setAddLoading] = useState(false)
   const [deleteModal, setDeleteModal] = useState(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
-  const [form, setForm] = useState({ full_name: '', email: '', phone: '', password: '' })
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' })
   const [errors, setErrors] = useState({})
 
   const fetchStaff = useCallback(async () => {
@@ -32,10 +32,10 @@ export default function AdminStaff() {
 
   const validateForm = () => {
     const e = {}
-    if (!form.full_name.trim()) e.full_name = 'Name is required'
+    if (!form.name.trim()) e.name = 'Name is required'
     if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Valid email required'
     if (!form.phone.trim()) e.phone = 'Phone is required'
-    if (!form.password || form.password.length < 4) e.password = 'Password must be at least 4 characters'
+    if (!form.password || form.password.length < 6) e.password = 'Password must be at least 6 characters'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -48,7 +48,7 @@ export default function AdminStaff() {
       await api.post('/admin/staff', form)
       toast.success('Staff member added successfully!')
       setShowAddModal(false)
-      setForm({ full_name: '', email: '', phone: '', password: '' })
+      setForm({ name: '', email: '', phone: '', password: '' })
       setErrors({})
       fetchStaff()
     } catch (err) {
@@ -160,13 +160,13 @@ export default function AdminStaff() {
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">Full Name</label>
                 <input
                   type="text"
-                  value={form.full_name}
-                  onChange={(e) => setForm(f => ({ ...f, full_name: e.target.value }))}
+                  value={form.name}
+                  onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="Enter full name"
                   className={`w-full px-4 py-3 border-2 rounded-2xl text-sm focus:outline-none focus:border-green-600
-                    ${errors.full_name ? 'border-red-400' : 'border-gray-200'}`}
+                    ${errors.name ? 'border-red-400' : 'border-gray-200'}`}
                 />
-                {errors.full_name && <p className="text-xs text-red-500 mt-1">{errors.full_name}</p>}
+                {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
               </div>
 
               <div>
@@ -197,7 +197,7 @@ export default function AdminStaff() {
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Password <span className="text-gray-400 font-normal text-xs">(max 5 characters for simplicity)</span>
+                  Password <span className="text-gray-400 font-normal text-xs">(min 6 characters)</span>
                 </label>
                 <input
                   type="text"
