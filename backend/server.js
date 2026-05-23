@@ -106,6 +106,58 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ─── DB STATUS ────────────────────────────────────────────────────────────────
+
+app.get('/api/dbstatus', async (req, res) => {
+  const mongoose = require('mongoose');
+  const User = require('./models/User');
+  const states = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+  const dbState = states[mongoose.connection.readyState] || 'unknown';
+  try {
+    const userCount = await User.countDocuments();
+    const admin = await User.findOne({ email: 'admin@tritech.com' }).select('email role is_active');
+    const staff = await User.findOne({ email: 'staff@tritech.com' }).select('email role staff_id is_active');
+    res.json({ dbState, userCount, admin, staff });
+  } catch (e) {
+    res.json({ dbState, error: e.message });
+  }
+});
+
+// ─── FORCE RESEED ─────────────────────────────────────────────────────────────
+
+app.get('/api/forceseed', async (req, res) => {
+  const User = require('./models/User');
+  try {
+    await User.deleteMany({ email: { $in: ['admin@tritech.com', 'staff@tritech.com'] } });
+    const salt1 = await bcrypt.genSalt(10);
+    const salt2 = await bcrypt.genSalt(10);
+    await User.collection.insertMany([
+      {
+        name: 'Tritech Admin',
+        email: 'admin@tritech.com',
+        password: await bcrypt.hash('admin123', salt1),
+        role: 'admin',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        name: 'Tritech Staff',
+        email: 'staff@tritech.com',
+        password: await bcrypt.hash('staff123', salt2),
+        role: 'staff',
+        staff_id: 'Tri001',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    ]);
+    res.json({ success: true, message: 'Users recreated. Login with admin@tritech.com / admin123' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ─── API ROUTES ───────────────────────────────────────────────────────────────
 
 app.use('/api/auth', require('./routes/auth'));
