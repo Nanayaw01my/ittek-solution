@@ -183,16 +183,21 @@ const seedDatabase = async () => {
   try {
     const User = require('./models/User');
     const Device = require('./models/Device');
+    const bcrypt = require('bcryptjs');
 
     // ── Seed Admin ──
     const adminExists = await User.findOne({ email: 'admin@tritech.com' });
     if (!adminExists) {
-      await User.create({
+      const salt = await bcrypt.genSalt(10);
+      const hashed = await bcrypt.hash('admin123', salt);
+      await User.collection.insertOne({
         name: 'Tritech Admin',
         email: 'admin@tritech.com',
-        password: 'admin123',
+        password: hashed,
         role: 'admin',
         is_active: true,
+        created_at: new Date(),
+        updated_at: new Date(),
       });
       console.log('✓ Default admin created: admin@tritech.com / admin123');
     }
@@ -200,13 +205,17 @@ const seedDatabase = async () => {
     // ── Seed Staff ──
     const staffExists = await User.findOne({ email: 'staff@tritech.com' });
     if (!staffExists) {
-      await User.create({
+      const salt = await bcrypt.genSalt(10);
+      const hashed = await bcrypt.hash('staff123', salt);
+      await User.collection.insertOne({
         name: 'Tritech Staff',
         email: 'staff@tritech.com',
-        password: 'staff123',
+        password: hashed,
         role: 'staff',
         staff_id: 'Tri001',
         is_active: true,
+        created_at: new Date(),
+        updated_at: new Date(),
       });
       console.log('✓ Default staff created: staff@tritech.com / staff123');
     }
