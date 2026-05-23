@@ -271,7 +271,7 @@ const addCustomer = async (req, res) => {
       income: { amount: Number(income_amount) || 0, source: income_source || '' },
       location: { region, district, town: locationTown, landmark, gps_address },
       guarantor: {
-        name: guarantor_name,
+        full_name: guarantor_name,
         phone: guarantor_phone,
         ghana_card_id: guarantor_ghana_card_id,
         relationship: guarantor_relationship,
