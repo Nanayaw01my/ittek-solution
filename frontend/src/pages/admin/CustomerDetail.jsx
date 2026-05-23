@@ -183,25 +183,27 @@ export default function AdminCustomerDetail() {
       </div>
 
       {/* Customer Photos */}
-      {(cardFront || cardBack || custPhoto || guarPhoto) && (
-        <div className="bg-white rounded-2xl shadow-card p-4 mb-4">
-          <h3 className="text-sm font-bold text-gray-800 mb-3">Photos</h3>
-          <div className="grid grid-cols-2 gap-3">
-            {cardFront && (
-              <PhotoThumb label="Ghana Card — Front" src={cardFront} onView={() => setImageModal(cardFront)} />
-            )}
-            {cardBack && (
-              <PhotoThumb label="Ghana Card — Back" src={cardBack} onView={() => setImageModal(cardBack)} />
-            )}
-            {custPhoto && (
-              <PhotoThumb label="Customer Photo" src={custPhoto} onView={() => setImageModal(custPhoto)} />
-            )}
-            {guarPhoto && (
-              <PhotoThumb label="Guarantor Photo" src={guarPhoto} onView={() => setImageModal(guarPhoto)} />
-            )}
-          </div>
+      <div className="bg-white rounded-2xl shadow-card p-4 mb-4">
+        <h3 className="text-sm font-bold text-gray-800 mb-3">Photos</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {cardFront
+            ? <PhotoThumb label="Ghana Card — Front" src={cardFront} onView={() => setImageModal(cardFront)} />
+            : <PhotoEmpty label="Ghana Card — Front" />
+          }
+          {cardBack
+            ? <PhotoThumb label="Ghana Card — Back" src={cardBack} onView={() => setImageModal(cardBack)} />
+            : <PhotoEmpty label="Ghana Card — Back" />
+          }
+          {custPhoto
+            ? <PhotoThumb label="Customer Photo" src={custPhoto} onView={() => setImageModal(custPhoto)} />
+            : <PhotoEmpty label="Customer Photo" />
+          }
+          {guarPhoto
+            ? <PhotoThumb label="Guarantor Photo" src={guarPhoto} onView={() => setImageModal(guarPhoto)} />
+            : <PhotoEmpty label="Guarantor Photo" />
+          }
         </div>
-      )}
+      </div>
 
       {/* Device Info */}
       {device && (
@@ -380,6 +382,18 @@ export default function AdminCustomerDetail() {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+function PhotoEmpty({ label }) {
+  return (
+    <div className="relative rounded-2xl overflow-hidden bg-gray-50 aspect-[4/3] w-full border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1">
+      <svg className="w-7 h-7 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+      <p className="text-gray-400 text-xs font-medium text-center px-2 leading-tight">{label}</p>
+      <p className="text-gray-300 text-[10px]">Not captured</p>
     </div>
   )
 }

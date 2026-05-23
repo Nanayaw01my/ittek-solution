@@ -241,22 +241,28 @@ const addCustomer = async (req, res) => {
       account_number: accountNumber,
     });
 
-    // --- 6. Handle photos: multer files take priority, then base64 from JSON body ---
+    // --- 6. Handle photos: store base64 strings directly in MongoDB (no disk files) ---
     const photos = {};
     const photoFields = ['ghana_card_front', 'ghana_card_back', 'customer_photo', 'guarantor_photo'];
     for (const field of photoFields) {
       if (req.files?.[field]?.[0]) {
-        photos[field] = req.files[field][0].path;
-      } else if (req.body[field]) {
-        photos[field] = await saveBase64Image(req.body[field], field);
+        // multer file: convert to base64 for consistent storage
+        const buf = req.files[field][0].buffer || require('fs').readFileSync(req.files[field][0].path);
+        const mime = req.files[field][0].mimetype || 'image/jpeg';
+        photos[field] = `data:${mime};base64,${buf.toString('base64')}`;
+      } else if (req.body[field] && req.body[field].startsWith('data:')) {
+        // base64 data URL from camera/gallery — store directly
+        photos[field] = req.body[field];
       }
     }
 
     let proof_of_income = null;
     if (req.files?.proof_of_income?.[0]) {
-      proof_of_income = req.files.proof_of_income[0].path;
-    } else if (req.body.proof_of_income) {
-      proof_of_income = await saveBase64Image(req.body.proof_of_income, 'proof_of_income');
+      const buf = req.files.proof_of_income[0].buffer || require('fs').readFileSync(req.files.proof_of_income[0].path);
+      const mime = req.files.proof_of_income[0].mimetype || 'image/jpeg';
+      proof_of_income = `data:${mime};base64,${buf.toString('base64')}`;
+    } else if (req.body.proof_of_income && req.body.proof_of_income.startsWith('data:')) {
+      proof_of_income = req.body.proof_of_income;
     }
 
     // --- 7. Create Customer record ---
