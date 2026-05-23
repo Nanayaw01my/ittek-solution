@@ -1,0 +1,65 @@
+services:
+  # ── Backend: Node.js API ─────────────────────────────────────────────────────
+  - type: web
+    name: tritech-hub-backend
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false          # set manually in Render dashboard
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRE
+        value: 7d
+      - key: FRONTEND_URL
+        sync: false          # paste your frontend Render URL here after deploy
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
+      - key: PAYSTACK_WEBHOOK_SECRET
+        sync: false
+      - key: SIMPLEMDM_API_KEY
+        sync: false
+      - key: EMAIL_HOST
+        value: smtp.gmail.com
+      - key: EMAIL_PORT
+        value: 587
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: UPLOAD_PATH
+        value: ./uploads
+      - key: MAX_FILE_SIZE
+        value: 5242880
+
+  # ── Frontend: React Static Site ──────────────────────────────────────────────
+  - type: web
+    name: tritech-hub-frontend
+    env: static
+    region: oregon
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false          # paste your backend Render URL here (no trailing slash)

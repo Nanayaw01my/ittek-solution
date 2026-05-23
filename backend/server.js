@@ -29,13 +29,16 @@ app.use(
 const corsOptions = {
   origin: (origin, callback) => {
     const allowedOrigins = [
-      process.env.FRONTEND_URL || 'http://localhost:3000',
+      process.env.FRONTEND_URL,
       'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:8081', // Expo / React Native
-    ];
-    // Allow requests with no origin (e.g., mobile apps, Postman)
-    if (!origin || allowedOrigins.includes(origin)) {
+      'http://localhost:5173',
+      'http://localhost:8081',
+    ].filter(Boolean);
+
+    // Allow any *.onrender.com subdomain (Render deployments)
+    const isRender = origin && /^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(origin);
+
+    if (!origin || isRender || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error(`CORS policy does not allow origin: ${origin}`));
