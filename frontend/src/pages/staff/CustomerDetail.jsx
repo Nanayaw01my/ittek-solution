@@ -24,12 +24,12 @@ export default function StaffCustomerDetail() {
       ])
 
       if (custRes.status === 'fulfilled') {
-        const d = custRes.value.data
-        setCustomer(d?.customer || d?.data?.customer || d)
+        const d = custRes.value.data?.data || custRes.value.data
+        setCustomer(d?.customer || d)
       }
       if (txRes.status === 'fulfilled') {
-        const d = txRes.value.data
-        setTransactions(d?.transactions || d?.data?.payments || d?.data || [])
+        const d = txRes.value.data?.data || txRes.value.data
+        setTransactions(Array.isArray(d.transactions) ? d.transactions : (Array.isArray(d.payments) ? d.payments : []))
       }
     } catch (err) {
       toast.error('Failed to load customer')

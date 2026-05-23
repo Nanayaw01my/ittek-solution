@@ -27,8 +27,10 @@ export default function AdminCustomerDetail() {
         api.get(`/admin/customers/${id}`),
         api.get(`/admin/customers/${id}/transactions`),
       ])
-      setCustomer(custRes.data?.customer || custRes.data)
-      setTransactions(txRes.data?.transactions || txRes.data || [])
+      const custD = custRes.data?.data || custRes.data
+      setCustomer(custD?.customer || custD)
+      const txD = txRes.data?.data || txRes.data
+      setTransactions(Array.isArray(txD.transactions) ? txD.transactions : [])
     } catch (err) {
       console.error(err)
       toast.error('Failed to load customer details')

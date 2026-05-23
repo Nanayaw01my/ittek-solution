@@ -27,7 +27,7 @@ export default function AdminSettings() {
     const fetchSettings = async () => {
       try {
         const res = await api.get('/admin/settings')
-        setSettings(prev => ({ ...prev, ...res.data }))
+        setSettings(prev => ({ ...prev, ...(res.data?.data || res.data) }))
       } catch {
         // Use defaults
       } finally {

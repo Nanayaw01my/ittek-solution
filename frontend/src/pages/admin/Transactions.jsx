@@ -21,11 +21,11 @@ export default function AdminTransactions() {
     try {
       const params = new URLSearchParams({ page, limit: PER_PAGE, from: dateFrom, to: dateTo })
       const res = await api.get(`/admin/transactions?${params}`)
-      const data = res.data
-      setTransactions(data.transactions || data.data || [])
-      setTotalPages(data.totalPages || Math.ceil((data.total || 0) / PER_PAGE))
-      setTotal(data.total || 0)
-      setTotalAmount(data.total_amount || 0)
+      const d = res.data?.data || res.data
+      setTransactions(Array.isArray(d.transactions) ? d.transactions : [])
+      setTotalPages(d.totalPages || Math.ceil((d.total || 0) / PER_PAGE))
+      setTotal(d.total || 0)
+      setTotalAmount(d.total_amount || 0)
     } catch {
       toast.error('Failed to load transactions')
     } finally {

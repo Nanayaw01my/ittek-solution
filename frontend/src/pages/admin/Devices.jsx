@@ -35,7 +35,8 @@ export default function AdminDevices() {
         ...(lockFilter && { is_locked: lockFilter }),
       })
       const res = await api.get(`/admin/devices?${params}`)
-      setDevices(res.data?.devices || res.data || [])
+      const d = res.data?.data || res.data
+      setDevices(Array.isArray(d.devices) ? d.devices : [])
     } catch (err) {
       toast.error('Failed to load devices')
     } finally {

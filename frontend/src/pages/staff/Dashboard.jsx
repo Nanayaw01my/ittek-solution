@@ -20,9 +20,12 @@ export default function StaffDashboard() {
           api.get('/staff/stats'),
           api.get('/staff/customers?limit=5'),
         ])
-        if (statsRes.status === 'fulfilled') setStats(statsRes.value.data)
+        if (statsRes.status === 'fulfilled') {
+          setStats(statsRes.value.data?.data || statsRes.value.data)
+        }
         if (custRes.status === 'fulfilled') {
-          setRecentCustomers(custRes.value.data?.customers || custRes.value.data || [])
+          const d = custRes.value.data?.data || custRes.value.data
+          setRecentCustomers(Array.isArray(d.customers) ? d.customers : [])
         }
       } catch (err) {
         console.error(err)

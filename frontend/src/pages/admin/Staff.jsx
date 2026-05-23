@@ -19,7 +19,8 @@ export default function AdminStaff() {
     setLoading(true)
     try {
       const res = await api.get('/admin/staff')
-      setStaff(res.data?.staff || res.data || [])
+      const d = res.data?.data || res.data
+      setStaff(Array.isArray(d.staff) ? d.staff : [])
     } catch (err) {
       toast.error('Failed to load staff')
     } finally {

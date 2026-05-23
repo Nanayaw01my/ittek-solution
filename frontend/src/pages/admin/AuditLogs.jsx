@@ -41,9 +41,9 @@ export default function AdminAuditLogs() {
         ...(actionFilter && { action: actionFilter }),
       })
       const res = await api.get(`/admin/audit-logs?${params}`)
-      const data = res.data
-      setLogs(data.logs || data.data || [])
-      setTotalPages(data.totalPages || Math.ceil((data.total || 0) / PER_PAGE))
+      const d = res.data?.data || res.data
+      setLogs(Array.isArray(d.logs) ? d.logs : [])
+      setTotalPages(d.totalPages || Math.ceil((d.total || 0) / PER_PAGE))
     } catch {
       toast.error('Failed to load audit logs')
     } finally {

@@ -25,13 +25,13 @@ export default function CustomerPayments() {
       ])
 
       if (paymentsRes.status === 'fulfilled') {
-        const d = paymentsRes.value.data
-        setPayments(d?.payments || d?.data?.payments || d?.data || [])
-        setTotalPages(d?.totalPages || Math.ceil((d?.total || 0) / PER_PAGE))
+        const d = paymentsRes.value.data?.data || paymentsRes.value.data
+        setPayments(Array.isArray(d.payments) ? d.payments : [])
+        setTotalPages(d.totalPages || Math.ceil((d.total || 0) / PER_PAGE))
       }
       if (dashRes.status === 'fulfilled') {
-        const d = dashRes.value.data
-        setPlan(d?.plan || d?.data?.plan)
+        const d = dashRes.value.data?.data || dashRes.value.data
+        setPlan(d?.plan || null)
       }
     } catch {
       toast.error('Failed to load payments')

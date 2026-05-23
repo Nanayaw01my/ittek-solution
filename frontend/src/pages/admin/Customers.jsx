@@ -26,10 +26,10 @@ export default function AdminCustomers() {
         ...(statusFilter && { status: statusFilter }),
       })
       const res = await api.get(`/admin/customers?${params}`)
-      const data = res.data
-      setCustomers(data.customers || data.data || [])
-      setTotalPages(data.totalPages || Math.ceil((data.total || 0) / PER_PAGE))
-      setTotal(data.total || 0)
+      const d = res.data?.data || res.data
+      setCustomers(Array.isArray(d.customers) ? d.customers : [])
+      setTotalPages(d.totalPages || Math.ceil((d.total || 0) / PER_PAGE))
+      setTotal(d.total || 0)
     } catch (err) {
       console.error(err)
     } finally {

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, Legend
 } from 'recharts'
 import api from '../../api/axios'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -18,16 +17,10 @@ export default function AdminReports() {
   const fetchReports = useCallback(async () => {
     setLoading(true)
     try {
-      const [revenueRes, summaryRes] = await Promise.allSettled([
-        api.get(`/admin/reports/revenue?period=${period}`),
-        api.get(`/admin/reports/summary?period=${period}`),
-      ])
-      if (revenueRes.status === 'fulfilled') {
-        setChartData(revenueRes.value.data?.chart || revenueRes.value.data || [])
-      }
-      if (summaryRes.status === 'fulfilled') {
-        setSummary(summaryRes.value.data)
-      }
+      const res = await api.get(`/admin/reports?period=${period}`)
+      const d = res.data?.data || res.data
+      setChartData(Array.isArray(d.revenueData) ? d.revenueData : [])
+      setSummary(d.summary || null)
     } catch (err) {
       toast.error('Failed to load reports')
     } finally {
@@ -39,30 +32,30 @@ export default function AdminReports() {
 
   const statCards = [
     {
-      label: 'Total Collected',
-      value: `GHS ${Number(summary?.total_collected || 0).toLocaleString()}`,
+      label: 'Total Revenue',
+      value: `GHS ${Number(summary?.totalRevenue || 0).toLocaleString()}`,
       icon: '💰',
       bg: 'bg-green-50',
       text: 'text-green-800',
     },
     {
-      label: 'Pending Payments',
-      value: `GHS ${Number(summary?.total_pending || 0).toLocaleString()}`,
-      icon: '⏳',
+      label: 'Transactions',
+      value: summary?.totalTransactions ?? 0,
+      icon: '💳',
       bg: 'bg-orange-50',
       text: 'text-orange-700',
     },
     {
-      label: 'Customers Added',
-      value: summary?.customers_added ?? 0,
-      icon: '👥',
+      label: 'Avg Transaction',
+      value: `GHS ${Number(summary?.avgTransactionValue || 0).toLocaleString()}`,
+      icon: '📈',
       bg: 'bg-blue-50',
       text: 'text-blue-700',
     },
     {
-      label: 'Plans Completed',
-      value: summary?.plans_completed ?? 0,
-      icon: '✅',
+      label: 'Period',
+      value: period.charAt(0).toUpperCase() + period.slice(1),
+      icon: '📅',
       bg: 'bg-emerald-50',
       text: 'text-emerald-700',
     },
@@ -113,16 +106,13 @@ export default function AdminReports() {
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={chartData} margin={{ top: 0, right: 10, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis
-                    dataKey={period === 'daily' ? 'day' : period === 'weekly' ? 'week' : 'month'}
-                    tick={{ fontSize: 10 }}
-                  />
+                  <XAxis dataKey="_id" tick={{ fontSize: 10 }} />
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip
                     formatter={(value) => [`GHS ${Number(value).toLocaleString()}`, 'Revenue']}
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
                   />
-                  <Bar dataKey="total" fill="#2E7D32" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="total_revenue" fill="#2E7D32" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -132,21 +122,6 @@ export default function AdminReports() {
             </div>
           )}
 
-          {/* Customer Growth Chart - if data available */}
-          {summary?.customer_growth && summary.customer_growth.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-card p-4">
-              <h3 className="text-base font-bold text-gray-800 mb-4">Customer Growth</h3>
-              <ResponsiveContainer width="100%" height={180}>
-                <LineChart data={summary.customer_growth} margin={{ top: 0, right: 10, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="period" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip contentStyle={{ borderRadius: '12px', border: 'none' }} />
-                  <Line type="monotone" dataKey="count" stroke="#2E7D32" strokeWidth={2} dot={{ r: 3, fill: '#2E7D32' }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
         </>
       )}
     </div>
