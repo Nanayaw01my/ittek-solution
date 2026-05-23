@@ -23,14 +23,14 @@ export default function AdminCustomerDetail() {
 
   const fetchCustomer = async () => {
     try {
-      const [custRes, txRes] = await Promise.all([
-        api.get(`/admin/customers/${id}`),
-        api.get(`/admin/customers/${id}/transactions`),
-      ])
-      const custD = custRes.data?.data || custRes.data
-      setCustomer(custD?.customer || custD)
-      const txD = txRes.data?.data || txRes.data
-      setTransactions(Array.isArray(txD.transactions) ? txD.transactions : [])
+      const res = await api.get(`/admin/customers/${id}`)
+      const d = res.data?.data || res.data
+      setCustomer(d?.customer || d)
+      setTransactions(Array.isArray(d?.payments) ? d.payments : [])
+      // plan is stored separately; attach it to customer for display
+      if (d?.plan) {
+        setCustomer(prev => ({ ...prev, payment_plan: d.plan }))
+      }
     } catch (err) {
       console.error(err)
       toast.error('Failed to load customer details')
