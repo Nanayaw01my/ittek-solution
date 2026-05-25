@@ -58,10 +58,7 @@ const login = async (req, res) => {
     });
   } catch (err) {
     console.error('Login error:', err.message, err.stack);
-    const msg = process.env.NODE_ENV === 'production'
-      ? 'Server error during login.'
-      : err.message;
-    return res.status(500).json({ success: false, message: msg });
+    return res.status(500).json({ success: false, message: `Login failed: ${err.message}` });
   }
 };
 

@@ -95,7 +95,25 @@ app.use('/api', limiter);
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-// ─── STEP 7: HEALTH CHECK ─────────────────────────────────────────────────────
+// ─── STEP 7: HEALTH + DEBUG ───────────────────────────────────────────────────
+
+app.get('/api/debug', (req, res) => {
+  const mongoose = require('mongoose');
+  res.json({
+    env: {
+      NODE_ENV: process.env.NODE_ENV || 'NOT SET',
+      JWT_SECRET: process.env.JWT_SECRET ? `SET (${process.env.JWT_SECRET.length} chars)` : 'NOT SET ❌',
+      MONGODB_URI: process.env.MONGODB_URI ? 'SET ✓' : 'NOT SET ❌',
+      PORT: process.env.PORT || 'NOT SET',
+    },
+    mongodb: {
+      state: mongoose.connection.readyState,
+      stateLabel: ['disconnected','connected','connecting','disconnecting'][mongoose.connection.readyState] || 'unknown',
+      host: mongoose.connection.host || 'none',
+    },
+    frontendDist: fs.existsSync(frontendBuild) ? 'EXISTS ✓' : 'MISSING ❌',
+  });
+});
 
 app.get('/health', (req, res) => {
   res.status(200).json({
