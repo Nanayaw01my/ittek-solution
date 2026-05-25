@@ -2,16 +2,14 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiAlertCircle, FiDollarSign, FiPlus, FiChevronDown, FiChevronUp } from 'react-icons/fi'
-import { getDebts, recordDebtPayment, getDebtSummary, getDebtPayments } from '../api/debts'
+import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp } from 'react-icons/fi'
+import { getDebts, recordDebtPayment, getDebtSummary } from '../api/debts'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
-import Table from '../components/Table'
 import StatCard from '../components/StatCard'
 import Badge from '../components/Badge'
-import DateRangePicker from '../components/DateRangePicker'
-import { format, startOfMonth, isPast, parseISO } from 'date-fns'
+import { isPast, parseISO } from 'date-fns'
 
 function PaymentModal({ debt, onClose, isOpen }) {
   const queryClient = useQueryClient()
@@ -30,7 +28,7 @@ function PaymentModal({ debt, onClose, isOpen }) {
   })
 
   if (!debt) return null
-  const remaining = debt.amount - (debt.amountPaid || 0)
+  const remaining = Math.max(0, (debt.amount_owed || 0) - (debt.amount_paid || 0))
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Record Payment" size="md">
@@ -38,15 +36,15 @@ function PaymentModal({ debt, onClose, isOpen }) {
         <div className="bg-gray-50 rounded-xl p-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Customer:</span>
-            <span className="font-semibold">{debt.customer?.name}</span>
+            <span className="font-semibold">{debt.customer_name}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Total Owed:</span>
-            <span className="font-bold text-red-600">{formatCurrency(debt.amount)}</span>
+            <span className="font-bold text-red-600">{formatCurrency(debt.amount_owed || 0)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Amount Paid:</span>
-            <span className="font-semibold text-green-600">{formatCurrency(debt.amountPaid || 0)}</span>
+            <span className="font-semibold text-green-600">{formatCurrency(debt.amount_paid || 0)}</span>
           </div>
           <div className="flex justify-between text-sm border-t border-gray-200 pt-2">
             <span className="text-gray-700 font-bold">Remaining Balance:</span>
@@ -107,34 +105,31 @@ function PaymentModal({ debt, onClose, isOpen }) {
 
 function DebtRow({ debt, onPay }) {
   const [showHistory, setShowHistory] = useState(false)
-  const { data: payments } = useQuery({
-    queryKey: ['debt-payments', debt._id],
-    queryFn: () => getDebtPayments(debt._id).then(r => r.data),
-    enabled: showHistory,
-  })
 
-  const remaining = debt.amount - (debt.amountPaid || 0)
-  const isOverdue = debt.dueDate && debt.status !== 'paid' && isPast(parseISO(debt.dueDate))
+  const remaining = Math.max(0, (debt.amount_owed || 0) - (debt.amount_paid || 0))
+  const dueDateStr = debt.due_date ? debt.due_date.slice(0, 10) : null
+  const isOverdue = dueDateStr && debt.status !== 'paid' && isPast(parseISO(dueDateStr))
+  const payments = debt.payments || []
 
   return (
     <>
       <tr className={`border-b border-gray-100 hover:bg-gray-50 ${isOverdue ? 'bg-red-50/30' : ''}`}>
         <td className="px-4 py-3">
-          <p className="font-semibold text-gray-800">{debt.customer?.name}</p>
-          <p className="text-xs text-gray-500">{debt.customer?.phone}</p>
+          <p className="font-semibold text-gray-800">{debt.customer_name}</p>
+          <p className="text-xs text-gray-500">{debt.customer_phone}</p>
         </td>
         <td className="px-4 py-3">
-          <span className="font-bold text-red-600">{formatCurrency(debt.amount)}</span>
+          <span className="font-bold text-red-600">{formatCurrency(debt.amount_owed || 0)}</span>
         </td>
         <td className="px-4 py-3">
-          <span className="font-semibold text-green-600">{formatCurrency(debt.amountPaid || 0)}</span>
+          <span className="font-semibold text-green-600">{formatCurrency(debt.amount_paid || 0)}</span>
         </td>
         <td className="px-4 py-3">
           <span className="font-black text-orange-600">{formatCurrency(remaining)}</span>
         </td>
         <td className="px-4 py-3">
           <span className={`text-sm ${isOverdue ? 'text-red-600 font-bold' : 'text-gray-600'}`}>
-            {formatDate(debt.dueDate)}
+            {formatDate(debt.due_date)}
             {isOverdue && <span className="ml-1 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold">OVERDUE</span>}
           </span>
         </td>
@@ -149,31 +144,30 @@ function DebtRow({ debt, onPay }) {
                 Pay
               </button>
             )}
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg"
-            >
-              {showHistory ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
-            </button>
+            {payments.length > 0 && (
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg"
+                title="Payment history"
+              >
+                {showHistory ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
+              </button>
+            )}
           </div>
         </td>
       </tr>
-      {showHistory && (
+      {showHistory && payments.length > 0 && (
         <tr>
           <td colSpan={7} className="px-4 py-3 bg-gray-50">
-            <p className="text-xs font-bold text-gray-600 mb-2">Payment History</p>
-            {payments?.payments?.length > 0 ? (
-              <div className="space-y-1">
-                {payments.payments.map((p, i) => (
-                  <div key={i} className="flex justify-between text-xs text-gray-600 bg-white rounded-lg px-3 py-2">
-                    <span>{formatDate(p.date)} — {p.notes || 'Payment'}</span>
-                    <span className="font-bold text-green-600">{formatCurrency(p.amount)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-gray-400">No payment history</p>
-            )}
+            <p className="text-xs font-bold text-gray-600 mb-2">Payment History ({payments.length})</p>
+            <div className="space-y-1">
+              {payments.map((p) => (
+                <div key={p._id} className="flex justify-between text-xs text-gray-600 bg-white rounded-lg px-3 py-2">
+                  <span>{formatDate(p.payment_date)} — {p.receipt_no || 'Payment'}</span>
+                  <span className="font-bold text-green-600">{formatCurrency(p.amount)}</span>
+                </div>
+              ))}
+            </div>
           </td>
         </tr>
       )}
@@ -182,7 +176,6 @@ function DebtRow({ debt, onPay }) {
 }
 
 export default function Debts() {
-  const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [payTarget, setPayTarget] = useState(null)
@@ -192,7 +185,7 @@ export default function Debts() {
     queryKey: ['debts', statusFilter, search, page],
     queryFn: () => getDebts({
       status: statusFilter !== 'all' ? statusFilter : undefined,
-      search: search || undefined,
+      customer: search || undefined,
       page,
       limit: 15,
     }).then(r => r.data),
@@ -203,7 +196,10 @@ export default function Debts() {
     queryFn: () => getDebtSummary().then(r => r.data),
   })
 
-  const debts = data?.debts || data || []
+  const debts = data?.debts || (Array.isArray(data) ? data : [])
+
+  const totalOutstanding = (summary?.active?.total || 0) + (summary?.overdue?.total || 0)
+  const totalDebtors = (summary?.active?.count || 0) + (summary?.overdue?.count || 0)
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
@@ -211,10 +207,10 @@ export default function Debts() {
 
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-        <StatCard icon={FiAlertCircle} value={formatCurrency(summary?.totalOutstanding || 0)} label="Total Outstanding" color="red" />
-        <StatCard icon={FiDollarSign} value={summary?.totalDebtors || 0} label="Active Debtors" color="orange" />
-        <StatCard icon={FiAlertCircle} value={summary?.overdueCount || 0} label="Overdue" color="red" />
-        <StatCard icon={FiDollarSign} value={formatCurrency(summary?.totalCollected || 0)} label="Total Collected" color="green" />
+        <StatCard icon={FiAlertCircle} value={formatCurrency(totalOutstanding)} label="Total Outstanding" color="red" />
+        <StatCard icon={FiDollarSign} value={totalDebtors} label="Active Debtors" color="orange" />
+        <StatCard icon={FiAlertCircle} value={summary?.overdue?.count || 0} label="Overdue" color="red" />
+        <StatCard icon={FiDollarSign} value={formatCurrency(summary?.paid?.total || 0)} label="Total Collected" color="green" />
       </div>
 
       {/* Filters */}
@@ -222,7 +218,7 @@ export default function Debts() {
         <input
           type="text"
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => { setSearch(e.target.value); setPage(1) }}
           placeholder="Search by customer name..."
           className="flex-1 min-w-48 px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
         />
@@ -230,7 +226,7 @@ export default function Debts() {
           {['all', 'active', 'overdue', 'paid'].map(s => (
             <button
               key={s}
-              onClick={() => setStatusFilter(s)}
+              onClick={() => { setStatusFilter(s); setPage(1) }}
               className={`px-4 py-2 text-sm font-semibold capitalize transition-colors
                 ${statusFilter === s ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
             >

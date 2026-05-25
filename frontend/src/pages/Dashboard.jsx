@@ -63,7 +63,7 @@ export default function Dashboard() {
           <h1 className="text-xl font-black text-gray-900">Dashboard</h1>
           <p className="text-gray-500 text-sm">Hello, {user?.username}! Here's your summary.</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
           <StatCard
             icon={FiShoppingCart}
             value={formatCurrency(stats.myTodaySales || 0)}
@@ -78,13 +78,27 @@ export default function Dashboard() {
             color="red"
             loading={statsLoading}
           />
+          <StatCard
+            icon={FiPackage}
+            value={stats.totalProducts || 0}
+            label="Total Products"
+            color="green"
+            loading={statsLoading}
+          />
+          <StatCard
+            icon={FiAlertTriangle}
+            value={stats.lowStockCount || 0}
+            label="Low Stock Alerts"
+            color="yellow"
+            loading={statsLoading}
+          />
           {userLevel === 2 && (
             <>
               <StatCard
-                icon={FiAlertTriangle}
+                icon={FiActivity}
                 value={stats.outstandingDebts || 0}
                 label="Outstanding Debts"
-                color="yellow"
+                color="orange"
                 loading={statsLoading}
               />
               <StatCard

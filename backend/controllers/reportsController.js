@@ -19,7 +19,7 @@ const getDashboardStats = async (req, res) => {
     const userId = req.user._id;
 
     if (isLimitedRole) {
-      const [myTodaySalesAgg, myTodayExpensesAgg, outstandingDebtsCount, pendingStockCount] = await Promise.all([
+      const [myTodaySalesAgg, myTodayExpensesAgg, outstandingDebtsCount, pendingStockCount, totalProducts, lowStockCount] = await Promise.all([
         Sale.aggregate([
           { $match: { user_id: userId, sale_date: { $gte: startOfToday } } },
           { $group: { _id: null, total: { $sum: '$total_amount' } } },
@@ -30,6 +30,8 @@ const getDashboardStats = async (req, res) => {
         ]),
         Debt.countDocuments({ status: { $in: ['active', 'overdue'] } }),
         StockRequest.countDocuments({ status: 'pending' }),
+        Product.countDocuments({ is_active: true }),
+        Product.countDocuments({ is_active: true, $expr: { $lte: ['$quantity', '$low_stock_level'] } }),
       ]);
       return res.status(200).json({
         success: true,
@@ -38,6 +40,8 @@ const getDashboardStats = async (req, res) => {
           myTodayExpenses: myTodayExpensesAgg[0]?.total || 0,
           outstandingDebts: outstandingDebtsCount,
           pendingStockRequests: pendingStockCount,
+          totalProducts,
+          lowStockCount,
         },
       });
     }

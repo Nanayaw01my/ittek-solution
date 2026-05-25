@@ -9,16 +9,16 @@ const {
   getLowStock, getByBarcode, searchProducts, bulkImport,
 } = require('../controllers/productsController');
 
-// All roles can search/find by barcode (for POS)
+// All authenticated users can list/view products (needed for POS)
 router.get('/low-stock', authenticate, requireLevel(3), getLowStock);
 router.get('/barcode/:barcode', authenticate, getByBarcode);
 router.post('/search', authenticate, searchProducts);
 router.post('/bulk-import', authenticate, requireLevel(3), auditLog('BULK_IMPORT_PRODUCTS'), bulkImport);
+router.get('/', authenticate, getProducts);
+router.get('/:id', authenticate, getProduct);
 
-// Super Admin (4) and CEO (3) for full product management
+// Super Admin (4) and CEO (3) for product management (create/update/delete)
 const adminOnly = [authenticate, requireLevel(3)];
-
-router.get('/', adminOnly, getProducts);
 
 router.post(
   '/',
@@ -31,8 +31,6 @@ router.post(
   auditLog('CREATE_PRODUCT', (req) => ({ product_name: req.body.name })),
   createProduct
 );
-
-router.get('/:id', adminOnly, getProduct);
 
 router.put(
   '/:id',
