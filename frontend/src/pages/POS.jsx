@@ -347,34 +347,40 @@ export default function POS() {
   }, [searchQuery])
 
   const { data: productsData, isLoading: productsLoading } = useQuery({
-    queryKey: ['pos-products', debouncedSearch, isOnline],
+    queryKey: ['pos-products', debouncedSearch],
     queryFn: () => {
-      if (!isOnline) {
-        const cached = getCachedProducts() || []
-        if (debouncedSearch.trim()) {
-          const q = debouncedSearch.toLowerCase()
-          return cached.filter(p =>
-            p.name?.toLowerCase().includes(q) || p.barcode?.includes(q)
-          )
-        }
-        return cached
-      }
       if (debouncedSearch.trim()) {
         return searchProducts(debouncedSearch).then(r => r.data)
       }
       return getProducts({ limit: 50, sort: 'name' }).then(r => r.data)
     },
-    staleTime: 10000,
+    // Seed the query with localStorage data so it shows immediately on offline refresh
+    initialData: () => (!debouncedSearch.trim() ? getCachedProducts() || undefined : undefined),
+    initialDataUpdatedAt: () => parseInt(localStorage.getItem('ittek_products_cache_time') || '0'),
+    staleTime: 30000,
+    enabled: isOnline,  // Don't fire API calls when offline — use stale / initial data
+    retry: false,
+    refetchOnWindowFocus: false,
   })
 
-  const products = Array.isArray(productsData) ? productsData : (productsData?.products || [])
-
-  // Cache products locally whenever a full list loads while online
+  // When online and no search: keep the products cache fresh for offline use
+  const rawProducts = Array.isArray(productsData) ? productsData : (productsData?.products || [])
   useEffect(() => {
-    if (isOnline && !debouncedSearch && products.length > 0) {
-      saveProductsCache(products)
+    if (isOnline && !debouncedSearch && rawProducts.length > 0) {
+      saveProductsCache(rawProducts)
     }
-  }, [products, isOnline, debouncedSearch])
+  }, [rawProducts, isOnline, debouncedSearch])
+
+  // When offline, filter the localStorage cache client-side instead of querying the API
+  const offlineCache = !isOnline ? (getCachedProducts() || []) : null
+  const products = offlineCache !== null
+    ? (debouncedSearch.trim()
+        ? offlineCache.filter(p => {
+            const q = debouncedSearch.toLowerCase()
+            return p.name?.toLowerCase().includes(q) || p.barcode?.includes(q)
+          })
+        : offlineCache)
+    : rawProducts
 
   // Cart calculations
   const subtotal = cart.reduce((sum, item) => sum + (item.selling_price || 0) * item.qty, 0)
