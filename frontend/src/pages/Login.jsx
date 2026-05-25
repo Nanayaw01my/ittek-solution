@@ -18,7 +18,7 @@ export default function Login() {
     setLoading(true)
     try {
       const res = await login({ username: data.username, password: data.password })
-      const { token, user } = res.data
+      const { token, user } = res.data.data
       storeLogin(user, token)
       toast.success(`Welcome back, ${user.username}!`)
       navigate('/dashboard')

@@ -70,14 +70,11 @@ UserSchema.methods.comparePassword = async function (candidatePassword) {
 
 // Generate JWT
 UserSchema.methods.generateJWT = function () {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET environment variable is not set. Add it in Render → Environment.');
   return jwt.sign(
-    {
-      id: this._id,
-      username: this.username,
-      email: this.email,
-      role: this.role,
-    },
-    process.env.JWT_SECRET,
+    { id: this._id, username: this.username, email: this.email, role: this.role },
+    secret,
     { expiresIn: process.env.JWT_EXPIRE || '24h' }
   );
 };
