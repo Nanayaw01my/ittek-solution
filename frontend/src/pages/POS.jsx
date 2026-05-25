@@ -31,8 +31,8 @@ function ProductCard({ product, onAdd }) {
       </div>
       <p className="text-xs text-gray-400 font-mono mb-2">{product.barcode || '—'}</p>
       <div className="flex items-center justify-between">
-        <p className="text-sm font-black text-orange-600">{formatCurrency(product.sellingPrice)}</p>
-        <p className={`text-xs font-semibold ${product.quantity <= (product.lowStockLevel || 5) ? 'text-orange-500' : 'text-gray-400'}`}>
+        <p className="text-sm font-black text-orange-600">{formatCurrency(product.selling_price)}</p>
+        <p className={`text-xs font-semibold ${product.quantity <= (product.low_stock_level || 5) ? 'text-orange-500' : 'text-gray-400'}`}>
           Qty: {product.quantity}
         </p>
       </div>
@@ -45,7 +45,7 @@ function CartItem({ item, onUpdateQty, onRemove }) {
     <div className="flex items-center gap-2 py-3 border-b border-gray-100 last:border-0">
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-gray-800 truncate">{item.name}</p>
-        <p className="text-xs text-orange-600 font-medium">{formatCurrency(item.sellingPrice)} each</p>
+        <p className="text-xs text-orange-600 font-medium">{formatCurrency(item.selling_price)} each</p>
       </div>
       <div className="flex items-center gap-1">
         <button
@@ -63,7 +63,7 @@ function CartItem({ item, onUpdateQty, onRemove }) {
           <FiPlus size={13} />
         </button>
       </div>
-      <p className="text-sm font-bold text-gray-900 w-20 text-right">{formatCurrency(item.sellingPrice * item.qty)}</p>
+      <p className="text-sm font-bold text-gray-900 w-20 text-right">{formatCurrency(item.selling_price * item.qty)}</p>
       <button
         onClick={() => onRemove(item._id)}
         className="text-red-400 hover:text-red-600 p-1 rounded transition-colors"
@@ -130,7 +130,7 @@ function ReceiptModal({ isOpen, onClose, saleData }) {
                 <div className="flex justify-between text-gray-600">
                   <span className="flex-1"></span>
                   <span className="w-8 text-center">{item.quantity}</span>
-                  <span className="w-16 text-right">₵{parseFloat(item.unitPrice || item.sellingPrice).toFixed(2)}</span>
+                  <span className="w-16 text-right">₵{parseFloat(item.unitPrice || item.selling_price).toFixed(2)}</span>
                   <span className="w-20 text-right font-bold">₵{parseFloat(item.total || (item.quantity * item.unitPrice)).toFixed(2)}</span>
                 </div>
               </div>
@@ -345,7 +345,7 @@ export default function POS() {
   const products = productsData?.products || productsData || []
 
   // Cart calculations
-  const subtotal = cart.reduce((sum, item) => sum + item.sellingPrice * item.qty, 0)
+  const subtotal = cart.reduce((sum, item) => sum + (item.selling_price || 0) * item.qty, 0)
   const discountAmount = discountType === 'percent'
     ? (subtotal * parseFloat(discountValue || 0)) / 100
     : parseFloat(discountValue || 0)
@@ -397,8 +397,8 @@ export default function POS() {
     items: cart.map(i => ({
       product: i._id,
       quantity: i.qty,
-      unitPrice: i.sellingPrice,
-      total: i.sellingPrice * i.qty,
+      unitPrice: i.selling_price,
+      total: i.selling_price * i.qty,
     })),
     subtotal,
     discount: discountAmount,
