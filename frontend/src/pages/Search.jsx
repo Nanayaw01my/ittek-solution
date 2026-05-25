@@ -39,6 +39,49 @@ function saveRecentSearch(query) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(updated))
 }
 
+function transformSearchResults(raw, activeFilter) {
+  const results = []
+  const { products = [], sales = [], debts = [], expenses = [], creditAgreements = [] } = raw || {}
+
+  if (activeFilter === 'all' || activeFilter === 'products') {
+    products.forEach(p => results.push({
+      type: 'product',
+      title: p.name,
+      subtitle: p.category_id?.name || 'Product',
+      value: formatCurrency(p.selling_price || 0),
+      date: p.createdAt,
+    }))
+  }
+  if (activeFilter === 'all' || activeFilter === 'sales') {
+    sales.forEach(s => results.push({
+      type: 'sale',
+      title: s.customer_name || 'Walk-in Customer',
+      subtitle: `Invoice: ${s.invoice_no || '—'}`,
+      value: formatCurrency(s.total_amount || s.cart_total || 0),
+      date: s.sale_date || s.createdAt,
+    }))
+  }
+  if (activeFilter === 'all' || activeFilter === 'debts') {
+    debts.forEach(d => results.push({
+      type: 'debt',
+      title: d.customer_name,
+      subtitle: `Debt — ${d.status || 'active'}`,
+      value: formatCurrency(d.amount_owed || 0),
+      date: d.due_date,
+    }))
+  }
+  if (activeFilter === 'all' || activeFilter === 'expenses') {
+    expenses.forEach(e => results.push({
+      type: 'expense',
+      title: e.category,
+      subtitle: e.description || 'Expense',
+      value: formatCurrency(e.amount || 0),
+      date: e.expense_date,
+    }))
+  }
+  return results
+}
+
 export default function Search() {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
@@ -56,13 +99,13 @@ export default function Search() {
     return () => clearTimeout(t)
   }, [query])
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['global-search', debouncedQuery, activeFilter],
-    queryFn: () => globalSearch({ q: debouncedQuery, type: activeFilter !== 'all' ? activeFilter : undefined }).then(r => r.data),
+  const { data: rawData, isLoading } = useQuery({
+    queryKey: ['global-search', debouncedQuery],
+    queryFn: () => globalSearch({ query: debouncedQuery }).then(r => r.data),
     enabled: debouncedQuery.length >= 2,
   })
 
-  const results = data?.results || []
+  const results = rawData ? transformSearchResults(rawData, activeFilter) : []
 
   const handleSearch = (q) => {
     setQuery(q)

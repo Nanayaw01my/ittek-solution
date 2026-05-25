@@ -49,12 +49,13 @@ function DailySalesTab({ startDate, endDate }) {
   })
   const rows = data?.daily || []
   const columns = [
-    { header: 'Date', key: 'date', render: v => formatDate(v) },
-    { header: 'Transactions', key: 'count' },
-    { header: 'Subtotal', key: 'subtotal', render: v => formatCurrency(v) },
-    { header: 'Discount', key: 'discount', render: v => formatCurrency(v) },
-    { header: 'Total', key: 'total', render: v => <span className="font-bold text-orange-600">{formatCurrency(v)}</span> },
+    { header: 'Date', key: '_id', render: v => formatDate(v) },
+    { header: 'Transactions', key: 'total_transactions' },
+    { header: 'Cost of Goods', key: 'total_cost', render: v => formatCurrency(v || 0) },
+    { header: 'Total Revenue', key: 'total_revenue', render: v => <span className="font-bold text-orange-600">{formatCurrency(v || 0)}</span> },
   ]
+  const grandTotal = rows.reduce((s, r) => s + (r.total_revenue || 0), 0)
+  const grandCount = rows.reduce((s, r) => s + (r.total_transactions || 0), 0)
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -66,18 +67,18 @@ function DailySalesTab({ startDate, endDate }) {
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={rows}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+              <XAxis dataKey="_id" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
               <Tooltip formatter={v => formatCurrency(v)} />
-              <Bar dataKey="total" fill="#F97316" radius={[4, 4, 0, 0]} name="Sales" />
+              <Bar dataKey="total_revenue" fill="#F97316" radius={[4, 4, 0, 0]} name="Sales" />
             </BarChart>
           </ResponsiveContainer>
         </div>
       )}
       <Table columns={columns} data={rows} loading={isLoading} emptyMessage="No sales data" />
-      {data?.totals && (
+      {rows.length > 0 && (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-sm font-semibold text-orange-800">
-          TOTAL: {formatCurrency(data.totals.total)} | Transactions: {data.totals.count}
+          TOTAL: {formatCurrency(grandTotal)} | Transactions: {grandCount}
         </div>
       )}
     </div>
@@ -89,16 +90,16 @@ function ByUserTab({ startDate, endDate }) {
     queryKey: ['sales-by-user-report', startDate, endDate],
     queryFn: () => getSalesByUserReport({ startDate, endDate }).then(r => r.data),
   })
-  const rows = data?.byUser || []
+  const rows = Array.isArray(data) ? data : []
   const columns = [
     { header: 'User', key: 'username', render: (v, row) => (
       <div>
-        <p className="font-semibold">{row.username || row._id?.username}</p>
-        <p className="text-xs text-gray-500 capitalize">{row.role || row._id?.role}</p>
+        <p className="font-semibold">{row.username || '—'}</p>
+        <p className="text-xs text-gray-500 capitalize">{row.email || ''}</p>
       </div>
     )},
-    { header: 'Transactions', key: 'count' },
-    { header: 'Total Sales', key: 'total', render: v => <span className="font-bold text-orange-600">{formatCurrency(v)}</span> },
+    { header: 'Transactions', key: 'transactions' },
+    { header: 'Total Sales', key: 'total_revenue', render: v => <span className="font-bold text-orange-600">{formatCurrency(v || 0)}</span> },
   ]
   return (
     <div className="space-y-4">
@@ -116,12 +117,12 @@ function TopProductsTab({ startDate, endDate }) {
     queryKey: ['top-products-report', startDate, endDate],
     queryFn: () => getTopProductsReport({ startDate, endDate, limit: 20 }).then(r => r.data),
   })
-  const products = data?.products || []
+  const products = Array.isArray(data) ? data : []
   const columns = [
     { header: '#', key: '_id', render: (_, __, i) => i + 1 },
-    { header: 'Product', key: 'name' },
-    { header: 'Units Sold', key: 'totalQuantity', render: v => <span className="font-bold">{v}</span> },
-    { header: 'Revenue', key: 'totalRevenue', render: v => <span className="font-bold text-orange-600">{formatCurrency(v)}</span> },
+    { header: 'Product', key: 'product_name' },
+    { header: 'Units Sold', key: 'total_quantity', render: v => <span className="font-bold">{v}</span> },
+    { header: 'Revenue', key: 'total_revenue', render: v => <span className="font-bold text-orange-600">{formatCurrency(v || 0)}</span> },
   ]
   return (
     <div className="space-y-4">
@@ -135,9 +136,9 @@ function TopProductsTab({ startDate, endDate }) {
             <BarChart data={products.slice(0, 10)} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={120} />
+              <YAxis type="category" dataKey="product_name" tick={{ fontSize: 10 }} width={120} />
               <Tooltip formatter={v => v} />
-              <Bar dataKey="totalQuantity" fill="#F97316" radius={[0, 4, 4, 0]} name="Units Sold" />
+              <Bar dataKey="total_quantity" fill="#F97316" radius={[0, 4, 4, 0]} name="Units Sold" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -155,14 +156,13 @@ function ProfitLossTab({ startDate, endDate }) {
   if (isLoading) return <div className="h-40 bg-gray-100 animate-pulse rounded-xl" />
   const pl = data || {}
   const items = [
-    { label: 'Gross Revenue', value: pl.grossRevenue, bold: false, positive: true },
+    { label: 'Gross Revenue', value: pl.revenue, bold: false, positive: true },
     { label: 'Cost of Goods Sold (COGS)', value: pl.cogs, bold: false, positive: false },
-    { label: 'Gross Profit', value: pl.grossProfit, bold: true, positive: (pl.grossProfit || 0) >= 0 },
+    { label: 'Gross Profit', value: pl.gross_profit, bold: true, positive: (pl.gross_profit || 0) >= 0 },
     { label: '', value: null },
-    { label: 'Total Expenses', value: pl.totalExpenses, bold: false, positive: false },
-    ...(pl.expensesByCategory || []).map(e => ({ label: `  — ${e.category}`, value: e.total, bold: false, positive: false, sub: true })),
+    { label: 'Total Expenses', value: pl.total_expenses, bold: false, positive: false },
     { label: '', value: null },
-    { label: 'Net Profit', value: pl.netProfit, bold: true, positive: (pl.netProfit || 0) >= 0, highlight: true },
+    { label: 'Net Profit', value: pl.net_profit, bold: true, positive: (pl.net_profit || 0) >= 0, highlight: true },
   ]
   return (
     <div className="space-y-4">
@@ -189,6 +189,16 @@ function ProfitLossTab({ startDate, endDate }) {
           )
         })}
       </div>
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="bg-gray-50 rounded-xl p-3 border">
+          <p className="text-gray-500">Transactions</p>
+          <p className="text-xl font-black text-gray-800">{pl.transactions || 0}</p>
+        </div>
+        <div className="bg-gray-50 rounded-xl p-3 border">
+          <p className="text-gray-500">Net Margin</p>
+          <p className={`text-xl font-black ${(pl.net_margin || 0) >= 0 ? 'text-green-700' : 'text-red-600'}`}>{pl.net_margin || 0}%</p>
+        </div>
+      </div>
     </div>
   )
 }
@@ -198,18 +208,18 @@ function DebtorsTab() {
     queryKey: ['debtors-report'],
     queryFn: () => getDebtorsReport().then(r => r.data),
   })
-  const debtors = data?.debtors || []
+  const debtors = data?.debts || []
   const columns = [
-    { header: 'Customer', key: 'customer', render: (v, row) => (
+    { header: 'Customer', key: 'customer_name', render: (v, row) => (
       <div>
-        <p className="font-semibold">{row.customer?.name}</p>
-        <p className="text-xs text-gray-500">{row.customer?.phone}</p>
+        <p className="font-semibold">{v || '—'}</p>
+        <p className="text-xs text-gray-500">{row.customer_phone}</p>
       </div>
     )},
-    { header: 'Total Owed', key: 'amount', render: v => <span className="font-bold text-red-600">{formatCurrency(v)}</span> },
-    { header: 'Paid', key: 'amountPaid', render: v => formatCurrency(v || 0) },
-    { header: 'Remaining', key: '_id', render: (_, row) => <span className="font-bold text-orange-600">{formatCurrency(row.amount - (row.amountPaid || 0))}</span> },
-    { header: 'Due Date', key: 'dueDate', render: v => formatDate(v) },
+    { header: 'Total Owed', key: 'amount_owed', render: v => <span className="font-bold text-red-600">{formatCurrency(v || 0)}</span> },
+    { header: 'Paid', key: 'amount_paid', render: v => formatCurrency(v || 0) },
+    { header: 'Remaining', key: '_id', render: (_, row) => <span className="font-bold text-orange-600">{formatCurrency(Math.max(0, (row.amount_owed || 0) - (row.amount_paid || 0)))}</span> },
+    { header: 'Due Date', key: 'due_date', render: v => formatDate(v) },
   ]
   return (
     <div className="space-y-4">
@@ -217,15 +227,15 @@ function DebtorsTab() {
         <h3 className="font-bold text-gray-800">Debtors Report</h3>
         <ExportBtn type="debtors" params={{}} />
       </div>
-      {data?.summary && (
+      {data?.total_outstanding !== undefined && (
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-red-50 rounded-xl p-4 border border-red-200">
             <p className="text-sm text-red-700">Total Outstanding</p>
-            <p className="text-2xl font-black text-red-600">{formatCurrency(data.summary.totalOutstanding)}</p>
+            <p className="text-2xl font-black text-red-600">{formatCurrency(data.total_outstanding || 0)}</p>
           </div>
           <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
             <p className="text-sm text-orange-700">Active Debtors</p>
-            <p className="text-2xl font-black text-orange-600">{data.summary.count}</p>
+            <p className="text-2xl font-black text-orange-600">{debtors.length}</p>
           </div>
         </div>
       )}
@@ -239,15 +249,15 @@ function StockValuationTab() {
     queryKey: ['stock-valuation-report'],
     queryFn: () => getStockValuationReport().then(r => r.data),
   })
-  const products = data?.products || []
+  const items = data?.items || []
   const columns = [
     { header: 'Product', key: 'name' },
-    { header: 'Category', key: 'category', render: v => v?.name || '—' },
+    { header: 'Category', key: 'category', render: v => v || '—' },
     { header: 'Qty', key: 'quantity' },
-    { header: 'Cost Price', key: 'costPrice', render: v => formatCurrency(v) },
-    { header: 'Selling Price', key: 'sellingPrice', render: v => formatCurrency(v) },
-    { header: 'Cost Value', key: 'costValue', render: (_, row) => formatCurrency((row.quantity || 0) * (row.costPrice || 0)) },
-    { header: 'Selling Value', key: 'sellingValue', render: (_, row) => formatCurrency((row.quantity || 0) * (row.sellingPrice || 0)) },
+    { header: 'Cost Price', key: 'cost_price', render: v => formatCurrency(v || 0) },
+    { header: 'Selling Price', key: 'selling_price', render: v => formatCurrency(v || 0) },
+    { header: 'Cost Value', key: 'cost_value', render: v => formatCurrency(v || 0) },
+    { header: 'Selling Value', key: 'selling_value', render: v => formatCurrency(v || 0) },
   ]
   return (
     <div className="space-y-4">
@@ -255,19 +265,19 @@ function StockValuationTab() {
         <h3 className="font-bold text-gray-800">Stock Valuation</h3>
         <ExportBtn type="stock-valuation" params={{}} />
       </div>
-      {data?.summary && (
+      {data?.total_cost_value !== undefined && (
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
             <p className="text-sm text-blue-700">Total Cost Value</p>
-            <p className="text-xl font-black text-blue-600">{formatCurrency(data.summary.totalCostValue)}</p>
+            <p className="text-xl font-black text-blue-600">{formatCurrency(data.total_cost_value || 0)}</p>
           </div>
           <div className="bg-green-50 rounded-xl p-4 border border-green-200">
             <p className="text-sm text-green-700">Total Selling Value</p>
-            <p className="text-xl font-black text-green-600">{formatCurrency(data.summary.totalSellingValue)}</p>
+            <p className="text-xl font-black text-green-600">{formatCurrency(data.total_selling_value || 0)}</p>
           </div>
         </div>
       )}
-      <Table columns={columns} data={products} loading={isLoading} emptyMessage="No products" />
+      <Table columns={columns} data={items} loading={isLoading} emptyMessage="No products" />
     </div>
   )
 }

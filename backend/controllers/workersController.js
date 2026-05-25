@@ -105,4 +105,20 @@ const getWorkerSummary = async (req, res) => {
   }
 };
 
-module.exports = { getWorkerPayments, createWorkerPayment, getWorkerSummary };
+/**
+ * DELETE /api/workers/:id
+ */
+const deleteWorkerPayment = async (req, res) => {
+  try {
+    const payment = await WorkerPayment.findByIdAndDelete(req.params.id);
+    if (!payment) {
+      return res.status(404).json({ success: false, message: 'Payment record not found.' });
+    }
+    return res.status(200).json({ success: true, message: 'Payment record deleted.' });
+  } catch (err) {
+    console.error('Delete worker payment error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+module.exports = { getWorkerPayments, createWorkerPayment, getWorkerSummary, deleteWorkerPayment };

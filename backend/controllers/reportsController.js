@@ -4,6 +4,8 @@ const Product = require('../models/Product');
 const Debt = require('../models/Debt');
 const User = require('../models/User');
 const StockRequest = require('../models/StockRequest');
+const WorkerPayment = require('../models/WorkerPayment');
+const Purchase = require('../models/Purchase');
 const { generateReport } = require('../utils/pdfGenerator');
 
 /**
@@ -414,8 +416,157 @@ const exportData = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/reports/financial-overview
+ */
+const getFinancialOverview = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const dateFilter = getDateFilter(startDate, endDate);
+    const saleMatch = {};
+    const expenseMatch = {};
+    const purchaseMatch = {};
+    const workerMatch = {};
+    if (dateFilter) {
+      saleMatch.sale_date = dateFilter;
+      expenseMatch.expense_date = dateFilter;
+      purchaseMatch.createdAt = dateFilter;
+      workerMatch.payment_date = dateFilter;
+    }
+
+    const [salesAgg, expensesAgg, expensesByCategory, purchasesAgg, workerAgg] = await Promise.all([
+      Sale.aggregate([
+        { $match: saleMatch },
+        {
+          $group: {
+            _id: null,
+            total_revenue: { $sum: '$total_amount' },
+            total_discount: { $sum: { $ifNull: ['$discount_amount', 0] } },
+            total_cogs: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.cost_price', '$$this.quantity'] }] } } } },
+          },
+        },
+      ]),
+      Expense.aggregate([
+        { $match: expenseMatch },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      Expense.aggregate([
+        { $match: expenseMatch },
+        { $group: { _id: '$category', total: { $sum: '$amount' } } },
+        { $sort: { total: -1 } },
+        { $project: { category: '$_id', total: 1, _id: 0 } },
+      ]),
+      Purchase.aggregate([
+        { $match: purchaseMatch },
+        { $group: { _id: null, total: { $sum: '$total_amount' } } },
+      ]),
+      WorkerPayment.aggregate([
+        { $match: workerMatch },
+        { $group: { _id: null, total: { $sum: '$amount_paid' } } },
+      ]),
+    ]);
+
+    const totalRevenue = salesAgg[0]?.total_revenue || 0;
+    const grossRevenue = totalRevenue;
+    const discounts = salesAgg[0]?.total_discount || 0;
+    const cogs = salesAgg[0]?.total_cogs || 0;
+    const grossProfit = totalRevenue - cogs;
+    const totalExpenses = expensesAgg[0]?.total || 0;
+    const purchases = purchasesAgg[0]?.total || 0;
+    const workerPayments = workerAgg[0]?.total || 0;
+    const netProfit = grossProfit - totalExpenses;
+    const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalRevenue,
+        grossRevenue,
+        discounts,
+        cogs,
+        grossProfit,
+        totalExpenses,
+        netProfit,
+        profitMargin,
+        purchases,
+        workerPayments,
+        expensesByCategory,
+      },
+    });
+  } catch (err) {
+    console.error('Financial overview error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * GET /api/reports/cash-flow
+ */
+const getCashFlow = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const dateFilter = getDateFilter(startDate, endDate);
+    const saleMatch = {};
+    const expenseMatch = {};
+    const debtPaymentMatch = {};
+    if (dateFilter) {
+      saleMatch.sale_date = dateFilter;
+      expenseMatch.expense_date = dateFilter;
+    }
+
+    const [salesAgg, expensesAgg, debtPayments, dailySales, dailyExpenses] = await Promise.all([
+      Sale.aggregate([
+        { $match: { ...saleMatch, payment_status: { $in: ['paid', 'partial'] } } },
+        { $group: { _id: null, total: { $sum: '$total_amount' } } },
+      ]),
+      Expense.aggregate([
+        { $match: expenseMatch },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      Debt.aggregate([
+        { $unwind: '$payments' },
+        ...(dateFilter ? [{ $match: { 'payments.payment_date': dateFilter } }] : []),
+        { $group: { _id: null, total: { $sum: '$payments.amount' } } },
+      ]),
+      Sale.aggregate([
+        { $match: saleMatch },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sale_date' } }, inflow: { $sum: '$total_amount' } } },
+        { $sort: { _id: 1 } },
+      ]),
+      Expense.aggregate([
+        { $match: expenseMatch },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$expense_date' } }, outflow: { $sum: '$amount' } } },
+        { $sort: { _id: 1 } },
+      ]),
+    ]);
+
+    const salesInflow = salesAgg[0]?.total || 0;
+    const expenseOutflow = expensesAgg[0]?.total || 0;
+    const debtCollections = debtPayments[0]?.total || 0;
+    const netCashFlow = salesInflow + debtCollections - expenseOutflow;
+
+    // Merge daily inflow/outflow
+    const dateMap = {};
+    dailySales.forEach(d => { dateMap[d._id] = { date: d._id, inflow: d.inflow, outflow: 0 }; });
+    dailyExpenses.forEach(d => {
+      if (dateMap[d._id]) dateMap[d._id].outflow = d.outflow;
+      else dateMap[d._id] = { date: d._id, inflow: 0, outflow: d.outflow };
+    });
+    const trend = Object.values(dateMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    return res.status(200).json({
+      success: true,
+      data: { salesInflow, debtCollections, expenseOutflow, netCashFlow, trend },
+    });
+  } catch (err) {
+    console.error('Cash flow error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 module.exports = {
   getDashboardStats, getSalesTrend,
   getDailySales, getSalesByUser, getTopProducts, getProfitLoss,
   getDebtors, getStockValuation, getExpenseBreakdown, exportData,
+  getFinancialOverview, getCashFlow,
 };

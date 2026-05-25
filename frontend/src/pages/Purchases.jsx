@@ -14,8 +14,8 @@ function PurchaseForm({ onSubmit, loading }) {
   const { data: productsData } = useQuery({ queryKey: ['products-brief'], queryFn: () => getProducts({ limit: 300 }).then(r => r.data) })
   const { data: suppliersData } = useQuery({ queryKey: ['suppliers'], queryFn: () => getSuppliers().then(r => r.data) })
 
-  const products = productsData?.products || productsData || []
-  const suppliers = suppliersData?.suppliers || suppliersData || []
+  const products = productsData?.products || (Array.isArray(productsData) ? productsData : [])
+  const suppliers = suppliersData?.suppliers || (Array.isArray(suppliersData) ? suppliersData : [])
 
   const { register, handleSubmit, control, watch, formState: { errors } } = useForm({
     defaultValues: { items: [{ product: '', quantity: 1, unitCost: '' }] }
@@ -24,8 +24,20 @@ function PurchaseForm({ onSubmit, loading }) {
   const items = watch('items')
   const total = items.reduce((s, i) => s + (parseFloat(i.unitCost || 0) * parseFloat(i.quantity || 0)), 0)
 
+  const handleSubmitTransform = (d) => {
+    onSubmit({
+      supplier_id: d.supplier,
+      notes: d.notes,
+      items: d.items.map(item => ({
+        product_id: item.product,
+        quantity: parseInt(item.quantity),
+        unit_cost: parseFloat(item.unitCost || 0),
+      })),
+    })
+  }
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
+    <form onSubmit={handleSubmit(handleSubmitTransform)} className="p-5 space-y-4">
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1">Supplier *</label>
         <select {...register('supplier', { required: 'Supplier required' })}
@@ -120,14 +132,14 @@ export default function Purchases() {
     onError: err => toast.error(err.response?.data?.message || 'Failed to record purchase'),
   })
 
-  const purchases = data?.purchases || data || []
+  const purchases = data?.purchases || (Array.isArray(data) ? data : [])
 
   const columns = [
     { header: 'Date', key: 'createdAt', render: v => formatDate(v) },
-    { header: 'Supplier', key: 'supplier', render: v => v?.name || '—' },
+    { header: 'Supplier', key: 'supplier_id', render: v => v?.name || '—' },
     { header: 'Items', key: 'items', render: v => `${v?.length || 0} item(s)` },
-    { header: 'Total Cost', key: 'totalCost', render: v => <span className="font-bold text-orange-600">{formatCurrency(v || 0)}</span> },
-    { header: 'Recorded By', key: 'recordedBy', render: v => v?.username || '—' },
+    { header: 'Total Cost', key: 'total_amount', render: v => <span className="font-bold text-orange-600">{formatCurrency(v || 0)}</span> },
+    { header: 'Recorded By', key: 'created_by', render: v => v?.username || '—' },
     {
       header: 'Actions',
       key: '_id',
@@ -173,8 +185,8 @@ export default function Purchases() {
           <div className="p-5 space-y-4">
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div><span className="text-gray-500">Date:</span> <span className="font-semibold">{formatDate(viewPurchase.createdAt)}</span></div>
-              <div><span className="text-gray-500">Supplier:</span> <span className="font-semibold">{viewPurchase.supplier?.name}</span></div>
-              <div><span className="text-gray-500">Recorded By:</span> <span className="font-semibold">{viewPurchase.recordedBy?.username}</span></div>
+              <div><span className="text-gray-500">Supplier:</span> <span className="font-semibold">{viewPurchase.supplier_id?.name || '—'}</span></div>
+              <div><span className="text-gray-500">Recorded By:</span> <span className="font-semibold">{viewPurchase.created_by?.username || '—'}</span></div>
             </div>
             <div>
               <p className="text-sm font-bold text-gray-700 mb-2">Items</p>
@@ -182,12 +194,12 @@ export default function Purchases() {
                 {viewPurchase.items?.map((item, i) => (
                   <div key={i} className="flex justify-between text-sm bg-gray-50 rounded-xl px-4 py-2">
                     <div>
-                      <p className="font-semibold">{item.product?.name || item.productName}</p>
+                      <p className="font-semibold">{item.product_id?.name || item.product_name || '—'}</p>
                       <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold">{formatCurrency(item.unitCost)}/unit</p>
-                      <p className="font-black text-orange-600">{formatCurrency((item.quantity || 0) * (item.unitCost || 0))}</p>
+                      <p className="font-semibold">{formatCurrency(item.unit_cost || 0)}/unit</p>
+                      <p className="font-black text-orange-600">{formatCurrency((item.quantity || 0) * (item.unit_cost || 0))}</p>
                     </div>
                   </div>
                 ))}
@@ -195,7 +207,7 @@ export default function Purchases() {
             </div>
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex justify-between">
               <span className="font-bold text-orange-800">Total Cost:</span>
-              <span className="text-xl font-black text-orange-600">{formatCurrency(viewPurchase.totalCost || 0)}</span>
+              <span className="text-xl font-black text-orange-600">{formatCurrency(viewPurchase.total_amount || 0)}</span>
             </div>
           </div>
         )}

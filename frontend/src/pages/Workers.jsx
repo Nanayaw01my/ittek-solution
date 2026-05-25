@@ -20,8 +20,19 @@ function PaymentForm({ onSubmit, loading }) {
     }
   })
 
+  const handleSubmitTransform = (d) => {
+    onSubmit({
+      worker_name: d.workerName,
+      worker_phone: d.phone || undefined,
+      commission_rate: d.commissionRate ? parseFloat(d.commissionRate) : undefined,
+      amount_paid: parseFloat(d.amount),
+      period_start: d.periodStart,
+      period_end: d.periodEnd,
+    })
+  }
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
+    <form onSubmit={handleSubmit(handleSubmitTransform)} className="p-5 space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1">Worker Name *</label>
@@ -99,21 +110,21 @@ export default function Workers() {
     onError: err => toast.error(err.response?.data?.message || 'Delete failed'),
   })
 
-  const payments = data?.payments || data || []
-  const totalThisMonth = payments.reduce((s, p) => s + (p.amount || 0), 0)
+  const payments = Array.isArray(data) ? data : (data?.payments || [])
+  const totalThisMonth = payments.reduce((s, p) => s + (p.amount_paid || 0), 0)
 
   const columns = [
-    { header: 'Worker', key: 'workerName', render: (v, row) => (
+    { header: 'Worker', key: 'worker_name', render: (v, row) => (
       <div>
         <p className="font-semibold">{v}</p>
-        <p className="text-xs text-gray-500">{row.phone}</p>
+        <p className="text-xs text-gray-500">{row.worker_phone}</p>
       </div>
     )},
-    { header: 'Commission Rate', key: 'commissionRate', render: v => v ? `${v}%` : '—' },
-    { header: 'Amount Paid', key: 'amount', render: v => <span className="font-bold text-orange-600">{formatCurrency(v)}</span> },
-    { header: 'Period Start', key: 'periodStart', render: v => formatDate(v) },
-    { header: 'Period End', key: 'periodEnd', render: v => formatDate(v) },
-    { header: 'Date Paid', key: 'createdAt', render: v => formatDate(v) },
+    { header: 'Commission Rate', key: 'commission_rate', render: v => v ? `${v}%` : '—' },
+    { header: 'Amount Paid', key: 'amount_paid', render: v => <span className="font-bold text-orange-600">{formatCurrency(v || 0)}</span> },
+    { header: 'Period Start', key: 'period_start', render: v => formatDate(v) },
+    { header: 'Period End', key: 'period_end', render: v => formatDate(v) },
+    { header: 'Date Paid', key: 'payment_date', render: v => formatDate(v) },
     {
       header: 'Actions',
       key: '_id',
@@ -162,7 +173,7 @@ export default function Workers() {
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => deleteMutation.mutate(deleteTarget._id)}
         title="Delete Payment Record"
-        message={`Delete payment of ${formatCurrency(deleteTarget?.amount || 0)} for ${deleteTarget?.workerName}?`}
+        message={`Delete payment of ${formatCurrency(deleteTarget?.amount_paid || 0)} for ${deleteTarget?.worker_name}?`}
         confirmText="Delete"
         danger
         loading={deleteMutation.isPending}

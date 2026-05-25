@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { FiPlus, FiEye, FiDownload, FiDollarSign } from 'react-icons/fi'
 import {
-  getCreditAgreements, createCreditAgreement, recordCreditPayment, getCreditPayments, generateCreditPDF
+  getCreditAgreements, createCreditAgreement, recordCreditPayment, generateCreditPDF
 } from '../api/creditAgreements'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
@@ -31,8 +31,24 @@ function AgreementForm({ onSubmit, loading }) {
   const weeklyInstallment = withInterest / 3
   const endDate = startDate ? format(addDays(new Date(startDate), 21), 'yyyy-MM-dd') : '—'
 
+  const handleSubmitTransform = (d) => {
+    onSubmit({
+      customer_name: d.customerName,
+      customer_phone: d.customerPhone,
+      customer_address: d.customerAddress,
+      guarantor_name: d.guarantorName,
+      guarantor_phone: d.guarantorPhone,
+      guarantor_address: d.guarantorAddress,
+      product_description: d.productDescription,
+      total_amount: parseFloat(d.totalAmount),
+      down_payment: parseFloat(d.downPayment),
+      interest_rate: parseFloat(d.interestRate || 0),
+      start_date: d.startDate,
+    })
+  }
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-5">
+    <form onSubmit={handleSubmit(handleSubmitTransform)} className="p-5 space-y-5">
       {/* Customer Info */}
       <div>
         <h4 className="text-sm font-bold text-gray-700 mb-3 border-b pb-2">Customer Information</h4>
@@ -155,18 +171,12 @@ function AgreementForm({ onSubmit, loading }) {
 function ViewAgreementModal({ agreement, isOpen, onClose }) {
   const queryClient = useQueryClient()
   const [payAmount, setPayAmount] = useState('')
-  const { data: paymentsData } = useQuery({
-    queryKey: ['credit-payments', agreement?._id],
-    queryFn: () => getCreditPayments(agreement._id).then(r => r.data),
-    enabled: !!agreement && isOpen,
-  })
 
   const payMutation = useMutation({
     mutationFn: ({ id, data }) => recordCreditPayment(id, data),
     onSuccess: () => {
       toast.success('Payment recorded!')
       queryClient.invalidateQueries(['credit-agreements'])
-      queryClient.invalidateQueries(['credit-payments', agreement._id])
       setPayAmount('')
     },
     onError: err => toast.error(err.response?.data?.message || 'Payment failed'),
@@ -184,7 +194,10 @@ function ViewAgreementModal({ agreement, isOpen, onClose }) {
   }
 
   if (!agreement) return null
-  const remaining = agreement.totalAmount - (agreement.downPayment || 0) - (agreement.amountPaid || 0)
+
+  const payments = agreement.payments || []
+  const amountPaidViaPayments = payments.reduce((s, p) => s + (p.amount || 0), 0)
+  const remaining = Math.max(0, (agreement.total_amount || 0) - (agreement.down_payment || 0) - amountPaidViaPayments)
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Credit Agreement Details" size="lg">
@@ -193,28 +206,28 @@ function ViewAgreementModal({ agreement, isOpen, onClose }) {
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="bg-gray-50 rounded-xl p-3">
             <p className="text-xs text-gray-500 mb-1">Customer</p>
-            <p className="font-bold">{agreement.customer?.name || agreement.customerName}</p>
-            <p className="text-gray-600">{agreement.customer?.phone || agreement.customerPhone}</p>
+            <p className="font-bold">{agreement.customer_name}</p>
+            <p className="text-gray-600">{agreement.customer_phone}</p>
           </div>
           <div className="bg-gray-50 rounded-xl p-3">
             <p className="text-xs text-gray-500 mb-1">Guarantor</p>
-            <p className="font-bold">{agreement.guarantorName}</p>
-            <p className="text-gray-600">{agreement.guarantorPhone}</p>
+            <p className="font-bold">{agreement.guarantor_name}</p>
+            <p className="text-gray-600">{agreement.guarantor_phone}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
           <div className="bg-blue-50 rounded-xl p-3 text-center">
             <p className="text-xs text-blue-600">Total Amount</p>
-            <p className="font-black text-blue-800">{formatCurrency(agreement.totalAmount)}</p>
+            <p className="font-black text-blue-800">{formatCurrency(agreement.total_amount || 0)}</p>
           </div>
           <div className="bg-green-50 rounded-xl p-3 text-center">
             <p className="text-xs text-green-600">Down Payment</p>
-            <p className="font-black text-green-800">{formatCurrency(agreement.downPayment)}</p>
+            <p className="font-black text-green-800">{formatCurrency(agreement.down_payment || 0)}</p>
           </div>
           <div className="bg-orange-50 rounded-xl p-3 text-center">
-            <p className="text-xs text-orange-600">Amount Paid</p>
-            <p className="font-black text-orange-800">{formatCurrency(agreement.amountPaid || 0)}</p>
+            <p className="text-xs text-orange-600">Payments Made</p>
+            <p className="font-black text-orange-800">{formatCurrency(amountPaidViaPayments)}</p>
           </div>
           <div className="bg-red-50 rounded-xl p-3 text-center">
             <p className="text-xs text-red-600">Remaining</p>
@@ -223,9 +236,9 @@ function ViewAgreementModal({ agreement, isOpen, onClose }) {
         </div>
 
         <div className="text-sm text-gray-700">
-          <p><strong>Product:</strong> {agreement.productDescription}</p>
+          <p><strong>Product:</strong> {agreement.product_description}</p>
           <p className="mt-1"><strong>Status:</strong> <Badge status={agreement.status} /></p>
-          <p className="mt-1"><strong>End Date:</strong> {formatDate(agreement.endDate)}</p>
+          <p className="mt-1"><strong>End Date:</strong> {formatDate(agreement.end_date)}</p>
         </div>
 
         {/* Make payment */}
@@ -257,13 +270,13 @@ function ViewAgreementModal({ agreement, isOpen, onClose }) {
         )}
 
         {/* Payment History */}
-        {paymentsData?.payments?.length > 0 && (
+        {payments.length > 0 && (
           <div>
-            <p className="text-sm font-bold text-gray-700 mb-2">Payment History</p>
+            <p className="text-sm font-bold text-gray-700 mb-2">Payment History ({payments.length})</p>
             <div className="space-y-2">
-              {paymentsData.payments.map((p, i) => (
+              {payments.map((p, i) => (
                 <div key={i} className="flex justify-between items-center text-sm bg-gray-50 rounded-xl px-3 py-2">
-                  <span className="text-gray-600">{formatDate(p.date)}</span>
+                  <span className="text-gray-600">{formatDate(p.payment_date || p.date)}</span>
                   <span className="font-bold text-green-600">{formatCurrency(p.amount)}</span>
                 </div>
               ))}
@@ -304,31 +317,34 @@ export default function CreditAgreements() {
     onError: err => toast.error(err.response?.data?.message || 'Failed to create'),
   })
 
-  const agreements = data?.agreements || data || []
+  const agreements = data?.agreements || (Array.isArray(data) ? data : [])
 
   const columns = [
     {
       header: 'Customer',
-      key: 'customer',
+      key: 'customer_name',
       render: (v, row) => (
         <div>
-          <p className="font-semibold">{v?.name || row.customerName}</p>
-          <p className="text-xs text-gray-500">{v?.phone || row.customerPhone}</p>
+          <p className="font-semibold">{v}</p>
+          <p className="text-xs text-gray-500">{row.customer_phone}</p>
         </div>
       ),
     },
-    { header: 'Total', key: 'totalAmount', render: v => formatCurrency(v) },
-    { header: 'Down Payment', key: 'downPayment', render: v => formatCurrency(v) },
+    { header: 'Total', key: 'total_amount', render: v => formatCurrency(v || 0) },
+    { header: 'Down Payment', key: 'down_payment', render: v => formatCurrency(v || 0) },
     {
       header: 'Remaining',
       key: '_id',
-      render: (_, row) => (
-        <span className="font-bold text-orange-600">
-          {formatCurrency(row.totalAmount - (row.downPayment || 0) - (row.amountPaid || 0))}
-        </span>
-      ),
+      render: (_, row) => {
+        const paid = (row.payments || []).reduce((s, p) => s + (p.amount || 0), 0)
+        return (
+          <span className="font-bold text-orange-600">
+            {formatCurrency(Math.max(0, (row.total_amount || 0) - (row.down_payment || 0) - paid))}
+          </span>
+        )
+      },
     },
-    { header: 'End Date', key: 'endDate', render: v => formatDate(v) },
+    { header: 'End Date', key: 'end_date', render: v => formatDate(v) },
     { header: 'Status', key: 'status', render: v => <Badge status={v} /> },
     {
       header: 'Actions',

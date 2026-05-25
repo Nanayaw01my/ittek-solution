@@ -6,6 +6,7 @@ const {
   getDashboardStats, getSalesTrend,
   getDailySales, getSalesByUser, getTopProducts, getProfitLoss,
   getDebtors, getStockValuation, getExpenseBreakdown, exportData,
+  getFinancialOverview, getCashFlow,
 } = require('../controllers/reportsController');
 
 // All authenticated users can access dashboard stats
@@ -24,6 +25,8 @@ router.get('/profit-loss', getProfitLoss);
 router.get('/debtors', getDebtors);
 router.get('/stock-valuation', getStockValuation);
 router.get('/expense-breakdown', getExpenseBreakdown);
+router.get('/financial-overview', getFinancialOverview);
+router.get('/cash-flow', getCashFlow);
 router.get('/export/excel/:reportType', exportData);
 
 module.exports = router;

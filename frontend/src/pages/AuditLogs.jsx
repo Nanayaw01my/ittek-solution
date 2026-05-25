@@ -51,7 +51,7 @@ export default function AuditLogs() {
     queryFn: () => getAuditLogs({
       startDate,
       endDate,
-      user: userFilter || undefined,
+      user_id: userFilter || undefined,
       action: actionFilter || undefined,
       search: search || undefined,
       page,
@@ -59,17 +59,17 @@ export default function AuditLogs() {
     }).then(r => r.data),
   })
 
-  const logs = data?.logs || data || []
+  const logs = Array.isArray(data) ? data : (data?.logs || [])
 
   const columns = [
     { header: 'Timestamp', key: 'createdAt', render: v => <span className="text-xs">{formatDateTime(v)}</span> },
     {
       header: 'User',
-      key: 'user',
-      render: (v, row) => (
+      key: 'user_id',
+      render: (v) => (
         <div>
           <p className="text-sm font-semibold">{v?.username || '—'}</p>
-          <Badge status={v?.role} label={v?.role?.replace('_', ' ')} size="xs" />
+          <Badge status={v?.role} label={v?.role} size="xs" />
         </div>
       ),
     },

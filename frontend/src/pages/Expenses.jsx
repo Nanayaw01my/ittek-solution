@@ -14,13 +14,13 @@ import StatCard from '../components/StatCard'
 import DateRangePicker from '../components/DateRangePicker'
 import { format, startOfMonth } from 'date-fns'
 
-const EXPENSE_CATEGORIES = ['Rent', 'Utilities', 'Transport', 'Salaries', 'Office Supplies', 'Marketing', 'Maintenance', 'Food', 'Miscellaneous']
+const EXPENSE_CATEGORIES = ['Rent', 'Utilities', 'Transport', 'Salaries', 'Maintenance', 'Marketing', 'Other']
 
 function ExpenseForm({ expense, onSubmit, loading }) {
   const { register, handleSubmit, formState: { errors } } = useForm({
     defaultValues: expense
-      ? { ...expense, date: expense.date ? expense.date.split('T')[0] : format(new Date(), 'yyyy-MM-dd') }
-      : { date: format(new Date(), 'yyyy-MM-dd') }
+      ? { ...expense, expense_date: expense.expense_date ? expense.expense_date.split('T')[0] : format(new Date(), 'yyyy-MM-dd') }
+      : { expense_date: format(new Date(), 'yyyy-MM-dd') }
   })
 
   return (
@@ -64,9 +64,10 @@ function ExpenseForm({ expense, onSubmit, loading }) {
         <label className="block text-sm font-semibold text-gray-700 mb-1">Date *</label>
         <input
           type="date"
-          {...register('date', { required: 'Date is required' })}
+          {...register('expense_date', { required: 'Date is required' })}
           className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
         />
+        {errors.expense_date && <p className="mt-1 text-xs text-red-500">{errors.expense_date.message}</p>}
       </div>
 
       <button
@@ -83,7 +84,7 @@ function ExpenseForm({ expense, onSubmit, loading }) {
 export default function Expenses() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
-  const isManager = ['super_admin', 'ceo', 'manager'].includes(user?.role)
+  const isManager = ['Super Admin', 'CEO', 'Manager'].includes(user?.role)
 
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'))
@@ -143,12 +144,12 @@ export default function Expenses() {
     onError: err => toast.error(err.response?.data?.message || 'Delete failed'),
   })
 
-  const expenses = data?.expenses || data || []
+  const expenses = data?.expenses || (Array.isArray(data) ? data : [])
   const summary = summaryData || {}
 
   const columns = [
-    { header: 'Date', key: 'date', render: v => formatDate(v) },
-    ...(isManager ? [{ header: 'User', key: 'user', render: v => v?.username || '—' }] : []),
+    { header: 'Date', key: 'expense_date', render: v => formatDate(v) },
+    ...(isManager ? [{ header: 'User', key: 'user_id', render: v => v?.username || '—' }] : []),
     { header: 'Category', key: 'category', render: v => (
       <span className="px-2 py-1 bg-orange-50 text-orange-700 rounded-lg text-xs font-semibold">{v}</span>
     )},
@@ -161,7 +162,7 @@ export default function Expenses() {
       key: '_id',
       render: (id, row) => (
         <div className="flex gap-2">
-          {(isManager || row.user?._id === user?._id) && (
+          {(isManager || row.user_id?._id === user?._id) && (
             <>
               <button
                 onClick={e => { e.stopPropagation(); setEditExpense(row); setShowModal(true) }}
@@ -199,8 +200,8 @@ export default function Expenses() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-        <StatCard icon={FiDollarSign} value={formatCurrency(summary.total || 0)} label="Total Expenses" color="red" />
-        {(summary.byCategory || []).slice(0, 3).map(cat => (
+        <StatCard icon={FiDollarSign} value={formatCurrency(summary.grand_total || 0)} label="Total Expenses" color="red" />
+        {(summary.by_category || []).slice(0, 3).map(cat => (
           <StatCard key={cat._id} value={formatCurrency(cat.total)} label={cat._id} color="orange" />
         ))}
       </div>
