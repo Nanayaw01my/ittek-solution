@@ -206,7 +206,7 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
       if (logoBuf) {
         try {
           doc.save();
-          doc.opacity(0.06);
+          doc.opacity(0.15);
           doc.image(logoBuf, ML + (W - 220) / 2, 280, { width: 220 });
           doc.restore();
         } catch {}
