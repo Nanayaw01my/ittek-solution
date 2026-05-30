@@ -2,11 +2,10 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX } from 'react-icons/fi'
-import { getUsers, createUser, updateUser, toggleUserStatus, resetUserPassword } from '../api/users'
+import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX, FiTrash2, FiEye, FiEyeOff } from 'react-icons/fi'
+import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword } from '../api/users'
 import { formatDate, getRoleLabel, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
-import ImageUpload from '../components/ImageUpload'
 
 const ROLES_FOR_LEVEL = {
   3: ['Manager', 'Sales'],
@@ -51,10 +50,34 @@ function Modal({ isOpen, onClose, title, children, size = 'md' }) {
   )
 }
 
+function PasswordInput({ register: reg, name, rules, placeholder, label, error }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div>
+      {label && <label className="block text-sm font-semibold text-gray-700 mb-1">{label}</label>}
+      <div className="relative">
+        <input
+          type={show ? 'text' : 'password'}
+          {...reg(name, rules)}
+          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 pr-10"
+          placeholder={placeholder}
+        />
+        <button
+          type="button"
+          onClick={() => setShow(s => !s)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+        >
+          {show ? <FiEyeOff size={16} /> : <FiEye size={16} />}
+        </button>
+      </div>
+      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+    </div>
+  )
+}
+
 function UserForm({ user: editUser, myRole, onSubmit, loading }) {
   const myLevel = getRoleLevel(myRole)
   const availableRoles = ROLES_FOR_LEVEL[myLevel] || []
-  const [avatarUrl, setAvatarUrl] = useState(editUser?.avatar_url || null)
   const { register, handleSubmit, formState: { errors } } = useForm({
     defaultValues: editUser
       ? { username: editUser.username, email: editUser.email, role: editUser.role }
@@ -62,24 +85,21 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
   })
 
   return (
-    <form onSubmit={handleSubmit(data => onSubmit({ ...data, avatar_url: avatarUrl }))} className="p-5 space-y-4">
-      <ImageUpload
-        value={avatarUrl}
-        onChange={setAvatarUrl}
-        folder="avatars"
-        label="Profile Picture (optional)"
-      />
+    <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1">Username *</label>
         <input
           {...register('username', { required: 'Username is required' })}
           className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
           placeholder="e.g. john_doe"
+          autoFocus
         />
         {errors.username && <p className="mt-1 text-xs text-red-500">{errors.username.message}</p>}
       </div>
       <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-1">Email <span className="text-gray-400 font-normal">(optional)</span></label>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">
+          Email <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
         <input
           type="email"
           {...register('email', {
@@ -104,25 +124,99 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
         {errors.role && <p className="mt-1 text-xs text-red-500">{errors.role.message}</p>}
       </div>
       {!editUser && (
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1">Password *</label>
-          <input
-            type="password"
-            {...register('password', { required: 'Password required', minLength: { value: 6, message: 'Min 6 characters' } })}
-            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-            placeholder="Min 6 characters"
-          />
-          {errors.password && <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>}
-        </div>
+        <PasswordInput
+          register={register}
+          name="password"
+          label="Password *"
+          placeholder="Min 6 characters"
+          rules={{ required: 'Password required', minLength: { value: 6, message: 'Min 6 characters' } }}
+          error={errors.password?.message}
+        />
       )}
       <button
         type="submit"
         disabled={loading}
-        className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm"
+        className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
       >
         {loading ? 'Saving...' : editUser ? 'Update User' : 'Create User'}
       </button>
     </form>
+  )
+}
+
+function ResetPasswordModal({ user, onClose, onSubmit, loading }) {
+  const { register, handleSubmit, watch, formState: { errors } } = useForm()
+  const newPw = watch('new_password')
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
+      <p className="text-sm text-gray-600">
+        Set a new password for <span className="font-bold text-gray-900">{user?.username}</span>.
+      </p>
+      <PasswordInput
+        register={register}
+        name="new_password"
+        label="New Password *"
+        placeholder="Min 6 characters"
+        rules={{ required: 'Password required', minLength: { value: 6, message: 'Min 6 characters' } }}
+        error={errors.new_password?.message}
+      />
+      <PasswordInput
+        register={register}
+        name="confirm_password"
+        label="Confirm Password *"
+        placeholder="Re-enter password"
+        rules={{
+          required: 'Please confirm password',
+          validate: v => v === newPw || 'Passwords do not match',
+        }}
+        error={errors.confirm_password?.message}
+      />
+      <div className="flex gap-3 pt-1">
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex-1 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
+        >
+          {loading ? 'Saving...' : 'Reset Password'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function DeleteConfirmModal({ user, onClose, onConfirm, loading }) {
+  return (
+    <div className="p-5 space-y-4">
+      <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-100 rounded-xl">
+        <FiTrash2 size={20} className="text-red-500 flex-shrink-0" />
+        <p className="text-sm text-red-700">
+          This will permanently delete <span className="font-bold">{user?.username}</span>. This cannot be undone.
+        </p>
+      </div>
+      <div className="flex gap-3">
+        <button
+          onClick={onClose}
+          className="flex-1 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={loading}
+          className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
+        >
+          {loading ? 'Deleting...' : 'Delete User'}
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -131,7 +225,8 @@ export default function Users() {
   const queryClient = useQueryClient()
   const [showModal, setShowModal] = useState(false)
   const [editUser, setEditUser] = useState(null)
-  const [tempPassword, setTempPassword] = useState(null)
+  const [resetTarget, setResetTarget] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
   const [search, setSearch] = useState('')
 
   const { data, isLoading } = useQuery({
@@ -163,24 +258,30 @@ export default function Users() {
   const toggleMutation = useMutation({
     mutationFn: (id) => toggleUserStatus(id),
     onSuccess: () => {
-      toast.success('User status updated!')
+      toast.success('Status updated!')
       queryClient.invalidateQueries(['users'])
     },
     onError: err => toast.error(err.response?.data?.message || 'Failed to update'),
   })
 
   const resetPwMutation = useMutation({
-    mutationFn: (id) => {
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
-      const temp = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
-      return resetUserPassword(id, temp).then(() => temp)
-    },
-    onSuccess: (temp) => {
-      setTempPassword(temp)
-      toast.success('Password reset! Save the temporary password.')
+    mutationFn: ({ id, password }) => resetUserPassword(id, password),
+    onSuccess: () => {
+      toast.success('Password reset successfully!')
       queryClient.invalidateQueries(['users'])
+      setResetTarget(null)
     },
     onError: err => toast.error(err.response?.data?.message || 'Failed to reset password'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => deleteUser(id),
+    onSuccess: () => {
+      toast.success('User deleted!')
+      queryClient.invalidateQueries(['users'])
+      setDeleteTarget(null)
+    },
+    onError: err => toast.error(err.response?.data?.message || 'Failed to delete user'),
   })
 
   const users = data?.users || data || []
@@ -210,9 +311,9 @@ export default function Users() {
         </div>
         <button
           onClick={() => { setEditUser(null); setShowModal(true) }}
-          className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm transition-colors shadow-sm"
         >
-          <FiPlus size={16} /> Add User
+          <FiPlus size={18} /> Add New User
         </button>
       </div>
 
@@ -241,7 +342,7 @@ export default function Users() {
         type="text"
         value={search}
         onChange={e => setSearch(e.target.value)}
-        placeholder="Search users..."
+        placeholder="Search users by name or email..."
         className="w-full max-w-sm px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
       />
 
@@ -325,23 +426,30 @@ export default function Users() {
                         >
                           <FiEdit2 size={15} />
                         </button>
-                        {/* Toggle active/inactive */}
+                        {/* Toggle active */}
                         <button
                           onClick={() => toggleMutation.mutate(row._id)}
                           disabled={toggleMutation.isPending}
                           className={`p-1.5 rounded-lg transition-colors ${row.is_active ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-50'}`}
-                          title={row.is_active ? 'Disable user' : 'Enable user'}
+                          title={row.is_active ? 'Deactivate' : 'Activate'}
                         >
                           {row.is_active ? <FiToggleRight size={17} /> : <FiToggleLeft size={17} />}
                         </button>
                         {/* Reset password */}
                         <button
-                          onClick={() => resetPwMutation.mutate(row._id)}
-                          disabled={resetPwMutation.isPending}
+                          onClick={() => setResetTarget(row)}
                           className="p-1.5 text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
                           title="Reset password"
                         >
                           <FiKey size={15} />
+                        </button>
+                        {/* Delete */}
+                        <button
+                          onClick={() => setDeleteTarget(row)}
+                          className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete user"
+                        >
+                          <FiTrash2 size={15} />
                         </button>
                       </div>
                     )}
@@ -353,30 +461,11 @@ export default function Users() {
         </div>
       </div>
 
-      {/* Temp Password Modal */}
-      {tempPassword && (
-        <Modal isOpen={!!tempPassword} onClose={() => setTempPassword(null)} title="Temporary Password" size="sm">
-          <div className="p-5 text-center space-y-4">
-            <p className="text-sm text-gray-600">The user's temporary password is:</p>
-            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-              <p className="text-2xl font-black text-orange-600 font-mono tracking-wider">{tempPassword}</p>
-            </div>
-            <p className="text-xs text-gray-500">Please share this with the user securely.</p>
-            <button
-              onClick={() => { navigator.clipboard?.writeText(tempPassword); toast.success('Copied!') }}
-              className="px-4 py-2 bg-orange-500 text-white rounded-xl font-semibold text-sm hover:bg-orange-600"
-            >
-              Copy to Clipboard
-            </button>
-          </div>
-        </Modal>
-      )}
-
       {/* Create / Edit Modal */}
       <Modal
         isOpen={showModal}
         onClose={() => { setShowModal(false); setEditUser(null) }}
-        title={editUser ? 'Edit User' : 'Create User'}
+        title={editUser ? `Edit — ${editUser.username}` : 'Add New User'}
         size="md"
       >
         <UserForm
@@ -388,7 +477,6 @@ export default function Users() {
               username: formData.username,
               email: formData.email || undefined,
               role: formData.role,
-              avatar_url: formData.avatar_url,
               ...(!editUser && { password: formData.password }),
             }
             if (editUser) {
@@ -397,6 +485,36 @@ export default function Users() {
               createMutation.mutate(payload)
             }
           }}
+        />
+      </Modal>
+
+      {/* Reset Password Modal */}
+      <Modal
+        isOpen={!!resetTarget}
+        onClose={() => setResetTarget(null)}
+        title="Reset Password"
+        size="sm"
+      >
+        <ResetPasswordModal
+          user={resetTarget}
+          onClose={() => setResetTarget(null)}
+          loading={resetPwMutation.isPending}
+          onSubmit={(data) => resetPwMutation.mutate({ id: resetTarget._id, password: data.new_password })}
+        />
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete User"
+        size="sm"
+      >
+        <DeleteConfirmModal
+          user={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          loading={deleteMutation.isPending}
+          onConfirm={() => deleteMutation.mutate(deleteTarget._id)}
         />
       </Modal>
     </div>
