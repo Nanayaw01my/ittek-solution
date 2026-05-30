@@ -318,65 +318,93 @@ function ViewAgreementModal({ agreement, isOpen, onClose }) {
   const remaining = Math.max(0, (agreement.total_amount || 0) - (agreement.down_payment || 0) - amountPaid)
   const balance = Math.max(0, (agreement.total_amount || 0) - (agreement.down_payment || 0))
 
+  const SectionHeader = ({ title }) => (
+    <div className="flex items-center gap-2 pb-1 border-b-2 border-orange-200 mb-3">
+      <h4 className="text-xs font-black text-orange-700 uppercase tracking-wider">{title}</h4>
+    </div>
+  )
+
+  const Field = ({ label, value }) => (
+    <div>
+      <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-0.5">{label}</p>
+      <p className="text-sm font-medium text-gray-800">{value || '—'}</p>
+    </div>
+  )
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Credit Agreement Details" size="lg">
-      <div className="p-5 space-y-5">
-        {/* Photos */}
+      <div className="p-5 space-y-6">
+
+        {/* Passport photos header */}
         {(agreement.customer_passport_url || agreement.guarantor_passport_url) && (
-          <div className="flex gap-4">
-            {agreement.customer_passport_url && (
-              <div className="text-center">
-                <img src={agreement.customer_passport_url} alt="Customer" className="w-16 h-20 object-cover rounded-lg border" />
-                <p className="text-xs text-gray-500 mt-1">Customer</p>
-              </div>
-            )}
-            {agreement.guarantor_passport_url && (
-              <div className="text-center">
-                <img src={agreement.guarantor_passport_url} alt="Guarantor" className="w-16 h-20 object-cover rounded-lg border" />
-                <p className="text-xs text-gray-500 mt-1">Guarantor</p>
-              </div>
-            )}
+          <div className="flex items-center justify-between bg-orange-50 border border-orange-100 rounded-2xl p-3">
+            {agreement.customer_passport_url
+              ? <div className="text-center"><img src={agreement.customer_passport_url} alt="Customer" className="w-14 h-18 object-cover rounded-lg border mx-auto" /><p className="text-xs text-gray-500 mt-1">Customer</p></div>
+              : <div className="w-14" />}
+            <p className="text-xs font-black text-orange-700 uppercase tracking-wide text-center flex-1">Credit Sale Agreement</p>
+            {agreement.guarantor_passport_url
+              ? <div className="text-center"><img src={agreement.guarantor_passport_url} alt="Guarantor" className="w-14 h-18 object-cover rounded-lg border mx-auto" /><p className="text-xs text-gray-500 mt-1">Guarantor</p></div>
+              : <div className="w-14" />}
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div className="bg-gray-50 rounded-xl p-3">
-            <p className="text-xs text-gray-500 mb-1">Customer</p>
-            <p className="font-bold">{agreement.customer_name}</p>
-            <p className="text-gray-600 text-xs">{agreement.customer_phone}</p>
-            {agreement.customer_address && <p className="text-gray-500 text-xs">{agreement.customer_address}</p>}
-            {agreement.document_type && <p className="text-gray-500 text-xs mt-1">{agreement.document_type}: {agreement.id_number}</p>}
+        {/* Status badge */}
+        <div className="flex items-center gap-3">
+          <Badge status={agreement.status} />
+          <span className="text-xs text-gray-400">Created {formatDate(agreement.createdAt)}</span>
+        </div>
+
+        {/* Customer Details */}
+        <div>
+          <SectionHeader title="Customer Details" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
+            <Field label="Customer Name" value={agreement.customer_name} />
+            <Field label="Document Type" value={agreement.document_type} />
+            <Field label="I.D Number" value={agreement.id_number} />
+            <Field label="Date" value={formatDate(agreement.start_date)} />
+            <Field label="Location" value={agreement.customer_address} />
+            <Field label="Phone / Tel" value={agreement.customer_phone} />
           </div>
-          <div className="bg-gray-50 rounded-xl p-3">
-            <p className="text-xs text-gray-500 mb-1">Guarantor</p>
-            <p className="font-bold">{agreement.guarantor_name}</p>
-            <p className="text-gray-600 text-xs">{agreement.guarantor_phone}</p>
-            {agreement.guarantor_address && <p className="text-gray-500 text-xs">{agreement.guarantor_address}</p>}
-            {agreement.guarantor_ghana_card && <p className="text-gray-500 text-xs mt-1">Ghana Card: {agreement.guarantor_ghana_card}</p>}
+        </div>
+
+        {/* Product & Payment Terms */}
+        <div>
+          <SectionHeader title="Product and Payment Terms" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
+            <Field label="Product Type" value={agreement.product_type} />
+            <Field label="Serial Number" value={agreement.serial_number} />
+            <Field label="Down Payment" value={formatCurrency(agreement.down_payment || 0)} />
+            <Field label="Payment Plan" value={<span className="capitalize">{agreement.payment_plan || 'weekly'}</span>} />
+            <Field label="Loan Total Amount" value={formatCurrency(agreement.total_amount || 0)} />
+          </div>
+          {/* Balance summary */}
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'Total Amount', value: formatCurrency(agreement.total_amount || 0), color: 'blue' },
+              { label: 'Down Payment', value: formatCurrency(agreement.down_payment || 0), color: 'green' },
+              { label: 'Balance', value: formatCurrency(balance), color: 'orange' },
+              { label: 'Remaining', value: formatCurrency(remaining), color: 'red' },
+            ].map(s => (
+              <div key={s.label} className={`bg-${s.color}-50 rounded-xl p-3 text-center`}>
+                <p className={`text-xs text-${s.color}-600`}>{s.label}</p>
+                <p className={`font-black text-${s.color}-800 text-sm`}>{s.value}</p>
+              </div>
+            ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-          {[
-            { label: 'Total Amount', value: formatCurrency(agreement.total_amount || 0), color: 'blue' },
-            { label: 'Down Payment', value: formatCurrency(agreement.down_payment || 0), color: 'green' },
-            { label: 'Balance', value: formatCurrency(balance), color: 'orange' },
-            { label: 'Remaining', value: formatCurrency(remaining), color: 'red' },
-          ].map(s => (
-            <div key={s.label} className={`bg-${s.color}-50 rounded-xl p-3 text-center`}>
-              <p className={`text-xs text-${s.color}-600`}>{s.label}</p>
-              <p className={`font-black text-${s.color}-800`}>{s.value}</p>
-            </div>
-          ))}
+        {/* Guarantor Details */}
+        <div>
+          <SectionHeader title="Guarantor Details" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">
+            <Field label="Guarantor Name" value={agreement.guarantor_name} />
+            <Field label="Ghana Card Number" value={agreement.guarantor_ghana_card} />
+            <Field label="Location" value={agreement.guarantor_address} />
+            <Field label="Phone Number" value={agreement.guarantor_phone} />
+          </div>
         </div>
 
-        <div className="text-sm text-gray-700 space-y-1">
-          {agreement.product_type && <p><strong>Product:</strong> {agreement.product_type} {agreement.serial_number ? `(SN: ${agreement.serial_number})` : ''}</p>}
-          <p><strong>Payment Plan:</strong> {agreement.payment_plan || 'weekly'}</p>
-          <p><strong>Status:</strong> <Badge status={agreement.status} /></p>
-          <p><strong>End Date:</strong> {formatDate(agreement.end_date)}</p>
-        </div>
-
+        {/* Record Payment */}
         {agreement.status !== 'completed' && remaining > 0 && (
           <div className="border border-orange-200 rounded-xl p-4">
             <p className="text-sm font-bold text-gray-700 mb-3">Record Payment</p>
@@ -395,6 +423,7 @@ function ViewAgreementModal({ agreement, isOpen, onClose }) {
           </div>
         )}
 
+        {/* Payment History */}
         {payments.length > 0 && (
           <div>
             <p className="text-sm font-bold text-gray-700 mb-2">Payment History</p>
