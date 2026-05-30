@@ -376,7 +376,7 @@ export default function POS() {
     queryFn: () => getSettings().then(r => r.data),
     staleTime: 5 * 60 * 1000,
   })
-  const settings = settingsData?.data || settingsData?.settings || {}
+  const settings = settingsData || {}
 
   const { data: productsData, isLoading: productsLoading } = useQuery({
     queryKey: ['pos-products', debouncedSearch],
@@ -479,7 +479,7 @@ export default function POS() {
   const saleMutation = useMutation({
     mutationFn: (data) => createSale(data),
     onSuccess: (res) => {
-      setLastSale(res.data?.data || res.data?.sale || res.data)
+      setLastSale(res.data)
       setShowReceipt(true)
       clearCart()
       queryClient.invalidateQueries(['pos-products'])
@@ -494,7 +494,7 @@ export default function POS() {
   const shortPayMutation = useMutation({
     mutationFn: (data) => createShortPayment(data),
     onSuccess: (res) => {
-      setLastSale(res.data?.data?.sale || res.data?.data || res.data?.sale || res.data)
+      setLastSale(res.data?.sale || res.data)
       setShowShortModal(false)
       setShowReceipt(true)
       clearCart()
