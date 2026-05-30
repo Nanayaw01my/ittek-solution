@@ -22,9 +22,9 @@ const NAV_ITEMS = [
   { to: '/pos', label: 'Point of Sale', icon: FiShoppingCart, minLevel: 1 },
   { to: '/refunds', label: 'Refunds', icon: FiRotateCcw, minLevel: 1 },
   // CEO+ only
-  { to: '/debts', label: 'Debts', icon: FiAlertCircle, minLevel: 3 },
-  { to: '/stock-requests', label: 'Stock Requests', icon: FiInbox, minLevel: 3 },
-  { to: '/credit-agreements', label: 'Credit Agreements', icon: FiCreditCard, minLevel: 3 },
+  { to: '/debts', label: 'Debts', icon: FiAlertCircle, minLevel: 2 },
+  { to: '/stock-requests', label: 'Stock Requests', icon: FiInbox, minLevel: 2 },
+  { to: '/credit-agreements', label: 'Credit Agreements', icon: FiCreditCard, minLevel: 2 },
   { to: '/products', label: 'Products', icon: FiPackage, minLevel: 3 },
   { to: '/categories', label: 'Categories', icon: FiTag, minLevel: 3 },
   { to: '/suppliers', label: 'Suppliers', icon: FiTruck, minLevel: 3 },

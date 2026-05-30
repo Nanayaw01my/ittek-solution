@@ -84,9 +84,9 @@ export default function App() {
         <Route path="search" element={<ProtectedRoute minLevel={3}><Search /></ProtectedRoute>} />
 
         {/* CEO+ */}
-        <Route path="debts" element={<ProtectedRoute minLevel={3}><Debts /></ProtectedRoute>} />
-        <Route path="stock-requests" element={<ProtectedRoute minLevel={3}><StockRequests /></ProtectedRoute>} />
-        <Route path="credit-agreements" element={<ProtectedRoute minLevel={3}><CreditAgreements /></ProtectedRoute>} />
+        <Route path="debts" element={<ProtectedRoute minLevel={2}><Debts /></ProtectedRoute>} />
+        <Route path="stock-requests" element={<ProtectedRoute minLevel={2}><StockRequests /></ProtectedRoute>} />
+        <Route path="credit-agreements" element={<ProtectedRoute minLevel={2}><CreditAgreements /></ProtectedRoute>} />
 
         {/* CEO+ */}
         <Route
