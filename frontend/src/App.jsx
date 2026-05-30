@@ -79,8 +79,8 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="expenses" element={<Expenses />} />
         <Route path="notifications" element={<Notifications />} />
-        <Route path="pos" element={<ProtectedRoute minLevel={3}><POS /></ProtectedRoute>} />
-        <Route path="refunds" element={<ProtectedRoute minLevel={3}><Refunds /></ProtectedRoute>} />
+        <Route path="pos" element={<ProtectedRoute minLevel={1}><POS /></ProtectedRoute>} />
+        <Route path="refunds" element={<ProtectedRoute minLevel={1}><Refunds /></ProtectedRoute>} />
         <Route path="search" element={<ProtectedRoute minLevel={3}><Search /></ProtectedRoute>} />
 
         {/* CEO+ */}
