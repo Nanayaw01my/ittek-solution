@@ -51,4 +51,12 @@ export const clearPendingQueue = () => {
   try { localStorage.removeItem(QUEUE_KEY) } catch {}
 }
 
+export const clearAllOfflineData = () => {
+  try {
+    localStorage.removeItem(QUEUE_KEY)
+    localStorage.removeItem(PRODUCTS_KEY)
+    localStorage.removeItem(CACHE_TIME_KEY)
+  } catch {}
+}
+
 export const getPendingCount = () => getPendingQueue().length

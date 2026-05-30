@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { FiSettings, FiBell, FiMail, FiSave, FiTrash2, FiAlertTriangle, FiX } from 'react-icons/fi'
 import { getSettings, updateSettings, testEmail } from '../api/settings'
 import api from '../api/axios'
+import { clearAllOfflineData } from '../utils/offlineQueue'
 import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
 import LoadingSpinner from '../components/LoadingSpinner'
@@ -230,7 +231,8 @@ export default function Settings() {
     setClearing(true)
     try {
       await api.delete('/settings/clear-data')
-      toast.success('All business data cleared successfully!')
+      clearAllOfflineData()
+      toast.success('All business data and offline cache cleared!')
       queryClient.invalidateQueries()
       setShowClearConfirm(false)
       setConfirmText('')
