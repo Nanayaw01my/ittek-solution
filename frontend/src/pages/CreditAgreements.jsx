@@ -96,7 +96,7 @@ function AgreementForm({ onSubmit, loading }) {
           <div className="flex-1 text-center py-2">
             <p className="text-xs font-black text-gray-800 uppercase tracking-wide">DAN & DOR SOLAR</p>
             <p className="text-xs font-bold text-gray-700">COMPANY LIMITED</p>
-            <p className="text-xs text-gray-500 mt-1">Accra, Ghana</p>
+            <p className="text-xs text-gray-500 mt-1">Bogoso, Western Region</p>
             <p className="text-xs text-orange-600 font-bold mt-1 uppercase tracking-wider">Credit Sale Agreement</p>
           </div>
           <PassportPlaceholder label="Guarantor" />
@@ -139,7 +139,7 @@ function AgreementForm({ onSubmit, loading }) {
           </div>
           <div>
             <label className={lbl}>Phone / Tel *</label>
-            <input {...register('customerPhone', { required: 'Required' })} className={inp} placeholder="+233 XXX XXX XXX" />
+            <input {...register('customerPhone', { required: 'Required' })} className={inp} placeholder="+233 XXXXXXXXX" />
             {err(errors.customerPhone)}
           </div>
         </div>
@@ -243,7 +243,7 @@ function AgreementForm({ onSubmit, loading }) {
           </div>
           <div>
             <label className={lbl}>Phone Number *</label>
-            <input {...register('guarantorPhone', { required: 'Required' })} className={inp} placeholder="+233 XXX XXX XXX" />
+            <input {...register('guarantorPhone', { required: 'Required' })} className={inp} placeholder="+233 XXXXXXXXX" />
             {err(errors.guarantorPhone)}
           </div>
         </div>

@@ -32,9 +32,9 @@ async function seed() {
     if (!settingsExists) {
       await Settings.create({
         company_name: 'DAN & DOR SOLAR COMPANY LIMITED',
-        company_address: 'Accra, Ghana',
-        company_phone: '+233 XX XXX XXXX',
-        company_email: 'info@dandorsolar.com',
+        company_address: 'Bogoso, Western Region',
+        company_phone: '+233 598565277',
+        company_email: 'Dananddorsolarcompanyltd@gmail.com',
         currency_symbol: 'GH₵',
         tax_rate: 0,
         low_stock_alert: 5,

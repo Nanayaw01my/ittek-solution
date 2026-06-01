@@ -111,7 +111,7 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
               <img src={logoUrl} alt="Company Logo" className="h-14 mx-auto mb-2 object-contain" />
             )}
             <p className="font-black text-base">{companyName || 'DAN & DOR SOLAR COMPANY LIMITED'}</p>
-            <p className="text-xs text-gray-500">{companyAddress || 'Accra, Ghana'}</p>
+            <p className="text-xs text-gray-500">{companyAddress || 'Bogoso, Western Region'}</p>
             <p className="text-xs text-gray-500">{companyPhone ? `Tel: ${companyPhone}` : ''}</p>
             {saleData.offline && (
               <p className="text-xs font-bold text-amber-600 mt-1 border border-amber-300 rounded px-2 py-0.5 inline-block">
@@ -307,7 +307,7 @@ function ShortPaymentModal({ isOpen, onClose, cartTotal, onConfirm, loading }) {
             type="tel"
             value={customerPhone}
             onChange={e => setCustomerPhone(e.target.value)}
-            placeholder="+233 XXX XXX XXX"
+            placeholder="+233 XXXXXXXXX"
             className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
           />
         </div>

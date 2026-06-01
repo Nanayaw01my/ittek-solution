@@ -24,7 +24,7 @@ function SupplierForm({ supplier, onSubmit, loading }) {
           <label className="block text-sm font-semibold text-gray-700 mb-1">Phone</label>
           <input {...register('phone')}
             className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-            placeholder="+233 XXX XXX XXX" />
+            placeholder="+233 XXXXXXXXX" />
         </div>
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1">Email</label>
