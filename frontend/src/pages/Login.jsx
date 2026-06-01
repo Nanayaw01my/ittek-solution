@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiEye, FiEyeOff, FiUser, FiLock, FiZap } from 'react-icons/fi'
+import { FiEye, FiEyeOff, FiUser, FiLock, FiArrowRight } from 'react-icons/fi'
 import { login } from '../api/auth'
 import useAuthStore from '../store/authStore'
 
@@ -31,174 +31,263 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen w-full flex" style={{ background: 'linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 50%, #0f0f0f 100%)' }}>
 
-      {/* Background decorative blobs */}
-      <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-orange-500 rounded-full opacity-10 blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
-      <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-orange-600 rounded-full opacity-10 blur-[100px] translate-x-1/2 translate-y-1/2 pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 w-[300px] h-[300px] bg-yellow-500 rounded-full opacity-5 blur-[80px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
-
-      {/* Ghana flag strip top */}
-      <div className="absolute top-0 left-0 right-0 flex h-1.5 z-10">
+      {/* ── Ghana flag vertical strip (left edge on desktop) ── */}
+      <div className="hidden lg:flex flex-col w-1.5 flex-shrink-0">
         <div className="flex-1 bg-red-500" />
         <div className="flex-1 bg-yellow-400" />
         <div className="flex-1 bg-green-600" />
       </div>
 
-      {/* Main card */}
-      <div className="relative w-full max-w-4xl bg-gray-900 rounded-3xl shadow-2xl overflow-hidden border border-gray-800 flex flex-col lg:flex-row">
+      {/* ── Left branding panel ── */}
+      <div className="hidden lg:flex lg:flex-1 flex-col items-center justify-center relative overflow-hidden px-16">
 
-        {/* ── Left panel (branding) ── */}
-        <div className="lg:w-5/12 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 p-8 lg:p-12 flex flex-col items-center justify-center relative overflow-hidden">
+        {/* Large ambient glow */}
+        <div style={{ position:'absolute', top:'10%', left:'10%', width:500, height:500, background:'radial-gradient(circle, rgba(249,115,22,0.18) 0%, transparent 70%)', pointerEvents:'none' }} />
 
-          {/* Decorative circles */}
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full opacity-10" />
-          <div className="absolute -bottom-12 -left-12 w-52 h-52 bg-orange-400 rounded-full opacity-20" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-yellow-400 rounded-full opacity-5 blur-2xl" />
+        {/* Animated solar rings */}
+        <div className="relative flex items-center justify-center mb-10">
+          {/* Outer ring */}
+          <div style={{
+            position:'absolute', width:220, height:220,
+            border:'1px solid rgba(249,115,22,0.25)',
+            borderRadius:'50%',
+            animation:'spin 20s linear infinite',
+          }} />
+          {/* Mid ring */}
+          <div style={{
+            position:'absolute', width:170, height:170,
+            border:'1px dashed rgba(249,115,22,0.35)',
+            borderRadius:'50%',
+            animation:'spin 12s linear infinite reverse',
+          }} />
+          {/* Inner ring */}
+          <div style={{
+            position:'absolute', width:120, height:120,
+            border:'2px solid rgba(249,115,22,0.5)',
+            borderRadius:'50%',
+          }} />
+          {/* Sun core */}
+          <div style={{
+            width:80, height:80, borderRadius:'50%',
+            background:'linear-gradient(135deg, #f97316, #ea580c)',
+            boxShadow:'0 0 40px rgba(249,115,22,0.6), 0 0 80px rgba(249,115,22,0.3)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            zIndex:1,
+          }}>
+            <svg viewBox="0 0 40 40" width="44" height="44" fill="none">
+              <circle cx="20" cy="20" r="8" fill="white" opacity="0.95"/>
+              {[0,45,90,135,180,225,270,315].map(deg => (
+                <line key={deg}
+                  x1={20 + 11 * Math.cos((deg*Math.PI)/180)}
+                  y1={20 + 11 * Math.sin((deg*Math.PI)/180)}
+                  x2={20 + 16 * Math.cos((deg*Math.PI)/180)}
+                  y2={20 + 16 * Math.sin((deg*Math.PI)/180)}
+                  stroke="white" strokeWidth="2" strokeLinecap="round"
+                />
+              ))}
+            </svg>
+          </div>
+        </div>
 
-          <div className="relative z-10 text-center">
-            {/* Logo circle */}
-            <div className="w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-2xl shadow-xl flex items-center justify-center mx-auto mb-6">
-              <svg viewBox="0 0 48 48" className="w-12 h-12 lg:w-14 lg:h-14" fill="none">
-                <circle cx="24" cy="24" r="10" fill="#f97316" />
-                {[0,45,90,135,180,225,270,315].map(deg => (
+        {/* Company name */}
+        <div className="text-center">
+          <p className="text-orange-500 text-xs font-bold tracking-[0.3em] uppercase mb-2">Powered by</p>
+          <h1 className="text-white font-black tracking-tight leading-none" style={{ fontSize: 56 }}>ITTEK</h1>
+          <h2 className="text-orange-400 font-black tracking-widest text-xl mt-1">SOLUTION</h2>
+          <div className="w-20 h-0.5 mx-auto my-5" style={{ background:'linear-gradient(to right, transparent, #f97316, transparent)' }} />
+          <p className="text-gray-200 font-bold text-lg leading-snug">DAN & DOR SOLAR</p>
+          <p className="text-gray-200 font-bold text-lg leading-snug">COMPANY LIMITED</p>
+          <p className="text-gray-500 text-sm mt-2">Bogoso, Western Region, Ghana</p>
+        </div>
+
+        {/* Feature list */}
+        <div className="mt-12 space-y-3 w-full max-w-xs">
+          {[
+            ['⚡', 'Point of Sale & Inventory'],
+            ['📊', 'Financial Management'],
+            ['💳', 'Debt & Credit Tracking'],
+            ['📈', 'Reports & Analytics'],
+          ].map(([icon, label]) => (
+            <div key={label} className="flex items-center gap-3 group">
+              <div style={{ width:36, height:36, borderRadius:10, background:'rgba(249,115,22,0.12)', border:'1px solid rgba(249,115,22,0.25)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:16 }}>{icon}</span>
+              </div>
+              <span className="text-gray-400 text-sm group-hover:text-gray-200 transition-colors">{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Right form panel ── */}
+      <div className="w-full lg:w-auto lg:min-w-[480px] flex flex-col justify-center" style={{ background:'#111111' }}>
+
+        {/* Ghana flag top strip on mobile */}
+        <div className="flex lg:hidden h-1 flex-shrink-0">
+          <div className="flex-1 bg-red-500" />
+          <div className="flex-1 bg-yellow-400" />
+          <div className="flex-1 bg-green-600" />
+        </div>
+
+        <div className="flex-1 flex flex-col justify-center px-8 sm:px-12 py-12">
+
+          {/* Mobile branding */}
+          <div className="lg:hidden text-center mb-10">
+            <div style={{ width:64, height:64, borderRadius:16, background:'linear-gradient(135deg,#f97316,#ea580c)', boxShadow:'0 0 30px rgba(249,115,22,0.5)', margin:'0 auto 16px', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <svg viewBox="0 0 40 40" width="36" height="36" fill="none">
+                <circle cx="20" cy="20" r="8" fill="white" opacity="0.95"/>
+                {[0,60,120,180,240,300].map(deg => (
                   <line key={deg}
-                    x1="24" y1="24"
-                    x2={24 + 18 * Math.cos((deg * Math.PI) / 180)}
-                    y2={24 + 18 * Math.sin((deg * Math.PI) / 180)}
-                    stroke="#f97316" strokeWidth="2.5" strokeLinecap="round"
+                    x1={20 + 11 * Math.cos((deg*Math.PI)/180)}
+                    y1={20 + 11 * Math.sin((deg*Math.PI)/180)}
+                    x2={20 + 16 * Math.cos((deg*Math.PI)/180)}
+                    y2={20 + 16 * Math.sin((deg*Math.PI)/180)}
+                    stroke="white" strokeWidth="2.5" strokeLinecap="round"
                   />
                 ))}
               </svg>
             </div>
-
-            <h1 className="text-3xl lg:text-4xl font-black text-white tracking-tight leading-none">ITTEK</h1>
-            <p className="text-orange-100 font-bold text-lg tracking-widest mt-1">SOLUTION</p>
-
-            <div className="w-12 h-0.5 bg-yellow-300 rounded-full mx-auto my-4" />
-
-            <p className="text-white font-bold text-base leading-tight">DAN & DOR SOLAR</p>
-            <p className="text-white font-bold text-base">COMPANY LIMITED</p>
-            <p className="text-orange-200 text-xs mt-1">Bogoso, Western Region</p>
-
-            {/* Features */}
-            <div className="mt-8 space-y-2.5 text-left hidden lg:block">
-              {[
-                'Point of Sale & Inventory',
-                'Debt & Credit Tracking',
-                'Financial Management',
-                'Reports & Analytics',
-              ].map(f => (
-                <div key={f} className="flex items-center gap-2.5">
-                  <div className="w-5 h-5 rounded-full bg-white bg-opacity-25 flex items-center justify-center flex-shrink-0">
-                    <FiZap size={10} className="text-yellow-300" />
-                  </div>
-                  <span className="text-orange-100 text-sm">{f}</span>
-                </div>
-              ))}
-            </div>
+            <h1 className="text-white font-black text-2xl tracking-tight">ITTEK SOLUTION</h1>
+            <p className="text-gray-400 text-xs mt-1">DAN & DOR SOLAR COMPANY LIMITED</p>
           </div>
-        </div>
 
-        {/* ── Right panel (form) ── */}
-        <div className="flex-1 flex flex-col justify-center p-8 lg:p-12">
-
+          {/* Heading */}
           <div className="mb-8">
-            <h2 className="text-2xl lg:text-3xl font-black text-white">Welcome Back</h2>
-            <p className="text-gray-400 text-sm mt-1">Sign in to your account to continue</p>
+            <h2 className="font-black text-white leading-tight" style={{ fontSize:32 }}>Welcome back</h2>
+            <p className="text-gray-500 text-sm mt-1">Sign in to your account to continue</p>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+          {/* Form */}
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
 
             {/* Username */}
             <div>
-              <label className="block text-sm font-semibold text-gray-300 mb-1.5">Username</label>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Username</label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
-                  <FiUser size={17} />
-                </span>
+                <FiUser size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none" />
                 <input
                   type="text"
                   autoComplete="username"
                   autoFocus
                   placeholder="Enter your username"
                   {...register('username', { required: 'Username is required' })}
-                  className={`w-full pl-11 pr-4 py-3.5 rounded-xl text-sm text-white placeholder-gray-500 outline-none transition-all
-                    bg-gray-800 border focus:ring-2 focus:ring-orange-500 focus:border-transparent
-                    ${errors.username ? 'border-red-500 bg-red-900 bg-opacity-20' : 'border-gray-700 hover:border-gray-600'}`}
+                  style={{
+                    background: errors.username ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${errors.username ? '#ef4444' : 'rgba(255,255,255,0.08)'}`,
+                    borderRadius: 12,
+                    color: 'white',
+                    width: '100%',
+                    padding: '14px 16px 14px 44px',
+                    fontSize: 14,
+                    outline: 'none',
+                    transition: 'all 0.2s',
+                  }}
+                  onFocus={e => { e.target.style.border = '1px solid rgba(249,115,22,0.7)'; e.target.style.background = 'rgba(249,115,22,0.05)' }}
+                  onBlur={e => { e.target.style.border = `1px solid ${errors.username ? '#ef4444' : 'rgba(255,255,255,0.08)'}` ; e.target.style.background = errors.username ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.04)' }}
                 />
               </div>
-              {errors.username && (
-                <p className="mt-1.5 text-xs text-red-400 font-medium">{errors.username.message}</p>
-              )}
+              {errors.username && <p className="mt-1.5 text-xs text-red-400">{errors.username.message}</p>}
             </div>
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-semibold text-gray-300 mb-1.5">Password</label>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Password</label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
-                  <FiLock size={17} />
-                </span>
+                <FiLock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none" />
                 <input
                   type={showPwd ? 'text' : 'password'}
                   autoComplete="current-password"
                   placeholder="Enter your password"
                   {...register('password', { required: 'Password is required' })}
-                  className={`w-full pl-11 pr-12 py-3.5 rounded-xl text-sm text-white placeholder-gray-500 outline-none transition-all
-                    bg-gray-800 border focus:ring-2 focus:ring-orange-500 focus:border-transparent
-                    ${errors.password ? 'border-red-500 bg-red-900 bg-opacity-20' : 'border-gray-700 hover:border-gray-600'}`}
+                  style={{
+                    background: errors.password ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${errors.password ? '#ef4444' : 'rgba(255,255,255,0.08)'}`,
+                    borderRadius: 12,
+                    color: 'white',
+                    width: '100%',
+                    padding: '14px 48px 14px 44px',
+                    fontSize: 14,
+                    outline: 'none',
+                    transition: 'all 0.2s',
+                  }}
+                  onFocus={e => { e.target.style.border = '1px solid rgba(249,115,22,0.7)'; e.target.style.background = 'rgba(249,115,22,0.05)' }}
+                  onBlur={e => { e.target.style.border = `1px solid ${errors.password ? '#ef4444' : 'rgba(255,255,255,0.08)'}` ; e.target.style.background = errors.password ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.04)' }}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPwd(!showPwd)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
-                >
+                <button type="button" onClick={() => setShowPwd(!showPwd)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-300 transition-colors">
                   {showPwd ? <FiEyeOff size={17} /> : <FiEye size={17} />}
                 </button>
               </div>
-              {errors.password && (
-                <p className="mt-1.5 text-xs text-red-400 font-medium">{errors.password.message}</p>
-              )}
+              {errors.password && <p className="mt-1.5 text-xs text-red-400">{errors.password.message}</p>}
             </div>
 
-            {/* Error banner */}
+            {/* Error */}
             {errors.root && (
-              <div className="bg-red-900 bg-opacity-40 border border-red-700 rounded-xl px-4 py-3">
-                <p className="text-sm text-red-300 font-medium">{errors.root.message}</p>
+              <div style={{ background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:12, padding:'12px 16px' }}>
+                <p className="text-red-400 text-sm">{errors.root.message}</p>
               </div>
             )}
 
-            {/* Submit button */}
+            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700
-                disabled:from-orange-800 disabled:to-orange-800 disabled:cursor-not-allowed
-                text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-orange-900
-                hover:shadow-orange-800 active:scale-[0.98]"
+              style={{
+                width: '100%',
+                padding: '15px 24px',
+                borderRadius: 12,
+                background: loading ? '#7c3b13' : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                color: 'white',
+                fontWeight: 800,
+                fontSize: 15,
+                border: 'none',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                marginTop: 8,
+                boxShadow: loading ? 'none' : '0 8px 32px rgba(249,115,22,0.35)',
+                transition: 'all 0.2s',
+                letterSpacing: '0.02em',
+              }}
             >
               {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <>
+                  <div style={{ width:16, height:16, border:'2.5px solid rgba(255,255,255,0.3)', borderTopColor:'white', borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
                   Signing in...
-                </span>
-              ) : 'Sign In'}
+                </>
+              ) : (
+                <>Sign In <FiArrowRight size={16} /></>
+              )}
             </button>
           </form>
 
-          <p className="mt-10 text-xs text-gray-600 text-center">
-            Powered by <span className="font-bold text-orange-500">ITTEK Solution</span> &copy; {new Date().getFullYear()}
+          <p className="mt-10 text-xs text-gray-700 text-center">
+            © {new Date().getFullYear()} <span className="text-orange-600 font-semibold">ITTEK Solution</span> — DAN & DOR SOLAR
           </p>
+        </div>
+
+        {/* Ghana flag bottom strip on mobile */}
+        <div className="flex lg:hidden h-1 flex-shrink-0">
+          <div className="flex-1 bg-red-500" />
+          <div className="flex-1 bg-yellow-400" />
+          <div className="flex-1 bg-green-600" />
         </div>
       </div>
 
-      {/* Ghana flag strip bottom */}
-      <div className="absolute bottom-0 left-0 right-0 flex h-1.5 z-10">
+      {/* Ghana flag right strip on desktop */}
+      <div className="hidden lg:flex flex-col w-1.5 flex-shrink-0">
         <div className="flex-1 bg-red-500" />
         <div className="flex-1 bg-yellow-400" />
         <div className="flex-1 bg-green-600" />
       </div>
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        input::placeholder { color: #4b5563; }
+      `}</style>
     </div>
   )
 }
