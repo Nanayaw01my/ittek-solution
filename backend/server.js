@@ -7,6 +7,7 @@ const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcryptjs');
 
 const connectDB = require('./config/db');
 const { startSchedulers } = require('./utils/scheduler');
@@ -207,16 +208,22 @@ const ensureSuperAdmin = async () => {
     const User = require('./models/User');
     const Settings = require('./models/Settings');
 
-    const adminExists = await User.findOne({ role: 'Super Admin' });
-    if (!adminExists) {
-      await User.create({
-        username: 'superadmin',
-        email: 'admin@dandorsolar.com',
-        password: 'Admin@123',
-        role: 'Super Admin',
-        is_active: true,
-      });
-      console.log('Default Super Admin created: admin@dandorsolar.com / Admin@123');
+    // Demo users — always upsert with freshly hashed passwords so login always works
+    const demoUsers = [
+      { username: 'superadmin', email: 'admin@dandorsolar.com',    password: 'Admin@123',   role: 'Super Admin' },
+      { username: 'ceo',        email: 'ceo@dandorsolar.com',       password: 'CEO@123',     role: 'CEO' },
+      { username: 'manager',    email: 'manager@dandorsolar.com',   password: 'Manager@123', role: 'Manager' },
+      { username: 'sales1',     email: 'sales1@dandorsolar.com',    password: 'Sales@123',   role: 'Sales' },
+    ];
+
+    for (const u of demoUsers) {
+      const hashed = await bcrypt.hash(u.password, 12);
+      await User.findOneAndUpdate(
+        { username: u.username },
+        { $set: { username: u.username, email: u.email, password: hashed, role: u.role, is_active: true } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      console.log(`[Seed] ✓ ${u.username} / ${u.password} (${u.role})`);
     }
 
     const LOGO_URL = 'https://scontent.facc6-1.fna.fbcdn.net/v/t39.30808-6/707433689_878908205248703_884185614336842023_n.jpg?_nc_cat=102&ccb=1-7&_nc_sid=833d8c&_nc_eui2=AeFyt1HcPt1R704P4NnOWyRTVPWfzO5VOaRU9Z_M7lU5pBHyLj7sHlqT_1FF_m7deTCdYP_FufRNrCkdW0CTsAoh&_nc_ohc=7dBS36QAdfsQ7kNvwFu9j-1&_nc_oc=AdqjCtPP-ztTxvaX_V4r1H0nWBJkQls-BcAY6x80lAaMNd0tZd-Iwicr4AnCtIHKk1E&_nc_zt=23&_nc_ht=scontent.facc6-1.fna&_nc_gid=7TdPVFdjoPaMmMawmSoTAg&_nc_ss=7b2a8&oh=00_Af5OkTLX9drHXsXFsnfCiVik6RgDxXvLN2ufA5IP83pxMQ&oe=6A1B3F34';
