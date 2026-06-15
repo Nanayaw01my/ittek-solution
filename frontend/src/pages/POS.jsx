@@ -84,55 +84,55 @@ function ProductCard({ product, onAdd }) {
 
 function CartItem({ item, index, onUpdateQty, onRemove }) {
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 px-4 -mx-4 rounded-xl transition-colors">
-      {/* Number badge */}
-      <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-600 text-[11px] font-black flex items-center justify-center flex-shrink-0">
+    <div className="flex items-center gap-2 py-2.5 border-b border-gray-100 last:border-0">
+      {/* Number */}
+      <span className="w-5 h-5 rounded-full bg-orange-500 text-white text-[10px] font-black flex items-center justify-center flex-shrink-0">
         {index + 1}
-      </div>
+      </span>
 
       {/* Thumbnail */}
-      <div className="w-10 h-10 rounded-xl overflow-hidden bg-orange-50 flex-shrink-0 border border-gray-100">
+      <div className="w-9 h-9 rounded-lg overflow-hidden bg-orange-50 flex-shrink-0 border border-gray-100">
         {item.image_url
           ? <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
-          : <div className="w-full h-full flex items-center justify-center"><FiPackage size={14} className="text-orange-200" /></div>
+          : <div className="w-full h-full flex items-center justify-center"><FiPackage size={13} className="text-orange-200" /></div>
         }
       </div>
 
-      {/* Name & price */}
+      {/* Name & unit price */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-gray-800 truncate">{item.name}</p>
-        <p className="text-xs text-gray-400">{formatCurrency(item.selling_price)} each</p>
+        <p className="text-xs font-bold text-gray-900 truncate">{item.name}</p>
+        <p className="text-[11px] text-gray-400 mt-0.5">{formatCurrency(item.selling_price)} / unit</p>
       </div>
 
       {/* Qty stepper */}
-      <div className="flex items-center gap-1 flex-shrink-0 bg-gray-100 rounded-xl p-0.5">
+      <div className="flex items-center gap-1 flex-shrink-0">
         <button
           onClick={() => onUpdateQty(item._id, item.qty - 1)}
-          className="w-7 h-7 rounded-lg bg-white shadow-sm text-gray-600 hover:text-orange-600 flex items-center justify-center transition-colors"
+          className="w-6 h-6 rounded-md bg-gray-100 hover:bg-orange-100 hover:text-orange-600 flex items-center justify-center transition-colors text-gray-500"
         >
-          <FiMinus size={11} />
+          <FiMinus size={10} />
         </button>
-        <span className="w-7 text-center text-sm font-black text-gray-900">{item.qty}</span>
+        <span className="w-6 text-center text-sm font-black text-gray-900">{item.qty}</span>
         <button
           onClick={() => onUpdateQty(item._id, item.qty + 1)}
           disabled={item.qty >= item.quantity}
-          className="w-7 h-7 rounded-lg bg-white shadow-sm text-gray-600 hover:text-orange-600 flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-6 h-6 rounded-md bg-gray-100 hover:bg-orange-100 hover:text-orange-600 flex items-center justify-center transition-colors text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          <FiPlus size={11} />
+          <FiPlus size={10} />
         </button>
       </div>
 
-      {/* Subtotal */}
-      <div className="w-20 text-right flex-shrink-0">
-        <p className="text-sm font-black text-gray-900">{formatCurrency(item.selling_price * item.qty)}</p>
-      </div>
+      {/* Line total */}
+      <p className="text-xs font-black text-gray-900 w-16 text-right flex-shrink-0">
+        {formatCurrency(item.selling_price * item.qty)}
+      </p>
 
       {/* Remove */}
       <button
         onClick={() => onRemove(item._id)}
-        className="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+        className="w-5 h-5 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors flex-shrink-0"
       >
-        <FiX size={13} />
+        <FiTrash2 size={12} />
       </button>
     </div>
   )
@@ -555,40 +555,40 @@ export default function POS() {
       ══════════════════════════════════════════════ */}
       <div className={`
         w-full lg:w-[380px] xl:w-[420px] flex-shrink-0
-        flex flex-col min-h-0
+        flex flex-col overflow-hidden
         bg-white lg:border-l border-gray-200
         ${mobileView === 'cart' ? 'flex' : 'hidden'} lg:flex
       `}>
 
-        {/* Cart header */}
-        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0 bg-white">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-orange-500 flex items-center justify-center">
-              <FiShoppingCart size={15} className="text-white" />
+        {/* ── Cart header ── */}
+        <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-orange-500 flex items-center justify-center">
+              <FiShoppingCart size={13} className="text-white" />
             </div>
             <div>
               <h2 className="font-black text-gray-900 text-sm leading-tight">Current Order</h2>
-              <p className="text-xs text-gray-400 leading-tight">
-                {cart.length === 0 ? 'No items' : `${cart.length} item${cart.length !== 1 ? 's' : ''} · ${totalItems} unit${totalItems !== 1 ? 's' : ''}`}
+              <p className="text-[11px] text-gray-400">
+                {cart.length === 0 ? 'No items added' : `${cart.length} line${cart.length !== 1 ? 's' : ''} · ${totalItems} unit${totalItems !== 1 ? 's' : ''}`}
               </p>
             </div>
           </div>
           {cart.length > 0 && (
-            <button onClick={clearCart} className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 font-bold bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg transition-colors">
+            <button onClick={clearCart} className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 font-bold px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">
               <FiTrash2 size={11} /> Clear
             </button>
           )}
         </div>
 
-        {/* ── Cart Items ── */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-4 py-2">
+        {/* ── Cart Items — scrollable ── */}
+        <div className="flex-1 overflow-y-auto min-h-0 px-4 py-1">
           {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center py-12">
-              <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-                <FiShoppingCart size={32} className="text-gray-200" />
+            <div className="flex flex-col items-center justify-center h-full py-10 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mb-3">
+                <FiShoppingCart size={24} className="text-gray-200" />
               </div>
-              <p className="text-sm font-bold text-gray-400">Order is empty</p>
-              <p className="text-xs text-gray-300 mt-1">Tap any product to add it here</p>
+              <p className="text-sm font-bold text-gray-400">No items yet</p>
+              <p className="text-xs text-gray-300 mt-1">Tap a product to add it</p>
             </div>
           ) : (
             cart.map((item, idx) => (
@@ -597,53 +597,42 @@ export default function POS() {
           )}
         </div>
 
-        {/* ── Checkout Section ── */}
-        <div className="flex-shrink-0 border-t-2 border-gray-100">
+        {/* ── Checkout — pinned to bottom ── */}
+        <div className="flex-shrink-0 border-t-2 border-gray-100 bg-white">
+          <div className="px-4 pt-2.5 pb-2 space-y-2">
 
-          {/* Totals */}
-          <div className="px-4 pt-3 pb-2 space-y-2">
             {/* Subtotal */}
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-gray-500">Subtotal</span>
-              <span className="font-bold text-gray-800">{formatCurrency(subtotal)}</span>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-500">Subtotal</span>
+              <span className="text-xs font-bold text-gray-800">{formatCurrency(subtotal)}</span>
             </div>
 
             {/* Discount */}
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 text-gray-500 text-sm flex-shrink-0">
-                <FiTag size={13} />
-                <span>Discount</span>
-              </div>
-              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs ml-auto">
+              <span className="text-xs text-gray-500 flex-shrink-0">Discount</span>
+              <div className="flex ml-auto rounded-lg border border-gray-200 overflow-hidden text-[11px]">
                 <button onClick={() => setDiscountType('fixed')}
-                  className={`px-2.5 py-1.5 font-bold transition-colors ${discountType === 'fixed' ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
-                  GH₵
-                </button>
+                  className={`px-2 py-1 font-bold transition-colors ${discountType === 'fixed' ? 'bg-orange-500 text-white' : 'text-gray-400'}`}>GH₵</button>
                 <button onClick={() => setDiscountType('percent')}
-                  className={`px-2.5 py-1.5 font-bold transition-colors ${discountType === 'percent' ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
-                  %
-                </button>
+                  className={`px-2 py-1 font-bold transition-colors ${discountType === 'percent' ? 'bg-orange-500 text-white' : 'text-gray-400'}`}>%</button>
               </div>
-              <input
-                type="number" value={discountValue} onChange={e => setDiscountValue(e.target.value)}
+              <input type="number" value={discountValue} onChange={e => setDiscountValue(e.target.value)}
                 placeholder="0.00" min="0"
-                className="w-20 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
-              />
+                className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-xs text-right focus:outline-none focus:ring-2 focus:ring-orange-400" />
+              {discountAmount > 0 && <span className="text-[11px] text-red-500 font-bold flex-shrink-0">-{formatCurrency(discountAmount)}</span>}
             </div>
 
             {/* Grand total */}
-            <div className="flex items-center justify-between bg-gray-900 rounded-2xl px-4 py-3.5">
+            <div className="flex items-center justify-between bg-gray-900 rounded-xl px-4 py-3">
               <div>
-                <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Total</p>
-                {discountAmount > 0 && (
-                  <p className="text-xs text-green-400 font-semibold">Saved {formatCurrency(discountAmount)}</p>
-                )}
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Total</p>
+                {discountAmount > 0 && <p className="text-[10px] text-green-400">Saved {formatCurrency(discountAmount)}</p>}
               </div>
               <p className="text-2xl font-black text-white">{formatCurrency(grandTotal)}</p>
             </div>
           </div>
 
-          {/* Customer info */}
+          {/* Customer */}
           <div className="px-4 pb-2 grid grid-cols-2 gap-2">
             <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)}
               placeholder="Customer name"
@@ -654,66 +643,51 @@ export default function POS() {
           </div>
 
           {/* Payment method */}
-          <div className="px-4 pb-2">
-            <div className="flex gap-2">
-              {PAYMENT_METHODS.map(({ key, label, icon: Icon }) => (
-                <button key={key} onClick={() => setPaymentMethod(key)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all border-2
-                    ${paymentMethod === key
-                      ? 'bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-200'
-                      : 'bg-white text-gray-500 border-gray-200 hover:border-orange-200 hover:text-orange-500'
-                    }`}>
-                  <Icon size={13} /> {label}
-                </button>
-              ))}
-            </div>
+          <div className="px-4 pb-2 flex gap-1.5">
+            {PAYMENT_METHODS.map(({ key, label, icon: Icon }) => (
+              <button key={key} onClick={() => setPaymentMethod(key)}
+                className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-xl text-[11px] font-bold transition-all border-2
+                  ${paymentMethod === key
+                    ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-200'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-orange-200'
+                  }`}>
+                <Icon size={12} /> {label}
+              </button>
+            ))}
           </div>
 
           {/* Amount received */}
-          <div className="px-4 pb-2">
-            <div className="flex gap-2 items-stretch">
-              <input
-                type="number" value={amountPaid} onChange={e => setAmountPaid(e.target.value)}
-                placeholder="Amount received"
-                min="0" step="0.01"
-                className="flex-1 px-3 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500 transition-colors"
-              />
-              {change > 0 && (
-                <div className="flex-shrink-0 bg-green-50 border-2 border-green-200 rounded-xl px-3 py-2 text-center min-w-[80px]">
-                  <p className="text-[10px] text-green-600 font-bold uppercase tracking-wide">Change</p>
-                  <p className="text-sm font-black text-green-700">{formatCurrency(change)}</p>
-                </div>
-              )}
-            </div>
+          <div className="px-4 pb-2 flex gap-2">
+            <input type="number" value={amountPaid} onChange={e => setAmountPaid(e.target.value)}
+              placeholder="Amount received" min="0" step="0.01"
+              className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:border-orange-500" />
+            {change > 0 && (
+              <div className="flex-shrink-0 bg-green-50 border border-green-200 rounded-xl px-3 py-1.5 text-center min-w-[68px]">
+                <p className="text-[9px] text-green-600 font-bold uppercase">Change</p>
+                <p className="text-sm font-black text-green-700">{formatCurrency(change)}</p>
+              </div>
+            )}
           </div>
 
-          {/* Action buttons */}
+          {/* Buttons */}
           <div className="px-4 pb-4 space-y-2">
-            <button
-              onClick={handleCompleteSale}
+            <button onClick={handleCompleteSale}
               disabled={cart.length === 0 || saleMutation.isPending}
-              className="w-full py-4 bg-orange-500 hover:bg-orange-600 active:bg-orange-700 disabled:bg-gray-200 disabled:cursor-not-allowed text-white font-black rounded-2xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-orange-200 disabled:shadow-none text-sm"
-            >
+              className="w-full py-3.5 bg-orange-500 hover:bg-orange-600 active:bg-orange-700 disabled:bg-gray-200 disabled:cursor-not-allowed text-white font-black rounded-2xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-orange-200 disabled:shadow-none text-sm">
               {saleMutation.isPending
                 ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Processing…</>
-                : <><FiCheck size={17} /> Complete Sale</>
+                : <><FiCheck size={16} /> Complete Sale</>
               }
             </button>
-
             <div className="flex gap-2">
-              <button
-                onClick={() => { if (cart.length === 0) { toast.error('Cart is empty'); return }; setShowShortModal(true) }}
+              <button onClick={() => { if (cart.length === 0) { toast.error('Cart is empty'); return }; setShowShortModal(true) }}
                 disabled={cart.length === 0 || shortPayMutation.isPending}
-                className="flex-1 py-3 bg-amber-50 hover:bg-amber-100 border-2 border-amber-200 disabled:opacity-40 disabled:cursor-not-allowed text-amber-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <FiAlertTriangle size={13} /> Short Payment
+                className="flex-1 py-2.5 bg-amber-50 hover:bg-amber-100 border-2 border-amber-200 disabled:opacity-40 disabled:cursor-not-allowed text-amber-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1 transition-colors">
+                <FiAlertTriangle size={12} /> Short Payment
               </button>
-              <button
-                onClick={clearCart}
-                disabled={cart.length === 0}
-                className="flex-1 py-3 bg-red-50 hover:bg-red-100 border-2 border-red-200 disabled:opacity-40 disabled:cursor-not-allowed text-red-500 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <FiX size={13} /> Clear Order
+              <button onClick={clearCart} disabled={cart.length === 0}
+                className="flex-1 py-2.5 bg-red-50 hover:bg-red-100 border-2 border-red-200 disabled:opacity-40 disabled:cursor-not-allowed text-red-500 font-bold rounded-xl text-xs flex items-center justify-center gap-1 transition-colors">
+                <FiX size={12} /> Clear
               </button>
             </div>
           </div>
