@@ -64,20 +64,19 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar overlay on mobile */}
+      {/* Overlay — shown on all sizes when sidebar is open */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-30"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar — always fixed, slides in from left when open */}
       <aside className={`
         fixed top-0 left-0 h-full w-64 bg-white shadow-xl z-40 flex flex-col
         transition-transform duration-300 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0 lg:static lg:shadow-none lg:border-r lg:border-gray-200
       `}>
         {/* Logo */}
         <div className="bg-orange-500 px-5 py-4 flex items-center justify-between">
@@ -157,21 +156,18 @@ export default function Layout() {
         <header className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
           <div className="flex items-center justify-between px-4 h-14">
             <div className="flex items-center gap-3">
+              {/* Toggle button — visible on all screen sizes */}
               <button
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                onClick={() => setSidebarOpen(prev => !prev)}
+                className="p-2 rounded-lg text-gray-600 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                title="Toggle sidebar"
               >
                 <FiMenu size={20} />
               </button>
-              <div className="hidden lg:block">
-                <h2 className="text-sm font-semibold text-gray-700">
-                  {visibleNavItems.find(n => n.to === location.pathname)?.label || 'Dashboard'}
-                </h2>
-              </div>
-              {/* Mobile brand */}
-              <div className="lg:hidden">
-                <span className="font-black text-orange-500 text-base">ITTEK</span>
-              </div>
+              <span className="font-black text-orange-500 text-base">ITTEK</span>
+              <h2 className="text-sm font-semibold text-gray-500 hidden sm:block">
+                {visibleNavItems.find(n => n.to === location.pathname)?.label || 'Dashboard'}
+              </h2>
             </div>
 
             <div className="flex items-center gap-2">
