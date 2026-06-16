@@ -655,7 +655,8 @@ export default function POS() {
     : CartView
 
   return (
-    <div className="h-[calc(100vh-56px)] flex flex-col lg:flex-row overflow-hidden bg-gray-50">
+    <div className="h-[calc(100svh-56px)] flex flex-col lg:flex-row overflow-hidden bg-gray-50" style={{height: 'calc(100svh - 56px)'}}>
+
 
       {/* ── LEFT PANEL: Products ── */}
       <div className={`flex-1 flex flex-col min-h-0 ${mobileView === 'products' ? 'flex' : 'hidden'} lg:flex`}>
@@ -681,7 +682,7 @@ export default function POS() {
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-3">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
           {productsLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
               {Array(12).fill(0).map((_, i) => <div key={i} className="rounded-2xl bg-gray-100 animate-pulse aspect-[3/4]" />)}
