@@ -6,6 +6,8 @@ import LoadingSpinner from './components/LoadingSpinner'
 
 // Pages
 import Login from './pages/Login'
+import DevLogin from './pages/DevLogin'
+import DevDashboard from './pages/DevDashboard'
 import Dashboard from './pages/Dashboard'
 import POS from './pages/POS'
 import Products from './pages/Products'
@@ -63,6 +65,10 @@ export default function App() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
+
+      {/* Developer-only (secret, not linked anywhere) */}
+      <Route path="/dev" element={<DevLogin />} />
+      <Route path="/dev/dashboard" element={<DevDashboard />} />
 
       {/* Root redirect */}
       <Route path="/" element={<RootRedirect />} />
