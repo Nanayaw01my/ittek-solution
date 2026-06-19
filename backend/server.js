@@ -46,7 +46,24 @@ app.use('/uploads', express.static(uploadsPath));
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'same-site' },
-    contentSecurityPolicy: false,
+    // HSTS: tell browsers to only use HTTPS for 1 year
+    hsts: process.env.NODE_ENV === 'production'
+      ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+      : false,
+    // Content Security Policy — blocks XSS and data-injection attacks
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc:    ["'self'"],
+        scriptSrc:     ["'self'", 'https://js.paystack.co'],
+        styleSrc:      ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc:       ["'self'", 'https://fonts.gstatic.com'],
+        imgSrc:        ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+        connectSrc:    ["'self'", 'https://api.paystack.co'],
+        frameSrc:      ["'none'"],
+        objectSrc:     ["'none'"],
+        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+      },
+    },
   })
 );
 
@@ -91,32 +108,46 @@ const limiter = rateLimit({
   message: { success: false, message: 'Too many requests. Please try again in 15 minutes.' },
 });
 
+// Tighter limit on login specifically — 10 attempts per 15 minutes per IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,  // only counts failed/errored requests
+  message: { success: false, message: 'Too many login attempts. Please try again in 15 minutes.' },
+});
+
 app.use('/api', limiter);
+app.use('/api/auth/login', authLimiter);
 
 // ─── STEP 6: BODY PARSING ─────────────────────────────────────────────────────
 
-app.use(express.json({ limit: '20mb' }));
-app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // ─── STEP 7: HEALTH + DEBUG ───────────────────────────────────────────────────
 
-app.get('/api/debug', (req, res) => {
-  const mongoose = require('mongoose');
-  res.json({
-    env: {
-      NODE_ENV: process.env.NODE_ENV || 'NOT SET',
-      JWT_SECRET: process.env.JWT_SECRET ? `SET (${process.env.JWT_SECRET.length} chars)` : 'NOT SET ❌',
-      MONGODB_URI: process.env.MONGODB_URI ? 'SET ✓' : 'NOT SET ❌',
-      PORT: process.env.PORT || 'NOT SET',
-    },
-    mongodb: {
-      state: mongoose.connection.readyState,
-      stateLabel: ['disconnected','connected','connecting','disconnecting'][mongoose.connection.readyState] || 'unknown',
-      host: mongoose.connection.host || 'none',
-    },
-    frontendDist: fs.existsSync(frontendBuild) ? 'EXISTS ✓' : 'MISSING ❌',
+// Debug endpoint — only available outside production
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/api/debug', (req, res) => {
+    const mongoose = require('mongoose');
+    res.json({
+      env: {
+        NODE_ENV: process.env.NODE_ENV || 'NOT SET',
+        JWT_SECRET: process.env.JWT_SECRET ? `SET (${process.env.JWT_SECRET.length} chars)` : 'NOT SET ❌',
+        MONGODB_URI: process.env.MONGODB_URI ? 'SET ✓' : 'NOT SET ❌',
+        PORT: process.env.PORT || 'NOT SET',
+      },
+      mongodb: {
+        state: mongoose.connection.readyState,
+        stateLabel: ['disconnected','connected','connecting','disconnecting'][mongoose.connection.readyState] || 'unknown',
+        host: mongoose.connection.host || 'none',
+      },
+      frontendDist: fs.existsSync(frontendBuild) ? 'EXISTS ✓' : 'MISSING ❌',
+    });
   });
-});
+}
 
 app.get('/health', (req, res) => {
   res.status(200).json({
@@ -208,7 +239,8 @@ const ensureSuperAdmin = async () => {
     const User = require('./models/User');
     const Settings = require('./models/Settings');
 
-    // Demo users — always upsert with freshly hashed passwords so login always works
+    // Only create users if they do not already exist — never overwrite existing passwords.
+    // Change passwords from the app Settings page or directly in MongoDB.
     const demoUsers = [
       { username: 'superadmin', email: 'admin@dandorsolar.com',    password: 'Admin@123',   role: 'Super Admin' },
       { username: 'ceo',        email: 'ceo@dandorsolar.com',       password: 'CEO@123',     role: 'CEO' },
@@ -217,13 +249,12 @@ const ensureSuperAdmin = async () => {
     ];
 
     for (const u of demoUsers) {
-      const hashed = await bcrypt.hash(u.password, 12);
-      await User.findOneAndUpdate(
-        { username: u.username },
-        { $set: { username: u.username, email: u.email, password: hashed, role: u.role, is_active: true } },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
-      console.log(`[Seed] ✓ ${u.username} / ${u.password} (${u.role})`);
+      const exists = await User.findOne({ username: u.username });
+      if (!exists) {
+        const hashed = await bcrypt.hash(u.password, 12);
+        await User.create({ username: u.username, email: u.email, password: hashed, role: u.role, is_active: true });
+        console.log(`[Seed] Created ${u.username} (${u.role}) — change this password immediately`);
+      }
     }
 
     const LOGO_URL = 'https://scontent.facc6-1.fna.fbcdn.net/v/t39.30808-6/707433689_878908205248703_884185614336842023_n.jpg?_nc_cat=102&ccb=1-7&_nc_sid=833d8c&_nc_eui2=AeFyt1HcPt1R704P4NnOWyRTVPWfzO5VOaRU9Z_M7lU5pBHyLj7sHlqT_1FF_m7deTCdYP_FufRNrCkdW0CTsAoh&_nc_ohc=7dBS36QAdfsQ7kNvwFu9j-1&_nc_oc=AdqjCtPP-ztTxvaX_V4r1H0nWBJkQls-BcAY6x80lAaMNd0tZd-Iwicr4AnCtIHKk1E&_nc_zt=23&_nc_ht=scontent.facc6-1.fna&_nc_gid=7TdPVFdjoPaMmMawmSoTAg&_nc_ss=7b2a8&oh=00_Af5OkTLX9drHXsXFsnfCiVik6RgDxXvLN2ufA5IP83pxMQ&oe=6A1B3F34';

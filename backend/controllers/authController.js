@@ -58,7 +58,7 @@ const login = async (req, res) => {
     });
   } catch (err) {
     console.error('Login error:', err.message, err.stack);
-    return res.status(500).json({ success: false, message: `Login failed: ${err.message}` });
+    return res.status(500).json({ success: false, message: 'An error occurred. Please try again.' });
   }
 };
 
