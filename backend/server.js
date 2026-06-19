@@ -50,20 +50,9 @@ app.use(
     hsts: process.env.NODE_ENV === 'production'
       ? { maxAge: 31536000, includeSubDomains: true, preload: true }
       : false,
-    // Content Security Policy — blocks XSS and data-injection attacks
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc:    ["'self'"],
-        scriptSrc:     ["'self'", 'https://js.paystack.co'],
-        styleSrc:      ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-        fontSrc:       ["'self'", 'https://fonts.gstatic.com'],
-        imgSrc:        ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-        connectSrc:    ["'self'", 'https://api.paystack.co'],
-        frameSrc:      ["'none'"],
-        objectSrc:     ["'none'"],
-        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
-      },
-    },
+    // CSP disabled — Vite bundles inline module scripts that would be blocked.
+    // Re-enable after extracting nonce values from the built index.html.
+    contentSecurityPolicy: false,
   })
 );
 
