@@ -1,14 +1,17 @@
-import React from 'react'
-import { useQuery } from '@tanstack/react-query'
+import React, { useState, useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { FiShoppingCart, FiDollarSign, FiPackage, FiAlertTriangle, FiUsers, FiTrendingUp, FiActivity, FiCreditCard } from 'react-icons/fi'
+import { FiShoppingCart, FiDollarSign, FiPackage, FiAlertTriangle, FiUsers, FiTrendingUp, FiActivity, FiCreditCard, FiRefreshCw, FiCheckCircle } from 'react-icons/fi'
+import toast from 'react-hot-toast'
 import StatCard from '../components/StatCard'
 import { getDashboardStats, getSalesTrend, getTopProductsReport } from '../api/reports'
 import { getSales } from '../api/pos'
+import { syncOfflineSales } from '../api/sync'
 import useAuthStore from '../store/authStore'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import Badge from '../components/Badge'
+import { getPendingQueue, removeSaleFromQueue } from '../utils/offlineQueue'
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -24,6 +27,78 @@ const CustomTooltip = ({ active, payload, label }) => {
     )
   }
   return null
+}
+
+function SyncButton() {
+  const queryClient = useQueryClient()
+  const [status, setStatus] = useState('idle') // idle | syncing | done
+
+  const handleSync = useCallback(async () => {
+    if (status === 'syncing') return
+    setStatus('syncing')
+
+    // 1. Push any pending offline sales
+    const queue = getPendingQueue()
+    let synced = 0, failed = 0
+    for (const entry of queue) {
+      try {
+        await syncOfflineSales([{ type: entry.type, payload: entry.payload }])
+        removeSaleFromQueue(entry.id)
+        synced++
+      } catch {
+        failed++
+      }
+    }
+
+    // 2. Refresh all dashboard data
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] }),
+      queryClient.invalidateQueries({ queryKey: ['sales-trend'] }),
+      queryClient.invalidateQueries({ queryKey: ['top-products'] }),
+      queryClient.invalidateQueries({ queryKey: ['recent-sales'] }),
+      queryClient.invalidateQueries({ queryKey: ['pos-products'] }),
+    ])
+
+    setStatus('done')
+    if (synced > 0) {
+      toast.success(`Synced ${synced} offline sale${synced > 1 ? 's' : ''} and refreshed dashboard`)
+    } else if (failed > 0) {
+      toast.error(`${failed} offline sale${failed > 1 ? 's' : ''} failed to sync`)
+    } else {
+      toast.success('Dashboard refreshed')
+    }
+
+    setTimeout(() => setStatus('idle'), 2000)
+  }, [status, queryClient])
+
+  return (
+    <button
+      onClick={handleSync}
+      disabled={status === 'syncing'}
+      title="Sync offline sales and refresh all data"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '7px 14px',
+        background: status === 'done' ? '#10b981' : '#f97316',
+        color: 'white',
+        border: 'none',
+        borderRadius: 10,
+        fontSize: 13,
+        fontWeight: 700,
+        cursor: status === 'syncing' ? 'not-allowed' : 'pointer',
+        opacity: status === 'syncing' ? 0.75 : 1,
+        transition: 'background 0.3s',
+        fontFamily: 'inherit',
+        flexShrink: 0,
+      }}
+    >
+      {status === 'done'
+        ? <><FiCheckCircle size={14} /> Synced</>
+        : <><FiRefreshCw size={14} style={status === 'syncing' ? { animation: 'spin 0.7s linear infinite' } : {}} />
+           {status === 'syncing' ? 'Syncing…' : 'Sync'}</>
+      }
+    </button>
+  )
 }
 
 export default function Dashboard() {
@@ -62,9 +137,12 @@ export default function Dashboard() {
   if (userLevel <= 2) {
     return (
       <div className="p-4 sm:p-6 max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-xl font-black text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 text-sm">Hello, {user?.username}! Here's your summary.</p>
+        <div className="mb-6 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-black text-gray-900">Dashboard</h1>
+            <p className="text-gray-500 text-sm">Hello, {user?.username}! Here's your summary.</p>
+          </div>
+          <SyncButton />
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
           <StatCard
@@ -144,9 +222,12 @@ export default function Dashboard() {
   // CEO / Super Admin full dashboard
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-xl font-black text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 text-sm">Welcome back, {user?.username}! Here's the business overview.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-black text-gray-900">Dashboard</h1>
+          <p className="text-gray-500 text-sm">Welcome back, {user?.username}! Here's the business overview.</p>
+        </div>
+        <SyncButton />
       </div>
 
       {/* Row 1 - Key metrics */}
