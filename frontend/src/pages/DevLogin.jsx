@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 // ─── Change this passphrase to anything you want ──────────────────────────────
-const DEV_PASSPHRASE = 'ITTEK@DEV2025'
+const DEV_PASSPHRASE = 'Yaw292004'
 // ──────────────────────────────────────────────────────────────────────────────
 
 export default function DevLogin() {
