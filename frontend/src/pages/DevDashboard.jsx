@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
+
+const INACTIVITY_MS = 30 * 60 * 1000  // 30 minutes auto-logout
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
@@ -73,10 +75,37 @@ export default function DevDashboard() {
   const [auditLogs, setAuditLogs] = useState(null)
   const [authState, setAuthState] = useState({})
   const [now, setNow] = useState(new Date())
+  const [idleSeconds, setIdleSeconds] = useState(0)
+  const idleTimer = useRef(null)
+  const idleCounter = useRef(null)
 
   useEffect(() => {
     if (sessionStorage.getItem('dev_auth') !== 'true') {
       navigate('/dev', { replace: true })
+    }
+  }, [navigate])
+
+  // Inactivity auto-logout
+  useEffect(() => {
+    const resetIdle = () => {
+      setIdleSeconds(0)
+      clearTimeout(idleTimer.current)
+      idleTimer.current = setTimeout(() => {
+        sessionStorage.removeItem('dev_auth')
+        navigate('/dev', { replace: true })
+      }, INACTIVITY_MS)
+    }
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll']
+    events.forEach(e => window.addEventListener(e, resetIdle, { passive: true }))
+    resetIdle()
+
+    idleCounter.current = setInterval(() => setIdleSeconds(s => s + 1), 1000)
+
+    return () => {
+      events.forEach(e => window.removeEventListener(e, resetIdle))
+      clearTimeout(idleTimer.current)
+      clearInterval(idleCounter.current)
     }
   }, [navigate])
 
@@ -197,6 +226,14 @@ export default function DevDashboard() {
           <span style={{ color: '#374151', fontSize: 11, fontFamily: 'monospace' }}>
             {now.toLocaleTimeString()}
           </span>
+          {idleSeconds > 0 && (
+            <span style={{
+              fontSize: 11, fontFamily: 'monospace',
+              color: idleSeconds > 1500 ? '#ef4444' : '#374151',
+            }}>
+              idle {Math.floor(idleSeconds / 60)}:{String(idleSeconds % 60).padStart(2, '0')}
+            </span>
+          )}
           <button
             onClick={checkHealth}
             style={{
