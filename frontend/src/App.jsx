@@ -72,7 +72,7 @@ export default function App() {
   return (
     <>
       {showSplash && <SplashScreen onDone={handleSplashDone} />}
-    <Routes>
+      <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
 
@@ -205,7 +205,7 @@ export default function App() {
 
       {/* Catch all */}
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
     </>
   )
 }
