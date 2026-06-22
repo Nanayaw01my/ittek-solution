@@ -40,5 +40,8 @@ const NotificationSchema = new mongoose.Schema(
 );
 
 NotificationSchema.index({ user_id: 1, is_read: 1, created_at: -1 });
+NotificationSchema.index({ type: 1, created_at: -1 });
+// Auto-delete notifications older than 60 days
+NotificationSchema.index({ created_at: 1 }, { expireAfterSeconds: 60 * 24 * 60 * 60 });
 
 module.exports = mongoose.model('Notification', NotificationSchema);

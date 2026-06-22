@@ -85,5 +85,7 @@ const SaleSchema = new mongoose.Schema(
 SaleSchema.index({ user_id: 1, sale_date: -1 });
 SaleSchema.index({ sale_date: -1 });
 SaleSchema.index({ invoice_no: 1 });
+SaleSchema.index({ payment_status: 1, sale_date: -1 });
+SaleSchema.index({ customer_phone: 1 });
 
 module.exports = mongoose.model('Sale', SaleSchema);

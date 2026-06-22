@@ -52,5 +52,7 @@ const EmailQueueSchema = new mongoose.Schema(
 );
 
 EmailQueueSchema.index({ status: 1, priority: 1, created_at: 1 });
+// Auto-delete sent/failed emails after 30 days
+EmailQueueSchema.index({ sent_at: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60, partialFilterExpression: { status: { $in: ['sent', 'failed'] } } });
 
 module.exports = mongoose.model('EmailQueue', EmailQueueSchema);

@@ -11,6 +11,8 @@ const bcrypt = require('bcryptjs');
 
 const connectDB = require('./config/db');
 const { startSchedulers } = require('./utils/scheduler');
+const logger = require('./utils/logger');
+const requestId = require('./middleware/requestId');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -24,44 +26,42 @@ if (!fs.existsSync(uploadsPath)) {
   fs.mkdirSync(uploadsPath, { recursive: true });
 }
 
-// ─── STEP 1: SERVE STATIC FILES FIRST (before CORS/rate-limit) ───────────────
-// Vite builds with crossorigin attributes, so assets must be served before
-// any CORS middleware that could reject same-site Origin headers.
+// ─── STEP 1: REQUEST ID (must be first so all logs carry the ID) ─────────────
+app.use(requestId);
 
+// ─── STEP 2: SERVE STATIC FILES ───────────────────────────────────────────────
 const frontendBuild = path.join(__dirname, '..', 'frontend', 'dist');
 
 if (process.env.NODE_ENV === 'production' && fs.existsSync(frontendBuild)) {
   app.use(express.static(frontendBuild, { index: false }));
-  console.log('Serving frontend from:', frontendBuild);
+  logger.info('Serving frontend from:', { path: frontendBuild });
 } else if (process.env.NODE_ENV === 'production') {
-  console.warn('WARNING: frontend/dist not found at', frontendBuild);
+  logger.warn('frontend/dist not found', { path: frontendBuild });
 }
 
-// ─── STEP 2: UPLOADS ──────────────────────────────────────────────────────────
-
+// ─── STEP 3: UPLOADS ──────────────────────────────────────────────────────────
 app.use('/uploads', express.static(uploadsPath));
 
-// ─── STEP 3: SECURITY + LOGGING ──────────────────────────────────────────────
-
+// ─── STEP 4: SECURITY ─────────────────────────────────────────────────────────
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'same-site' },
-    // HSTS: tell browsers to only use HTTPS for 1 year
     hsts: process.env.NODE_ENV === 'production'
       ? { maxAge: 31536000, includeSubDomains: true, preload: true }
       : false,
-    // CSP disabled — Vite bundles inline module scripts that would be blocked.
-    // Re-enable after extracting nonce values from the built index.html.
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: false, // Vite inline module scripts need this off
   })
 );
 
+// ─── STEP 5: HTTP REQUEST LOGGING ─────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'test') {
-  app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+  const morganFormat = process.env.NODE_ENV === 'production'
+    ? ':remote-addr :method :url :status :res[content-length] :response-time ms :req[x-request-id]'
+    : 'dev';
+  app.use(morgan(morganFormat));
 }
 
-// ─── STEP 4: CORS — scoped to /api only ──────────────────────────────────────
-
+// ─── STEP 6: CORS ─────────────────────────────────────────────────────────────
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   'https://dandorsolar.online',
@@ -77,55 +77,69 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      logger.warn('CORS blocked', { origin });
       callback(new Error(`CORS: origin not allowed — ${origin}`));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Request-ID'],
 };
 
 app.use('/api', cors(corsOptions));
 
-// ─── STEP 5: RATE LIMITING — scoped to /api only ────────────────────────────
+// ─── STEP 7: RATE LIMITING ────────────────────────────────────────────────────
+// Helper to build a limiter with consistent options
+const makeLimit = (windowMs, max, message, skipSuccessful = false) =>
+  rateLimit({
+    windowMs,
+    max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: skipSuccessful,
+    message: { success: false, message },
+    handler: (req, res, next, options) => {
+      logger.warn('Rate limit hit', { ip: req.ip, path: req.path, reqId: req.requestId });
+      res.status(429).json(options.message);
+    },
+  });
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, message: 'Too many requests. Please try again in 15 minutes.' },
-});
+// Tiers (all per-IP):
+// strict  — auth endpoints, password resets
+// tight   — file uploads, backups, PDF exports
+// standard — general API reads/writes
+// heavy   — bulk operations (reports, search)
 
-// Tighter limit on login specifically — 10 attempts per 15 minutes per IP
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skipSuccessfulRequests: true,  // only counts failed/errored requests
-  message: { success: false, message: 'Too many login attempts. Please try again in 15 minutes.' },
-});
+const strictLimiter   = makeLimit(15 * 60 * 1000,  10,  'Too many attempts. Try again in 15 minutes.', true);
+const tightLimiter    = makeLimit(15 * 60 * 1000,  30,  'Too many requests. Try again in 15 minutes.');
+const standardLimiter = makeLimit(15 * 60 * 1000,  200, 'Too many requests. Try again in 15 minutes.');
+const heavyLimiter    = makeLimit(60 * 60 * 1000,  60,  'Too many bulk requests. Try again in 1 hour.');
 
-app.use('/api', limiter);
-app.use('/api/auth/login', authLimiter);
+// Global API limit (safety net)
+app.use('/api', standardLimiter);
 
-// ─── STEP 6: BODY PARSING ─────────────────────────────────────────────────────
+// Route-specific tighter limits applied before routes are mounted
+app.use('/api/auth/login',    strictLimiter);
+app.use('/api/auth/register', strictLimiter);
+app.use('/api/upload',        tightLimiter);
+app.use('/api/backup',        tightLimiter);
+app.use('/api/credit-agreements/:id/pdf', tightLimiter);
+app.use('/api/reports',       heavyLimiter);
+app.use('/api/search',        heavyLimiter);
 
+// ─── STEP 8: BODY PARSING ─────────────────────────────────────────────────────
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
-// ─── STEP 7: HEALTH + DEBUG ───────────────────────────────────────────────────
-
-// Debug endpoint — only available outside production
+// ─── STEP 9: HEALTH + DEBUG ───────────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'production') {
   app.get('/api/debug', (req, res) => {
     const mongoose = require('mongoose');
     res.json({
       env: {
         NODE_ENV: process.env.NODE_ENV || 'NOT SET',
-        JWT_SECRET: process.env.JWT_SECRET ? `SET (${process.env.JWT_SECRET.length} chars)` : 'NOT SET ❌',
-        MONGODB_URI: process.env.MONGODB_URI ? 'SET ✓' : 'NOT SET ❌',
+        JWT_SECRET: process.env.JWT_SECRET ? `SET (${process.env.JWT_SECRET.length} chars)` : 'NOT SET',
+        MONGODB_URI: process.env.MONGODB_URI ? 'SET' : 'NOT SET',
         PORT: process.env.PORT || 'NOT SET',
       },
       mongodb: {
@@ -133,7 +147,8 @@ if (process.env.NODE_ENV !== 'production') {
         stateLabel: ['disconnected','connected','connecting','disconnecting'][mongoose.connection.readyState] || 'unknown',
         host: mongoose.connection.host || 'none',
       },
-      frontendDist: fs.existsSync(frontendBuild) ? 'EXISTS ✓' : 'MISSING ❌',
+      request_id: req.requestId,
+      frontendDist: fs.existsSync(frontendBuild) ? 'EXISTS' : 'MISSING',
     });
   });
 }
@@ -147,37 +162,36 @@ app.get('/health', (req, res) => {
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'development',
       version: '1.0.0',
+      request_id: req.requestId,
     },
   });
 });
 
-// ─── STEP 8: API ROUTES ───────────────────────────────────────────────────────
-
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/products', require('./routes/products'));
-app.use('/api/categories', require('./routes/categories'));
-app.use('/api/suppliers', require('./routes/suppliers'));
-app.use('/api/pos', require('./routes/pos'));
-app.use('/api/expenses', require('./routes/expenses'));
-app.use('/api/debts', require('./routes/debts'));
-app.use('/api/workers', require('./routes/workers'));
-app.use('/api/purchases', require('./routes/purchases'));
-app.use('/api/stock-requests', require('./routes/stockRequests'));
+// ─── STEP 10: API ROUTES ──────────────────────────────────────────────────────
+app.use('/api/auth',              require('./routes/auth'));
+app.use('/api/users',             require('./routes/users'));
+app.use('/api/products',          require('./routes/products'));
+app.use('/api/categories',        require('./routes/categories'));
+app.use('/api/suppliers',         require('./routes/suppliers'));
+app.use('/api/pos',               require('./routes/pos'));
+app.use('/api/expenses',          require('./routes/expenses'));
+app.use('/api/debts',             require('./routes/debts'));
+app.use('/api/workers',           require('./routes/workers'));
+app.use('/api/purchases',         require('./routes/purchases'));
+app.use('/api/stock-requests',    require('./routes/stockRequests'));
 app.use('/api/credit-agreements', require('./routes/creditAgreements'));
-app.use('/api/financial', require('./routes/financial'));
-app.use('/api/reports', require('./routes/reports'));
-app.use('/api/search', require('./routes/search'));
-app.use('/api/backup', require('./routes/backup'));
-app.use('/api/settings', require('./routes/settings'));
-app.use('/api/notifications', require('./routes/notifications'));
-app.use('/api/audit-logs', require('./routes/auditLogs'));
-app.use('/api/sync', require('./routes/sync'));
-app.use('/api/refunds', require('./routes/refunds'));
-app.use('/api/upload', require('./routes/upload'));
+app.use('/api/financial',         require('./routes/financial'));
+app.use('/api/reports',           require('./routes/reports'));
+app.use('/api/search',            require('./routes/search'));
+app.use('/api/backup',            require('./routes/backup'));
+app.use('/api/settings',          require('./routes/settings'));
+app.use('/api/notifications',     require('./routes/notifications'));
+app.use('/api/audit-logs',        require('./routes/auditLogs'));
+app.use('/api/sync',              require('./routes/sync'));
+app.use('/api/refunds',           require('./routes/refunds'));
+app.use('/api/upload',            require('./routes/upload'));
 
-// ─── STEP 9: REACT ROUTER CATCH-ALL ──────────────────────────────────────────
-
+// ─── STEP 11: REACT ROUTER CATCH-ALL ─────────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {
     const indexPath = path.join(frontendBuild, 'index.html');
@@ -190,10 +204,9 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // ─── GLOBAL ERROR HANDLER ─────────────────────────────────────────────────────
-
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err.message);
+  logger.error('Unhandled error', { error: err.message, path: req.path, reqId: req.requestId });
 
   if (err.message && err.message.startsWith('CORS:')) {
     return res.status(403).json({ success: false, message: err.message });
@@ -217,19 +230,17 @@ app.use((err, req, res, next) => {
   return res.status(statusCode).json({
     success: false,
     message: err.message || 'Internal server error.',
+    request_id: req.requestId,
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 });
 
-// ─── DEFAULT SUPER ADMIN CREATION ────────────────────────────────────────────
-
+// ─── SEED: DEFAULT USERS + SETTINGS ──────────────────────────────────────────
 const ensureSuperAdmin = async () => {
   try {
     const User = require('./models/User');
     const Settings = require('./models/Settings');
 
-    // Only create users if they do not already exist — never overwrite existing passwords.
-    // Change passwords from the app Settings page or directly in MongoDB.
     const demoUsers = [
       { username: 'superadmin', email: 'admin@dandorsolar.com',    password: 'Admin@123',   role: 'Super Admin' },
       { username: 'ceo',        email: 'ceo@dandorsolar.com',       password: 'CEO@123',     role: 'CEO' },
@@ -242,11 +253,10 @@ const ensureSuperAdmin = async () => {
       if (!exists) {
         const hashed = await bcrypt.hash(u.password, 12);
         await User.create({ username: u.username, email: u.email, password: hashed, role: u.role, is_active: true });
-        console.log(`[Seed] Created ${u.username} (${u.role}) — change this password immediately`);
+        logger.info('Seed: user created', { username: u.username, role: u.role });
       }
     }
 
-    // Only create settings on first run — never overwrite user-saved settings
     const settingsExists = await Settings.findOne();
     if (!settingsExists) {
       await Settings.create({
@@ -256,15 +266,14 @@ const ensureSuperAdmin = async () => {
         company_email: 'Dananddorsolarcompanyltd@gmail.com',
         currency_symbol: 'GHC',
       });
-      console.log('[Seed] Default company settings created');
+      logger.info('Seed: default settings created');
     }
   } catch (error) {
-    console.error('Super admin init error:', error.message);
+    logger.error('Seed error', { error: error.message });
   }
 };
 
 // ─── BACKFILL: credit agreements → debt records ───────────────────────────────
-
 const backfillCreditAgreementDebts = async () => {
   try {
     const CreditAgreement = require('./models/CreditAgreement');
@@ -279,32 +288,28 @@ const backfillCreditAgreementDebts = async () => {
 
       const totalPaid = agreement.payments.reduce((sum, p) => sum + p.amount, 0);
       const amountOwed = Math.max(0.01, (agreement.remaining || agreement.total_amount) - 0);
-      const amountPaid = totalPaid;
 
       await Debt.create({
         credit_agreement_id: agreement._id,
         customer_name: agreement.customer_name,
         customer_phone: agreement.customer_phone,
         amount_owed: amountOwed,
-        amount_paid: amountPaid,
+        amount_paid: totalPaid,
         due_date: agreement.end_date || (() => { const d = new Date(); d.setDate(d.getDate() + 90); return d; })(),
         created_by: agreement.created_by,
       });
       created++;
     }
 
-    if (created > 0) console.log(`[Backfill] Created ${created} debt record(s) from existing credit agreements`);
+    if (created > 0) logger.info('Backfill: debt records created', { count: created });
   } catch (err) {
-    console.error('[Backfill] Credit agreement debts error:', err.message);
+    logger.error('Backfill error', { error: err.message });
   }
 };
 
 const startServer = async () => {
   app.listen(PORT, () => {
-    console.log(`\n========================================`);
-    console.log(`  ITTEK Solution — DAN & DOR SOLAR`);
-    console.log(`  Port: ${PORT} | Env: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`========================================\n`);
+    logger.info('Server started', { port: PORT, env: process.env.NODE_ENV || 'development' });
   });
 
   try {
@@ -313,14 +318,14 @@ const startServer = async () => {
     await backfillCreditAgreementDebts();
     startSchedulers();
   } catch (error) {
-    console.error('Startup error:', error.message);
+    logger.error('Startup error', { error: error.message });
   }
 };
 
-process.on('unhandledRejection', (reason) => console.error('Unhandled Rejection:', reason));
-process.on('uncaughtException', (error) => { console.error('Uncaught Exception:', error); process.exit(1); });
+process.on('unhandledRejection', (reason) => logger.error('Unhandled Rejection', { reason: String(reason) }));
+process.on('uncaughtException',  (error)  => { logger.error('Uncaught Exception', { error: error.message }); process.exit(1); });
 process.on('SIGTERM', () => process.exit(0));
-process.on('SIGINT', () => process.exit(0));
+process.on('SIGINT',  () => process.exit(0));
 
 startServer();
 

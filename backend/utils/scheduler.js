@@ -1,10 +1,11 @@
 const cron = require('node-cron');
+const logger = require('./logger');
 
 /**
  * Send daily summary email at 11:00 PM.
  */
 const sendDailySummary = async () => {
-  console.log('[Scheduler] Running daily summary email job...');
+  logger.info('[Scheduler] Running daily summary email job...');
   try {
     const Sale = require('../models/Sale');
     const Expense = require('../models/Expense');
@@ -13,7 +14,7 @@ const sendDailySummary = async () => {
 
     const settings = await Settings.findOne();
     if (!settings?.notification_settings?.email_notifications) {
-      console.log('[Scheduler] Email notifications disabled. Skipping daily summary.');
+      logger.info('[Scheduler] Email notifications disabled. Skipping daily summary.');
       return;
     }
 
@@ -44,10 +45,10 @@ const sendDailySummary = async () => {
         html: templates.dailySummary(statsData),
         priority: 'normal',
       });
-      console.log('[Scheduler] Daily summary queued.');
+      logger.info('[Scheduler] Daily summary queued.');
     }
   } catch (err) {
-    console.error('[Scheduler] Daily summary error:', err.message);
+    logger.error('[Scheduler] Daily summary error:', err.message);
   }
 };
 
@@ -55,16 +56,21 @@ const sendDailySummary = async () => {
  * Update overdue debt statuses at midnight.
  */
 const updateOverdueDebts = async () => {
-  console.log('[Scheduler] Updating overdue debts...');
+  logger.info('[Scheduler] Updating overdue debts...');
   try {
     const Debt = require('../models/Debt');
+    // Use $expr to correctly compare two fields within a document
     const result = await Debt.updateMany(
-      { status: 'active', due_date: { $lt: new Date() }, amount_paid: { $lt: '$amount_owed' } },
+      {
+        status: 'active',
+        due_date: { $lt: new Date() },
+        $expr: { $lt: ['$amount_paid', '$amount_owed'] },
+      },
       { $set: { status: 'overdue' } }
     );
-    console.log(`[Scheduler] Marked ${result.modifiedCount} debts as overdue.`);
+    logger.info('[Scheduler] Overdue debts updated', { count: result.modifiedCount });
   } catch (err) {
-    console.error('[Scheduler] Overdue debts error:', err.message);
+    logger.error('[Scheduler] Overdue debts error', { error: err.message });
   }
 };
 
@@ -72,7 +78,7 @@ const updateOverdueDebts = async () => {
  * Check for low stock products at 9 AM and send alerts.
  */
 const checkLowStock = async () => {
-  console.log('[Scheduler] Checking low stock...');
+  logger.info('[Scheduler] Checking low stock...');
   try {
     const Product = require('../models/Product');
     const Settings = require('../models/Settings');
@@ -87,7 +93,7 @@ const checkLowStock = async () => {
     });
 
     if (lowStockProducts.length === 0) {
-      console.log('[Scheduler] No low stock products found.');
+      logger.info('[Scheduler] No low stock products found.');
       return;
     }
 
@@ -102,7 +108,7 @@ const checkLowStock = async () => {
       console.log(`[Scheduler] Low stock alert queued for ${lowStockProducts.length} products.`);
     }
   } catch (err) {
-    console.error('[Scheduler] Low stock check error:', err.message);
+    logger.error('[Scheduler] Low stock check error:', err.message);
   }
 };
 
@@ -114,7 +120,7 @@ const runEmailQueueProcessor = async () => {
     const { processEmailQueue } = require('./email');
     await processEmailQueue();
   } catch (err) {
-    console.error('[Scheduler] Email queue processor error:', err.message);
+    logger.error('[Scheduler] Email queue processor error:', err.message);
   }
 };
 
@@ -122,31 +128,31 @@ const runEmailQueueProcessor = async () => {
  * Start all scheduled jobs.
  */
 const startSchedulers = () => {
-  console.log('[Scheduler] Initializing scheduled jobs...');
+  logger.info('[Scheduler] Initializing scheduled jobs...');
 
   // Daily summary at 11:00 PM
   cron.schedule('0 23 * * *', async () => {
     await sendDailySummary();
   });
-  console.log('[Scheduler] Daily summary scheduled at 11:00 PM.');
+  logger.info('[Scheduler] Daily summary scheduled at 11:00 PM.');
 
   // Email queue processor every 5 minutes
   cron.schedule('*/5 * * * *', async () => {
     await runEmailQueueProcessor();
   });
-  console.log('[Scheduler] Email queue processor scheduled every 5 minutes.');
+  logger.info('[Scheduler] Email queue processor scheduled every 5 minutes.');
 
   // Overdue debt updater at midnight
   cron.schedule('0 0 * * *', async () => {
     await updateOverdueDebts();
   });
-  console.log('[Scheduler] Overdue debt updater scheduled at midnight.');
+  logger.info('[Scheduler] Overdue debt updater scheduled at midnight.');
 
   // Low stock checker at 9:00 AM
   cron.schedule('0 9 * * *', async () => {
     await checkLowStock();
   });
-  console.log('[Scheduler] Low stock checker scheduled at 9:00 AM.');
+  logger.info('[Scheduler] Low stock checker scheduled at 9:00 AM.');
 };
 
 module.exports = {

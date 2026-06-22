@@ -58,6 +58,9 @@ const ProductSchema = new mongoose.Schema(
 
 // Sparse unique index for barcode (allows multiple null values)
 ProductSchema.index({ barcode: 1 }, { unique: true, sparse: true });
+ProductSchema.index({ category_id: 1, is_active: 1 });
+ProductSchema.index({ is_active: 1, quantity: 1 }); // low-stock queries
+ProductSchema.index({ supplier_id: 1 });
 
 // Virtuals
 ProductSchema.virtual('profit_per_unit').get(function () {

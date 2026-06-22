@@ -19,11 +19,14 @@ const SupplierSchema = new mongoose.Schema(
       type: String,
       trim: true,
       lowercase: true,
+      match: [/^\S+@\S+\.\S+$/, 'Invalid email format'],
     },
   },
   {
     timestamps: true,
   }
 );
+
+SupplierSchema.index({ name: 1 });
 
 module.exports = mongoose.model('Supplier', SupplierSchema);

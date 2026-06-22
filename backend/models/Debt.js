@@ -87,5 +87,9 @@ DebtSchema.pre('save', function (next) {
 DebtSchema.index({ status: 1 });
 DebtSchema.index({ customer_name: 1 });
 DebtSchema.index({ due_date: 1 });
+// Compound: efficient overdue-debt query (status=active AND due_date<now)
+DebtSchema.index({ status: 1, due_date: 1 });
+DebtSchema.index({ credit_agreement_id: 1 });
+DebtSchema.index({ created_by: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Debt', DebtSchema);

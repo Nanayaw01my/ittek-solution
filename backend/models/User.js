@@ -82,4 +82,8 @@ UserSchema.methods.generateJWT = function () {
   );
 };
 
+UserSchema.index({ role: 1, is_active: 1 });
+UserSchema.index({ is_active: 1 });
+UserSchema.index({ last_login: -1 });
+
 module.exports = mongoose.model('User', UserSchema);
