@@ -1,12 +1,23 @@
 const PDFDocument = require('pdfkit');
 const https = require('https');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
-// Fetch a remote URL as a Buffer, following up to 5 redirects
-// Sends browser-like headers so CDNs (e.g. Facebook) serve the image
+// Fetch a URL or local upload path as a Buffer
 const fetchBuf = (url, hops = 5) =>
   new Promise((resolve) => {
     if (!url || typeof url !== 'string') return resolve(null);
+    // Local upload path — read directly from filesystem
+    if (url.startsWith('/uploads/') || url.startsWith('./uploads/')) {
+      try {
+        const uploadRoot = path.resolve(process.env.UPLOAD_PATH || './uploads');
+        const filePath = path.resolve(uploadRoot, path.basename(url));
+        const buf = fs.readFileSync(filePath);
+        resolve(buf.length > 4 ? buf : null);
+      } catch { resolve(null); }
+      return;
+    }
     const mod = url.startsWith('https') ? https : http;
     const reqOpts = {
       headers: {
@@ -229,31 +240,16 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
         resetColors();
       };
 
-      // ── Watermark ─────────────────────────────────────────────────────────────
+      // Watermark - rotated text works better than a white-bg logo on white paper
       doc.save();
-      if (logoBuf) {
-        try {
-          doc.opacity(0.55);
-          doc.image(logoBuf, ML + (W - 320) / 2, 240, { width: 320 });
-        } catch {
-          // image failed — fall through to text watermark
-          doc.opacity(0.12);
-          doc.rotate(-40, { origin: [ML + W / 2, 420] });
-          doc.fontSize(52).font('Helvetica-Bold').fillColor('#e86b00')
-            .text('DAN & DOR\nSOLAR', ML - 20, 360, { width: W + 40, align: 'center', lineGap: 4 });
-          doc.rotate(40, { origin: [ML + W / 2, 420] });
-        }
-      } else {
-        // No image — always draw text watermark
-        doc.opacity(0.12);
-        doc.rotate(-40, { origin: [ML + W / 2, 420] });
-        doc.fontSize(52).font('Helvetica-Bold').fillColor('#e86b00')
-          .text('DAN & DOR\nSOLAR', ML - 20, 360, { width: W + 40, align: 'center', lineGap: 4 });
-        doc.rotate(40, { origin: [ML + W / 2, 420] });
-      }
+      doc.opacity(0.10);
+      doc.rotate(-40, { origin: [ML + W / 2, 420] });
+      doc.fontSize(52).font('Helvetica-Bold').fillColor('#e86b00')
+        .text('DAN & DOR\nSOLAR', ML - 20, 360, { width: W + 40, align: 'center', lineGap: 4 });
+      doc.rotate(40, { origin: [ML + W / 2, 420] });
       doc.restore();
 
-      // ── Header: passport photos + company info ─────────────────────────────
+      // Header: passport photos + company info
       const H_Y = 42;
       const PHOTO_W = 65;
       const PHOTO_H = 80;
@@ -263,15 +259,36 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
 
       const cX = ML + PHOTO_W + 5;
       const cW = W - PHOTO_W * 2 - 10;
-      doc.fontSize(12).font('Helvetica-Bold').fillColor('#111111')
-        .text('DAN & DOR SOLAR COMPANY LIMITED', cX, H_Y + 8, { width: cW, align: 'center' });
-      doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
-        .text('Bogoso, Western Region  |  Tel: +233 598565277', cX, H_Y + 28, { width: cW, align: 'center' });
-      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(ORANGE)
-        .text('CREDIT SALE AGREEMENT', cX, H_Y + 46, { width: cW, align: 'center' });
+
+      if (logoBuf) {
+        try {
+          const LOGO_W = 50;
+          doc.image(logoBuf, cX + (cW - LOGO_W) / 2, H_Y + 1, { width: LOGO_W });
+          doc.fontSize(11).font('Helvetica-Bold').fillColor('#111111')
+            .text('DAN & DOR SOLAR COMPANY LIMITED', cX, H_Y + 54, { width: cW, align: 'center' });
+          doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+            .text('Bogoso, Western Region  |  Tel: +233 598565277', cX, H_Y + 68, { width: cW, align: 'center' });
+          doc.fontSize(9.5).font('Helvetica-Bold').fillColor(ORANGE)
+            .text('CREDIT SALE AGREEMENT', cX, H_Y + 82, { width: cW, align: 'center' });
+        } catch {
+          doc.fontSize(12).font('Helvetica-Bold').fillColor('#111111')
+            .text('DAN & DOR SOLAR COMPANY LIMITED', cX, H_Y + 8, { width: cW, align: 'center' });
+          doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
+            .text('Bogoso, Western Region  |  Tel: +233 598565277', cX, H_Y + 28, { width: cW, align: 'center' });
+          doc.fontSize(9.5).font('Helvetica-Bold').fillColor(ORANGE)
+            .text('CREDIT SALE AGREEMENT', cX, H_Y + 46, { width: cW, align: 'center' });
+        }
+      } else {
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#111111')
+          .text('DAN & DOR SOLAR COMPANY LIMITED', cX, H_Y + 8, { width: cW, align: 'center' });
+        doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
+          .text('Bogoso, Western Region  |  Tel: +233 598565277', cX, H_Y + 28, { width: cW, align: 'center' });
+        doc.fontSize(9.5).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('CREDIT SALE AGREEMENT', cX, H_Y + 46, { width: cW, align: 'center' });
+      }
       resetColors();
 
-      let y = H_Y + PHOTO_H + 18;
+      let y = H_Y + PHOTO_H + 35;
 
       // ── Separator ─────────────────────────────────────────────────────────────
       doc.moveTo(ML, y).lineTo(ML + W, y).lineWidth(1.2).strokeColor(ORANGE).stroke();
