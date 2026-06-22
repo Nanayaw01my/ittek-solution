@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
+import { useCompanyInfo } from '../hooks/useCompanyInfo'
 
 export default function SplashScreen({ onDone }) {
   const [phase, setPhase] = useState('enter') // enter → hold → exit
+  const { data: company } = useCompanyInfo()
 
   useEffect(() => {
     const holdTimer = setTimeout(() => setPhase('exit'), 2800)
@@ -101,21 +103,29 @@ export default function SplashScreen({ onDone }) {
           <div style={{
             position: 'absolute', inset: 0, borderRadius: 24,
             background: 'linear-gradient(145deg, rgba(255,255,255,0.18) 0%, transparent 60%)',
-            pointerEvents: 'none',
+            pointerEvents: 'none', zIndex: 1,
           }} />
-          <svg viewBox="0 0 40 40" width="64" height="64" fill="none">
-            <circle cx="20" cy="20" r="7.5" fill="white" opacity="0.95" />
-            {[0,45,90,135,180,225,270,315].map(deg => (
-              <line
-                key={deg}
-                x1={20 + 11 * Math.cos((deg * Math.PI) / 180)}
-                y1={20 + 11 * Math.sin((deg * Math.PI) / 180)}
-                x2={20 + 17 * Math.cos((deg * Math.PI) / 180)}
-                y2={20 + 17 * Math.sin((deg * Math.PI) / 180)}
-                stroke="white" strokeWidth="2.5" strokeLinecap="round"
-              />
-            ))}
-          </svg>
+          {company?.logo_url ? (
+            <img
+              src={company.logo_url}
+              alt="Logo"
+              style={{ width: 78, height: 78, objectFit: 'contain', borderRadius: 8 }}
+            />
+          ) : (
+            <svg viewBox="0 0 40 40" width="64" height="64" fill="none">
+              <circle cx="20" cy="20" r="7.5" fill="white" opacity="0.95" />
+              {[0,45,90,135,180,225,270,315].map(deg => (
+                <line
+                  key={deg}
+                  x1={20 + 11 * Math.cos((deg * Math.PI) / 180)}
+                  y1={20 + 11 * Math.sin((deg * Math.PI) / 180)}
+                  x2={20 + 17 * Math.cos((deg * Math.PI) / 180)}
+                  y2={20 + 17 * Math.sin((deg * Math.PI) / 180)}
+                  stroke="white" strokeWidth="2.5" strokeLinecap="round"
+                />
+              ))}
+            </svg>
+          )}
         </div>
 
         {/* Brand text — staggered reveal */}
