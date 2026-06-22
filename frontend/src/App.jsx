@@ -1,8 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import useAuthStore from './store/authStore'
 import Layout from './components/Layout'
 import LoadingSpinner from './components/LoadingSpinner'
+import SplashScreen from './components/SplashScreen'
 
 // Pages
 import Login from './pages/Login'
@@ -61,7 +62,16 @@ function RootRedirect() {
 }
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(() => !sessionStorage.getItem('splashShown'))
+
+  const handleSplashDone = () => {
+    sessionStorage.setItem('splashShown', '1')
+    setShowSplash(false)
+  }
+
   return (
+    <>
+      {showSplash && <SplashScreen onDone={handleSplashDone} />}
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
@@ -196,5 +206,6 @@ export default function App() {
       {/* Catch all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   )
 }
