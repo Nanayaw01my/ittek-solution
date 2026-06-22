@@ -5,6 +5,8 @@ const { queueEmail, templates } = require('../utils/email');
 const { sendSMS } = require('../utils/sms');
 const Settings = require('../models/Settings');
 
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * GET /api/debts
  */
@@ -14,7 +16,7 @@ const getDebts = async (req, res) => {
     const filter = {};
 
     if (status) filter.status = status;
-    if (customer) filter.customer_name = { $regex: customer, $options: 'i' };
+    if (customer) filter.customer_name = { $regex: escapeRegex(String(customer)), $options: 'i' };
 
     const skip = (Number(page) - 1) * Number(limit);
     const [debts, total] = await Promise.all([

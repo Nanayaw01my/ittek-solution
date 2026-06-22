@@ -15,6 +15,8 @@ router.post(
   [
     body('cart').isArray({ min: 1 }).withMessage('Cart must have at least one item.'),
     body('payment_method').isIn(['cash', 'card', 'mobile_money']).withMessage('Invalid payment method.'),
+    body('discount').optional().isFloat({ min: 0 }).withMessage('Discount must be a non-negative number.'),
+    body('discount_type').optional().isIn(['fixed', 'percentage']).withMessage('Invalid discount type.'),
   ],
   auditLog('PROCESS_SALE', (req, body) => ({
     invoice_no: body?.data?.invoice_no,
@@ -29,6 +31,8 @@ router.post(
     body('cart').isArray({ min: 1 }).withMessage('Cart must have at least one item.'),
     body('payment_method').isIn(['cash', 'card', 'mobile_money']).withMessage('Invalid payment method.'),
     body('customer_name').notEmpty().withMessage('Customer name required for debt.'),
+    body('discount').optional().isFloat({ min: 0 }).withMessage('Discount must be a non-negative number.'),
+    body('discount_type').optional().isIn(['fixed', 'percentage']).withMessage('Invalid discount type.'),
   ],
   auditLog('PROCESS_SHORT_PAYMENT'),
   processShortPayment

@@ -1,5 +1,8 @@
 const { validationResult } = require('express-validator');
 const Product = require('../models/Product');
+const logger = require('../utils/logger');
+
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * GET /api/products
@@ -10,9 +13,10 @@ const getProducts = async (req, res) => {
     const filter = { is_active: true };
 
     if (search) {
+      const safe = escapeRegex(String(search));
       filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { barcode: { $regex: search, $options: 'i' } },
+        { name: { $regex: safe, $options: 'i' } },
+        { barcode: { $regex: safe, $options: 'i' } },
       ];
     }
     if (category) filter.category_id = category;
@@ -37,7 +41,7 @@ const getProducts = async (req, res) => {
       pagination: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / Number(limit)) },
     });
   } catch (err) {
-    console.error('Get products error:', err.message);
+    logger.error('Get products error', { error: err.message });
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -59,7 +63,7 @@ const createProduct = async (req, res) => {
 
     return res.status(201).json({ success: true, message: 'Product created.', data: populated });
   } catch (err) {
-    console.error('Create product error:', err.message);
+    logger.error('Create product error', { error: err.message });
     if (err.code === 11000) {
       return res.status(409).json({ success: false, message: 'Barcode already exists.' });
     }
@@ -82,7 +86,7 @@ const getLowStock = async (req, res) => {
 
     return res.status(200).json({ success: true, data: products, count: products.length });
   } catch (err) {
-    console.error('Low stock error:', err.message);
+    logger.error('Low stock error', { error: err.message });
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -99,7 +103,7 @@ const getByBarcode = async (req, res) => {
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
     return res.status(200).json({ success: true, data: product });
   } catch (err) {
-    console.error('Get by barcode error:', err.message);
+    logger.error('Get by barcode error', { error: err.message });
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -112,11 +116,12 @@ const searchProducts = async (req, res) => {
     const { query, limit = 20 } = req.body;
     if (!query) return res.status(400).json({ success: false, message: 'Search query required.' });
 
+    const safe = escapeRegex(String(query));
     const products = await Product.find({
       is_active: true,
       $or: [
-        { name: { $regex: query, $options: 'i' } },
-        { barcode: { $regex: query, $options: 'i' } },
+        { name: { $regex: safe, $options: 'i' } },
+        { barcode: { $regex: safe, $options: 'i' } },
       ],
     })
       .populate('category_id', 'name')
@@ -124,7 +129,7 @@ const searchProducts = async (req, res) => {
 
     return res.status(200).json({ success: true, data: products });
   } catch (err) {
-    console.error('Search products error:', err.message);
+    logger.error('Search products error', { error: err.message });
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -143,7 +148,7 @@ const getProduct = async (req, res) => {
     }
     return res.status(200).json({ success: true, data: product });
   } catch (err) {
-    console.error('Get product error:', err.message);
+    logger.error('Get product error', { error: err.message });
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -160,7 +165,7 @@ const updateProduct = async (req, res) => {
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
     return res.status(200).json({ success: true, message: 'Product updated.', data: product });
   } catch (err) {
-    console.error('Update product error:', err.message);
+    logger.error('Update product error', { error: err.message });
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -174,7 +179,7 @@ const deleteProduct = async (req, res) => {
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
     return res.status(200).json({ success: true, message: 'Product deactivated.' });
   } catch (err) {
-    console.error('Delete product error:', err.message);
+    logger.error('Delete product error', { error: err.message });
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -192,7 +197,8 @@ const bulkImport = async (req, res) => {
     const results = { created: 0, failed: 0, errors: [] };
     for (const item of items) {
       try {
-        await Product.create(item);
+        const { name, barcode, description, selling_price, cost_price, quantity, low_stock_level, category_id, supplier_id, unit } = item;
+        await Product.create({ name, barcode, description, selling_price, cost_price, quantity, low_stock_level, category_id, supplier_id, unit });
         results.created++;
       } catch (err) {
         results.failed++;
@@ -202,7 +208,7 @@ const bulkImport = async (req, res) => {
 
     return res.status(200).json({ success: true, message: 'Bulk import complete.', data: results });
   } catch (err) {
-    console.error('Bulk import error:', err.message);
+    logger.error('Bulk import error', { error: err.message });
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };

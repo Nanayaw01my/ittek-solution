@@ -44,4 +44,16 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-module.exports = { authenticate };
+// Role-based access control — call after authenticate
+const authorize = (...roles) => (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Not authenticated.' });
+  }
+  if (!roles.includes(req.user.role)) {
+    logger.warn('Authorize: access denied', { username: req.user.username, role: req.user.role, required: roles, reqId: req.requestId });
+    return res.status(403).json({ success: false, message: 'Access denied. Insufficient permissions.' });
+  }
+  next();
+};
+
+module.exports = { authenticate, authorize };
