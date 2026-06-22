@@ -159,7 +159,7 @@ const generateReceipt = async (saleData, options = {}) => {
 };
 
 /**
- * Generate a credit agreement PDF (A4).
+ * Generate a credit agreement PDF (A4) — fits on a single page.
  * @param {Object} agreementData - CreditAgreement document
  * @param {Object} options - { logoUrl }
  * @returns {Promise<Buffer>}
@@ -173,14 +173,14 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
 
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, bottom: 40, left: 50, right: 50 }, autoFirstPage: true });
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 28, bottom: 28, left: 36, right: 36 }, autoFirstPage: true });
       const chunks = [];
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      const ML = 50;
-      const W = 495;
+      const ML = 36;
+      const W = 523;
       const ORANGE = '#e86b00';
       const LGRAY = '#777777';
 
@@ -205,54 +205,52 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
         return d.toLocaleDateString('en-GH');
       });
 
-      // ── Helpers ──────────────────────────────────────────────────────────────
-
       const resetColors = () => {
         doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
       };
 
       const sectionTitle = (text, y) => {
-        doc.fontSize(9).font('Helvetica-Bold').fillColor(ORANGE).text(text, ML, y, { width: W });
-        const lineY = y + 13;
-        doc.moveTo(ML, lineY).lineTo(ML + W, lineY).lineWidth(0.8).strokeColor(ORANGE).stroke();
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor(ORANGE).text(text, ML, y, { width: W });
+        const lineY = y + 11;
+        doc.moveTo(ML, lineY).lineTo(ML + W, lineY).lineWidth(0.7).strokeColor(ORANGE).stroke();
         resetColors();
-        return lineY + 6;
+        return lineY + 4;
       };
 
       const drawField = (label, value, x, y, width) => {
-        doc.fontSize(6.5).font('Helvetica-Bold').fillColor(LGRAY).text(label, x, y, { width, lineBreak: false });
-        doc.fontSize(8.5).font('Helvetica').fillColor('#111111').text(String(value || '—'), x, y + 9, { width, lineBreak: false });
-        doc.moveTo(x, y + 21).lineTo(x + width, y + 21).lineWidth(0.3).strokeColor('#cccccc').stroke();
+        doc.fontSize(6).font('Helvetica-Bold').fillColor(LGRAY).text(label, x, y, { width, lineBreak: false });
+        doc.fontSize(8).font('Helvetica').fillColor('#111111').text(String(value || '—'), x, y + 8, { width, lineBreak: false });
+        doc.moveTo(x, y + 19).lineTo(x + width, y + 19).lineWidth(0.3).strokeColor('#cccccc').stroke();
         resetColors();
       };
 
       const drawPhotoBox = (x, y, buf, topLabel) => {
-        const PW = 65; const PH = 80;
-        doc.rect(x, y, PW, PH).lineWidth(0.8).strokeColor('#aaaaaa').stroke();
+        const PW = 58; const PH = 68;
+        doc.rect(x, y, PW, PH).lineWidth(0.7).strokeColor('#aaaaaa').stroke();
         if (buf) {
           try { doc.image(buf, x + 2, y + 2, { width: PW - 4, height: PH - 4, cover: [PW - 4, PH - 4] }); } catch {}
         } else {
           doc.moveTo(x + 2, y + 2).lineTo(x + PW - 2, y + PH - 2).lineWidth(0.4).strokeColor('#dddddd').stroke();
           doc.moveTo(x + PW - 2, y + 2).lineTo(x + 2, y + PH - 2).lineWidth(0.4).strokeColor('#dddddd').stroke();
-          doc.fontSize(6.5).fillColor('#aaaaaa').text('PASSPORT\nPHOTO', x, y + PH / 2 - 8, { width: PW, align: 'center' });
+          doc.fontSize(6).fillColor('#aaaaaa').text('PASSPORT\nPHOTO', x, y + PH / 2 - 7, { width: PW, align: 'center' });
         }
-        doc.fontSize(6).fillColor(LGRAY).text(topLabel, x, y + PH + 3, { width: PW, align: 'center' });
+        doc.fontSize(5.5).fillColor(LGRAY).text(topLabel, x, y + PH + 2, { width: PW, align: 'center' });
         resetColors();
       };
 
-      // Watermark - rotated text works better than a white-bg logo on white paper
+      // Watermark
       doc.save();
       doc.opacity(0.10);
-      doc.rotate(-40, { origin: [ML + W / 2, 420] });
-      doc.fontSize(52).font('Helvetica-Bold').fillColor('#e86b00')
-        .text('DAN & DOR\nSOLAR', ML - 20, 360, { width: W + 40, align: 'center', lineGap: 4 });
-      doc.rotate(40, { origin: [ML + W / 2, 420] });
+      doc.rotate(-40, { origin: [ML + W / 2, 400] });
+      doc.fontSize(48).font('Helvetica-Bold').fillColor('#e86b00')
+        .text('DAN & DOR\nSOLAR', ML - 20, 340, { width: W + 40, align: 'center', lineGap: 4 });
+      doc.rotate(40, { origin: [ML + W / 2, 400] });
       doc.restore();
 
-      // Header: passport photos + company info
-      const H_Y = 42;
-      const PHOTO_W = 65;
-      const PHOTO_H = 80;
+      // Header
+      const H_Y = 28;
+      const PHOTO_W = 58;
+      const PHOTO_H = 68;
 
       drawPhotoBox(ML, H_Y, customerPhotoBuf, 'CUSTOMER');
       drawPhotoBox(ML + W - PHOTO_W, H_Y, guarantorPhotoBuf, 'GUARANTOR');
@@ -262,84 +260,83 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
 
       if (logoBuf) {
         try {
-          const LOGO_W = 50;
-          doc.image(logoBuf, cX + (cW - LOGO_W) / 2, H_Y + 1, { width: LOGO_W });
-          doc.fontSize(11).font('Helvetica-Bold').fillColor('#111111')
-            .text('DAN & DOR SOLAR COMPANY LIMITED', cX, H_Y + 54, { width: cW, align: 'center' });
-          doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
-            .text('Bogoso, Western Region  |  Tel: +233 598565277', cX, H_Y + 68, { width: cW, align: 'center' });
-          doc.fontSize(9.5).font('Helvetica-Bold').fillColor(ORANGE)
-            .text('CREDIT SALE AGREEMENT', cX, H_Y + 82, { width: cW, align: 'center' });
+          const LOGO_W = 46;
+          doc.image(logoBuf, cX + (cW - LOGO_W) / 2, H_Y, { width: LOGO_W });
+          doc.fontSize(10).font('Helvetica-Bold').fillColor('#111111')
+            .text('DAN & DOR SOLAR COMPANY LIMITED', cX, H_Y + 48, { width: cW, align: 'center' });
+          doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
+            .text('Bogoso, Western Region  |  Tel: +233 598565277', cX, H_Y + 60, { width: cW, align: 'center' });
+          doc.fontSize(9).font('Helvetica-Bold').fillColor(ORANGE)
+            .text('CREDIT SALE AGREEMENT', cX, H_Y + 72, { width: cW, align: 'center' });
         } catch {
-          doc.fontSize(12).font('Helvetica-Bold').fillColor('#111111')
-            .text('DAN & DOR SOLAR COMPANY LIMITED', cX, H_Y + 8, { width: cW, align: 'center' });
-          doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
-            .text('Bogoso, Western Region  |  Tel: +233 598565277', cX, H_Y + 28, { width: cW, align: 'center' });
-          doc.fontSize(9.5).font('Helvetica-Bold').fillColor(ORANGE)
-            .text('CREDIT SALE AGREEMENT', cX, H_Y + 46, { width: cW, align: 'center' });
+          doc.fontSize(11).font('Helvetica-Bold').fillColor('#111111')
+            .text('DAN & DOR SOLAR COMPANY LIMITED', cX, H_Y + 6, { width: cW, align: 'center' });
+          doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+            .text('Bogoso, Western Region  |  Tel: +233 598565277', cX, H_Y + 22, { width: cW, align: 'center' });
+          doc.fontSize(9).font('Helvetica-Bold').fillColor(ORANGE)
+            .text('CREDIT SALE AGREEMENT', cX, H_Y + 38, { width: cW, align: 'center' });
         }
       } else {
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#111111')
-          .text('DAN & DOR SOLAR COMPANY LIMITED', cX, H_Y + 8, { width: cW, align: 'center' });
-        doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
-          .text('Bogoso, Western Region  |  Tel: +233 598565277', cX, H_Y + 28, { width: cW, align: 'center' });
-        doc.fontSize(9.5).font('Helvetica-Bold').fillColor(ORANGE)
-          .text('CREDIT SALE AGREEMENT', cX, H_Y + 46, { width: cW, align: 'center' });
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#111111')
+          .text('DAN & DOR SOLAR COMPANY LIMITED', cX, H_Y + 6, { width: cW, align: 'center' });
+        doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+          .text('Bogoso, Western Region  |  Tel: +233 598565277', cX, H_Y + 22, { width: cW, align: 'center' });
+        doc.fontSize(9).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('CREDIT SALE AGREEMENT', cX, H_Y + 38, { width: cW, align: 'center' });
       }
       resetColors();
 
-      let y = H_Y + PHOTO_H + 35;
+      let y = H_Y + PHOTO_H + 18;
 
-      // ── Separator ─────────────────────────────────────────────────────────────
+      // Separator
       doc.moveTo(ML, y).lineTo(ML + W, y).lineWidth(1.2).strokeColor(ORANGE).stroke();
       resetColors();
-      y += 10;
+      y += 8;
 
-      // ── Customer Details ──────────────────────────────────────────────────────
+      // Customer Details
       y = sectionTitle('CUSTOMER DETAILS', y);
       const c3 = (W - 10) / 3;
       drawField('Customer Name', customer_name, ML, y, c3 - 4);
       drawField('Document Type', document_type, ML + c3, y, c3 - 4);
       drawField('ID Number', id_number, ML + c3 * 2, y, c3 - 4);
-      y += 32;
+      y += 26;
       drawField('Date', start ? start.toLocaleDateString('en-GH') : '—', ML, y, c3 - 4);
       drawField('Location', customer_address, ML + c3, y, c3 - 4);
       drawField('Phone / Tel', customer_phone, ML + c3 * 2, y, c3 - 4);
-      y += 36;
+      y += 28;
 
-      // ── Product & Payment Terms ────────────────────────────────────────────────
+      // Product & Payment Terms
       y = sectionTitle('PRODUCT AND PAYMENT TERMS', y);
       drawField('Product Type', product_type, ML, y, c3 - 4);
       drawField('Serial Number', serial_number || '—', ML + c3, y, c3 - 4);
       drawField('Down Payment (GHC)', 'GHC ' + Number(down_payment).toFixed(2), ML + c3 * 2, y, c3 - 4);
-      y += 32;
+      y += 26;
 
       const c2 = (W - 6) / 2;
       drawField('Payment Plan', (planLabel[payment_plan] || 'Week') + 'ly', ML, y, c2 - 3);
       drawField('Loan Total Amount (GHC)', 'GHC ' + Number(total_amount).toFixed(2), ML + c2 + 6, y, c2 - 3);
-      y += 32;
+      y += 26;
 
-      // Balance display
-      doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY).text('Balance (Loan Total - Down Payment)', ML, y);
-      doc.fontSize(12).font('Helvetica-Bold').fillColor(ORANGE)
-        .text('GHC ' + balance.toFixed(2), ML, y + 9);
+      // Balance
+      doc.fontSize(6.5).font('Helvetica-Bold').fillColor(LGRAY).text('Balance (Loan Total - Down Payment)', ML, y);
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(ORANGE)
+        .text('GHC ' + balance.toFixed(2), ML, y + 8);
       resetColors();
-      y += 32;
+      y += 26;
 
       // Payment schedule table
-      doc.fontSize(8).font('Helvetica-Bold').fillColor('#111').text('Payment Schedule (3 equal instalments):', ML, y);
-      y += 14;
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#111').text('Payment Schedule (3 equal instalments):', ML, y);
+      y += 11;
 
-      const TH = 18;
+      const TH = 15;
       const tCols = [W * 0.22, W * 0.44, W * 0.34];
       const tX = ML;
 
-      // Table header
       doc.fillColor(ORANGE).rect(tX, y, W, TH).fill();
       ['Period', 'Due Date', 'Amount (GHC)'].forEach((h, i) => {
         const cx = tX + tCols.slice(0, i).reduce((a, b) => a + b, 0);
-        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#fff')
-          .text(h, cx + 3, y + 5, { width: tCols[i] - 6, align: 'center', lineBreak: false });
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#fff')
+          .text(h, cx + 3, y + 4, { width: tCols[i] - 6, align: 'center', lineBreak: false });
       });
       y += TH;
 
@@ -354,53 +351,47 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
         ];
         row.forEach((cell, ci) => {
           const cx = tX + tCols.slice(0, ci).reduce((a, b) => a + b, 0);
-          doc.fontSize(8).font('Helvetica').fillColor('#111')
-            .text(cell, cx + 3, y + 5, { width: tCols[ci] - 6, align: 'center', lineBreak: false });
+          doc.fontSize(7.5).font('Helvetica').fillColor('#111')
+            .text(cell, cx + 3, y + 4, { width: tCols[ci] - 6, align: 'center', lineBreak: false });
         });
         y += TH;
       });
 
-      // Total row
       doc.fillColor('#fff3e0').rect(tX, y, W, TH).fill();
       doc.strokeColor(ORANGE).lineWidth(0.8).rect(tX, y, W, TH).stroke();
-      doc.fontSize(7.5).font('Helvetica-Bold').fillColor(ORANGE)
-        .text('TOTAL BALANCE', tX + 3, y + 5, { width: tCols[0] + tCols[1] - 6, align: 'right', lineBreak: false });
-      doc.text('GHC ' + balance.toFixed(2), tX + tCols[0] + tCols[1] + 3, y + 5, { width: tCols[2] - 6, align: 'center', lineBreak: false });
+      doc.fontSize(7).font('Helvetica-Bold').fillColor(ORANGE)
+        .text('TOTAL BALANCE', tX + 3, y + 4, { width: tCols[0] + tCols[1] - 6, align: 'right', lineBreak: false });
+      doc.text('GHC ' + balance.toFixed(2), tX + tCols[0] + tCols[1] + 3, y + 4, { width: tCols[2] - 6, align: 'center', lineBreak: false });
       resetColors();
-      y += TH + 10;
+      y += TH + 7;
 
-      // ── Guarantor Details ─────────────────────────────────────────────────────
+      // Guarantor Details
       y = sectionTitle('GUARANTOR DETAILS', y);
       const c4 = (W - 12) / 4;
       drawField('Guarantor Name', guarantor_name, ML, y, c4 - 3);
       drawField('Ghana Card No.', guarantor_ghana_card || '—', ML + c4 + 4, y, c4 - 3);
       drawField('Location', guarantor_address, ML + (c4 + 4) * 2, y, c4 - 3);
       drawField('Phone Number', guarantor_phone, ML + (c4 + 4) * 3, y, c4 - 3);
-      y += 36;
+      y += 28;
 
-      // ── Agreement Text ────────────────────────────────────────────────────────
+      // Customer Agreement
       y = sectionTitle('CUSTOMER AGREEMENT', y);
       const custText =
         'I (' + customer_name + ') have agreed to the terms and conditions of DAN AND DOR SOLAR COMPANY LIMITED. ' +
-        'I understand and agree that I am entering into a legally binding contract with DAN AND DOR SOLAR COMPANY LIMITED, ' +
-        'and that I will be bound by the terms and conditions of the contract.\n\n' +
-        'I have agreed that the company can repossess the devices when I (' + customer_name + ') fail(s) to pay on time, ' +
-        'by the way the company wants me to pay.\n\n' +
-        'I agree that one third (1/3) of the down payment should be paid back to me when I am not able to pay on time.';
-      doc.fontSize(8).font('Helvetica').fillColor('#222222').text(custText, ML, y, { width: W, lineGap: 1.5 });
-      y = doc.y + 10;
+        'I understand and agree that I am entering into a legally binding contract and will be bound by its terms.\n\n' +
+        'I agree the company can repossess the devices if I fail to pay on time. ' +
+        'I also agree that one third (1/3) of the down payment shall be refunded if I am unable to complete payments.';
+      doc.fontSize(7.5).font('Helvetica').fillColor('#222222').text(custText, ML, y, { width: W, lineGap: 1 });
+      y = doc.y + 5;
 
-      // ── Guarantor Section ─────────────────────────────────────────────────────
+      // Guarantor Section
       y = sectionTitle('GUARANTOR SECTION', y);
       const guarText =
-        'I (' + guarantor_name + ') have agreed to witness for (' + customer_name + ') in case he/she does not pay on time. ' +
-        'And I stand to pay his/her debt.';
-      doc.fontSize(8).font('Helvetica').fillColor('#222222').text(guarText, ML, y, { width: W, lineGap: 1.5 });
-      y = doc.y + 14;
+        'I (' + guarantor_name + ') agree to witness for (' + customer_name + ') and stand to settle any outstanding debt if he/she fails to pay on time.';
+      doc.fontSize(7.5).font('Helvetica').fillColor('#222222').text(guarText, ML, y, { width: W, lineGap: 1 });
+      y = doc.y + 6;
 
-      // ── Signatories ───────────────────────────────────────────────────────────
-      if (y > 680) { doc.addPage(); y = 50; }
-
+      // Signatories
       y = sectionTitle('SIGNATORIES', y);
 
       const sigLabels = ['CEO', 'MANAGER', 'CUSTOMER', 'GUARANTOR'];
@@ -409,19 +400,19 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
 
       sigLabels.forEach((label, i) => {
         const sx = ML + i * (sigW + 4);
-        doc.rect(sx, y, sigW, 48).lineWidth(0.5).strokeColor('#cccccc').stroke();
-        doc.fontSize(6).fillColor('#bbbbbb').text('Signature', sx + 2, y + 4, { width: sigW - 4, align: 'center', lineBreak: false });
-        doc.moveTo(sx + 6, y + 40).lineTo(sx + sigW - 6, y + 40).lineWidth(0.5).strokeColor('#999999').stroke();
+        doc.rect(sx, y, sigW, 40).lineWidth(0.5).strokeColor('#cccccc').stroke();
+        doc.fontSize(5.5).fillColor('#bbbbbb').text('Signature', sx + 2, y + 3, { width: sigW - 4, align: 'center', lineBreak: false });
+        doc.moveTo(sx + 6, y + 33).lineTo(sx + sigW - 6, y + 33).lineWidth(0.5).strokeColor('#999999').stroke();
         resetColors();
-        doc.fontSize(8).font('Helvetica-Bold').fillColor('#111').text(label, sx, y + 52, { width: sigW, align: 'center', lineBreak: false });
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#111').text(label, sx, y + 43, { width: sigW, align: 'center', lineBreak: false });
         if (sigSubNames[i]) {
-          doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY).text(sigSubNames[i], sx, y + 63, { width: sigW, align: 'center', lineBreak: false });
+          doc.fontSize(6).font('Helvetica').fillColor(LGRAY).text(sigSubNames[i], sx, y + 52, { width: sigW, align: 'center', lineBreak: false });
         }
         resetColors();
       });
 
-      y += 78;
-      doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+      y += 64;
+      doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
         .text('Date: ___________________________', ML + W / 2 - 60, y);
       resetColors();
 
