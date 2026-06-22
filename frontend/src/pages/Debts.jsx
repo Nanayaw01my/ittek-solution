@@ -2,8 +2,8 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp } from 'react-icons/fi'
-import { getDebts, recordDebtPayment, getDebtSummary } from '../api/debts'
+import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp, FiMessageSquare, FiSend } from 'react-icons/fi'
+import { getDebts, recordDebtPayment, getDebtSummary, sendDebtReminder, sendAllDebtReminders } from '../api/debts'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -105,18 +105,33 @@ function PaymentModal({ debt, onClose, isOpen }) {
 
 function DebtRow({ debt, onPay }) {
   const [showHistory, setShowHistory] = useState(false)
+  const [sending, setSending] = useState(false)
 
   const remaining = Math.max(0, (debt.amount_owed || 0) - (debt.amount_paid || 0))
   const dueDateStr = debt.due_date ? debt.due_date.slice(0, 10) : null
   const isOverdue = dueDateStr && debt.status !== 'paid' && isPast(parseISO(dueDateStr))
   const payments = debt.payments || []
+  const canSendSMS = debt.status !== 'paid' && !!debt.customer_phone
+
+  const handleSendSMS = async () => {
+    if (!canSendSMS || sending) return
+    setSending(true)
+    try {
+      await sendDebtReminder(debt._id)
+      toast.success(`SMS reminder sent to ${debt.customer_name}`)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send SMS')
+    } finally {
+      setSending(false)
+    }
+  }
 
   return (
     <>
       <tr className={`border-b border-gray-100 hover:bg-gray-50 ${isOverdue ? 'bg-red-50/30' : ''}`}>
         <td className="px-4 py-3">
           <p className="font-semibold text-gray-800">{debt.customer_name}</p>
-          <p className="text-xs text-gray-500">{debt.customer_phone}</p>
+          <p className="text-xs text-gray-500">{debt.customer_phone || <span className="italic text-gray-300">no phone</span>}</p>
         </td>
         <td className="px-4 py-3">
           <span className="font-bold text-red-600">{formatCurrency(debt.amount_owed || 0)}</span>
@@ -135,7 +150,7 @@ function DebtRow({ debt, onPay }) {
         </td>
         <td className="px-4 py-3"><Badge status={debt.status || 'active'} /></td>
         <td className="px-4 py-3">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {debt.status !== 'paid' && (
               <button
                 onClick={() => onPay(debt)}
@@ -144,6 +159,18 @@ function DebtRow({ debt, onPay }) {
                 Pay
               </button>
             )}
+            <button
+              onClick={handleSendSMS}
+              disabled={!canSendSMS || sending}
+              title={!debt.customer_phone ? 'No phone number on record' : debt.status === 'paid' ? 'Already paid' : 'Send SMS reminder'}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors
+                ${canSendSMS
+                  ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
+                  : 'bg-gray-50 text-gray-300 border border-gray-100 cursor-not-allowed'}`}
+            >
+              <FiMessageSquare size={11} className={sending ? 'animate-pulse' : ''} />
+              {sending ? 'Sending…' : 'SMS'}
+            </button>
             {payments.length > 0 && (
               <button
                 onClick={() => setShowHistory(!showHistory)}
@@ -180,6 +207,27 @@ export default function Debts() {
   const [search, setSearch] = useState('')
   const [payTarget, setPayTarget] = useState(null)
   const [page, setPage] = useState(1)
+  const [sendingAll, setSendingAll] = useState(false)
+
+  const handleRemindAll = async () => {
+    if (sendingAll) return
+    setSendingAll(true)
+    try {
+      const res = await sendAllDebtReminders()
+      const { sent, failed, skipped } = res.data?.data || {}
+      if (sent > 0) {
+        toast.success(`Sent ${sent} SMS reminder${sent !== 1 ? 's' : ''}${failed > 0 ? `, ${failed} failed` : ''}`)
+      } else if (failed > 0) {
+        toast.error(`All ${failed} reminders failed to send`)
+      } else {
+        toast(`No debtors with phone numbers found`, { icon: 'ℹ️' })
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send reminders')
+    } finally {
+      setSendingAll(false)
+    }
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['debts', statusFilter, search, page],
@@ -203,7 +251,17 @@ export default function Debts() {
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-      <PageHeader title="Debts" subtitle="Track customer outstanding balances" />
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <PageHeader title="Debts" subtitle="Track customer outstanding balances" />
+        <button
+          onClick={handleRemindAll}
+          disabled={sendingAll}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-sm font-bold transition-colors flex-shrink-0"
+        >
+          <FiSend size={14} className={sendingAll ? 'animate-pulse' : ''} />
+          {sendingAll ? 'Sending…' : 'Remind All'}
+        </button>
+      </div>
 
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">

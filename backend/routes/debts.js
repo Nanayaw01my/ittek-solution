@@ -4,7 +4,7 @@ const { body } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
-const { getDebts, getDebt, getDebtSummary, recordPayment } = require('../controllers/debtsController');
+const { getDebts, getDebt, getDebtSummary, recordPayment, sendReminder, sendAllReminders } = require('../controllers/debtsController');
 
 // Manager (2) and above
 const managerPlus = [authenticate, requireLevel(2)];
@@ -23,6 +23,19 @@ router.post(
   ],
   auditLog('DEBT_PAYMENT', (req) => ({ debt_id: req.params.id, amount: req.body.amount })),
   recordPayment
+);
+
+// SMS reminder routes (Manager+ can send)
+router.post(
+  '/remind-all',
+  auditLog('DEBT_REMIND_ALL', () => ({})),
+  sendAllReminders
+);
+
+router.post(
+  '/:id/remind',
+  auditLog('DEBT_REMIND', (req) => ({ debt_id: req.params.id })),
+  sendReminder
 );
 
 module.exports = router;

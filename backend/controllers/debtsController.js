@@ -2,6 +2,7 @@ const Debt = require('../models/Debt');
 const Sale = require('../models/Sale');
 const Notification = require('../models/Notification');
 const { queueEmail, templates } = require('../utils/email');
+const { sendSMS } = require('../utils/sms');
 const Settings = require('../models/Settings');
 
 /**
@@ -168,4 +169,96 @@ const recordPayment = async (req, res) => {
   }
 };
 
-module.exports = { getDebts, getDebt, getDebtSummary, recordPayment };
+/**
+ * POST /api/debts/:id/remind  — send SMS reminder to a single debtor
+ */
+const sendReminder = async (req, res) => {
+  try {
+    const debt = await Debt.findById(req.params.id);
+    if (!debt) return res.status(404).json({ success: false, message: 'Debt not found.' });
+    if (debt.status === 'paid') return res.status(400).json({ success: false, message: 'Debt is already paid.' });
+    if (!debt.customer_phone) return res.status(400).json({ success: false, message: 'No phone number on record for this customer.' });
+
+    const remaining = (debt.amount_owed - debt.amount_paid).toFixed(2);
+    const dueDate = debt.due_date ? new Date(debt.due_date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
+
+    const settings = await Settings.findOne();
+    const company = settings?.company_name || 'DAN & DOR SOLAR COMPANY LIMITED';
+    const phone   = settings?.company_phone || '+233 598565277';
+
+    const message =
+      `Dear ${debt.customer_name}, you have an outstanding balance of GHC ${remaining} with ${company}. ` +
+      `Due: ${dueDate}. Please make payment or contact us on ${phone}. Thank you.`;
+
+    const result = await sendSMS(debt.customer_phone, message);
+
+    if (!result.success) {
+      return res.status(502).json({ success: false, message: `SMS failed: ${result.message}` });
+    }
+
+    await Notification.create({
+      user_id: req.user._id,
+      type: 'info',
+      title: 'SMS Reminder Sent',
+      message: `Reminder sent to ${debt.customer_name} (${debt.customer_phone})`,
+      link: `/debts`,
+    });
+
+    return res.status(200).json({ success: true, message: `SMS reminder sent to ${debt.customer_phone}` });
+  } catch (err) {
+    console.error('Send reminder error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * POST /api/debts/remind-all  — send SMS reminders to all active + overdue debtors with phone numbers
+ */
+const sendAllReminders = async (req, res) => {
+  try {
+    const debts = await Debt.find({ status: { $in: ['active', 'overdue'] }, customer_phone: { $exists: true, $ne: '' } });
+
+    if (debts.length === 0) {
+      return res.status(200).json({ success: true, message: 'No debtors with phone numbers found.', data: { sent: 0, failed: 0 } });
+    }
+
+    const settings = await Settings.findOne();
+    const company = settings?.company_name || 'DAN & DOR SOLAR COMPANY LIMITED';
+    const phone   = settings?.company_phone || '+233 598565277';
+
+    let sent = 0, failed = 0, skipped = 0;
+
+    for (const debt of debts) {
+      if (!debt.customer_phone) { skipped++; continue; }
+
+      const remaining = (debt.amount_owed - debt.amount_paid).toFixed(2);
+      const dueDate = debt.due_date ? new Date(debt.due_date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
+
+      const message =
+        `Dear ${debt.customer_name}, you have an outstanding balance of GHC ${remaining} with ${company}. ` +
+        `Due: ${dueDate}. Please make payment or contact us on ${phone}. Thank you.`;
+
+      const result = await sendSMS(debt.customer_phone, message);
+      result.success ? sent++ : failed++;
+    }
+
+    await Notification.create({
+      user_id: req.user._id,
+      type: 'info',
+      title: 'Bulk SMS Reminders Sent',
+      message: `Sent ${sent} reminder${sent !== 1 ? 's' : ''}, ${failed} failed, ${skipped} skipped (no phone)`,
+      link: '/debts',
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Reminders sent: ${sent} succeeded, ${failed} failed, ${skipped} skipped.`,
+      data: { sent, failed, skipped },
+    });
+  } catch (err) {
+    console.error('Send all reminders error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+module.exports = { getDebts, getDebt, getDebtSummary, recordPayment, sendReminder, sendAllReminders };
