@@ -1,5 +1,6 @@
 const { validationResult } = require('express-validator');
 const CreditAgreement = require('../models/CreditAgreement');
+const Debt = require('../models/Debt');
 const Notification = require('../models/Notification');
 const Settings = require('../models/Settings');
 const { generateCreditAgreement } = require('../utils/pdfGenerator');
@@ -54,6 +55,18 @@ const createCreditAgreement = async (req, res) => {
     }
 
     const agreement = await CreditAgreement.create(data);
+
+    // Auto-create a linked Debt record so it appears on the Debts page
+    const amountOwed = agreement.remaining > 0 ? agreement.remaining : agreement.total_amount - (agreement.down_payment || 0);
+    await Debt.create({
+      credit_agreement_id: agreement._id,
+      customer_name: agreement.customer_name,
+      customer_phone: agreement.customer_phone,
+      amount_owed: amountOwed,
+      amount_paid: 0,
+      due_date: agreement.end_date || (() => { const d = new Date(); d.setDate(d.getDate() + 90); return d; })(),
+      created_by: req.user._id,
+    });
 
     await Notification.create({
       user_id: null,
@@ -138,6 +151,20 @@ const recordPayment = async (req, res) => {
     }
 
     await agreement.save();
+
+    // Keep the linked Debt record in sync
+    const linkedDebt = await Debt.findOne({ credit_agreement_id: agreement._id });
+    if (linkedDebt && linkedDebt.status !== 'paid') {
+      const receipt_no = `CA-RCPT-${Date.now()}`;
+      linkedDebt.payments.push({
+        amount: Number(amount),
+        payment_date: new Date(),
+        receipt_no,
+        recorded_by: req.user._id,
+      });
+      linkedDebt.amount_paid += Number(amount);
+      await linkedDebt.save(); // pre-save hook updates status automatically
+    }
 
     return res.status(200).json({
       success: true,

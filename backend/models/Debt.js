@@ -16,6 +16,10 @@ const DebtSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Sale',
     },
+    credit_agreement_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'CreditAgreement',
+    },
     customer_name: {
       type: String,
       required: [true, 'Customer name is required'],

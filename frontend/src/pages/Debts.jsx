@@ -130,7 +130,12 @@ function DebtRow({ debt, onPay }) {
     <>
       <tr className={`border-b border-gray-100 hover:bg-gray-50 ${isOverdue ? 'bg-red-50/30' : ''}`}>
         <td className="px-4 py-3">
-          <p className="font-semibold text-gray-800">{debt.customer_name}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-gray-800">{debt.customer_name}</p>
+            {debt.credit_agreement_id && (
+              <span className="text-[10px] font-bold bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded">CREDIT</span>
+            )}
+          </div>
           <p className="text-xs text-gray-500">{debt.customer_phone || <span className="italic text-gray-300">no phone</span>}</p>
         </td>
         <td className="px-4 py-3">
