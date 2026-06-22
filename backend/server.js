@@ -267,7 +267,41 @@ const ensureSuperAdmin = async () => {
   }
 };
 
-// ─── SERVER START ─────────────────────────────────────────────────────────────
+// ─── BACKFILL: credit agreements → debt records ───────────────────────────────
+
+const backfillCreditAgreementDebts = async () => {
+  try {
+    const CreditAgreement = require('./models/CreditAgreement');
+    const Debt = require('./models/Debt');
+
+    const agreements = await CreditAgreement.find({ status: { $ne: 'completed' } });
+    let created = 0;
+
+    for (const agreement of agreements) {
+      const existing = await Debt.findOne({ credit_agreement_id: agreement._id });
+      if (existing) continue;
+
+      const totalPaid = agreement.payments.reduce((sum, p) => sum + p.amount, 0);
+      const amountOwed = Math.max(0.01, (agreement.remaining || agreement.total_amount) - 0);
+      const amountPaid = totalPaid;
+
+      await Debt.create({
+        credit_agreement_id: agreement._id,
+        customer_name: agreement.customer_name,
+        customer_phone: agreement.customer_phone,
+        amount_owed: amountOwed,
+        amount_paid: amountPaid,
+        due_date: agreement.end_date || (() => { const d = new Date(); d.setDate(d.getDate() + 90); return d; })(),
+        created_by: agreement.created_by,
+      });
+      created++;
+    }
+
+    if (created > 0) console.log(`[Backfill] Created ${created} debt record(s) from existing credit agreements`);
+  } catch (err) {
+    console.error('[Backfill] Credit agreement debts error:', err.message);
+  }
+};
 
 const startServer = async () => {
   app.listen(PORT, () => {
@@ -280,6 +314,7 @@ const startServer = async () => {
   try {
     await connectDB();
     await ensureSuperAdmin();
+    await backfillCreditAgreementDebts();
     startSchedulers();
   } catch (error) {
     console.error('Startup error:', error.message);
