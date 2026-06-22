@@ -2,13 +2,15 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiEye, FiEyeOff, FiUser, FiLock, FiArrowRight, FiZap } from 'react-icons/fi'
+import { FiEye, FiEyeOff, FiUser, FiLock, FiArrowRight } from 'react-icons/fi'
 import { login } from '../api/auth'
 import useAuthStore from '../store/authStore'
+import { useCompanyInfo } from '../hooks/useCompanyInfo'
 
 export default function Login() {
   const navigate = useNavigate()
   const { login: storeLogin } = useAuthStore()
+  const { data: company } = useCompanyInfo()
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -77,25 +79,35 @@ export default function Login() {
 
           {/* Logo + brand */}
           <div style={{ textAlign: 'center', marginBottom: 32 }}>
-            {/* Solar icon */}
-            <div style={{
-              width: 72, height: 72, borderRadius: 20, margin: '0 auto 20px',
-              background: 'linear-gradient(135deg, #f97316, #ea580c)',
-              boxShadow: '0 0 32px rgba(249,115,22,0.45)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <svg viewBox="0 0 40 40" width="42" height="42" fill="none">
-                <circle cx="20" cy="20" r="7.5" fill="white" opacity="0.95"/>
-                {[0,45,90,135,180,225,270,315].map(deg => (
-                  <line key={deg}
-                    x1={20 + 11 * Math.cos((deg * Math.PI) / 180)}
-                    y1={20 + 11 * Math.sin((deg * Math.PI) / 180)}
-                    x2={20 + 16 * Math.cos((deg * Math.PI) / 180)}
-                    y2={20 + 16 * Math.sin((deg * Math.PI) / 180)}
-                    stroke="white" strokeWidth="2" strokeLinecap="round"
-                  />
-                ))}
-              </svg>
+            {/* Company logo */}
+            <div style={{ margin: '0 auto 16px', width: 110, height: 110 }}>
+              {company?.logo_url ? (
+                <img
+                  src={company.logo_url}
+                  alt="DAN & DOR SOLAR"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 12 }}
+                />
+              ) : (
+                <div style={{
+                  width: 110, height: 110, borderRadius: 20,
+                  background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                  boxShadow: '0 0 32px rgba(249,115,22,0.45)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <svg viewBox="0 0 40 40" width="56" height="56" fill="none">
+                    <circle cx="20" cy="20" r="7.5" fill="white" opacity="0.95"/>
+                    {[0,45,90,135,180,225,270,315].map(deg => (
+                      <line key={deg}
+                        x1={20 + 11 * Math.cos((deg * Math.PI) / 180)}
+                        y1={20 + 11 * Math.sin((deg * Math.PI) / 180)}
+                        x2={20 + 16 * Math.cos((deg * Math.PI) / 180)}
+                        y2={20 + 16 * Math.sin((deg * Math.PI) / 180)}
+                        stroke="white" strokeWidth="2" strokeLinecap="round"
+                      />
+                    ))}
+                  </svg>
+                </div>
+              )}
             </div>
 
             <p style={{ color: '#f97316', fontSize: 11, fontWeight: 700, letterSpacing: '0.28em', textTransform: 'uppercase', marginBottom: 6 }}>

@@ -3,6 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
 import useNotificationStore from '../store/notificationStore'
 import { getRoleLabel, getRoleLevel } from '../utils/helpers'
+import { useCompanyInfo } from '../hooks/useCompanyInfo'
 import {
   FiHome, FiShoppingCart, FiPackage, FiTag, FiTruck, FiDollarSign,
   FiAlertCircle, FiUsers, FiShoppingBag, FiInbox, FiFileText,
@@ -43,6 +44,7 @@ const NAV_ITEMS = [
 export default function Layout() {
   const { user, logout } = useAuthStore()
   const { unreadCount } = useNotificationStore()
+  const { data: company } = useCompanyInfo()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -79,14 +81,28 @@ export default function Layout() {
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         {/* Logo */}
-        <div className="bg-orange-500 px-5 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-white font-black text-lg leading-tight tracking-wide">ITTEK SOLUTION</h1>
-            <p className="text-orange-100 text-xs font-medium leading-tight">DAN & DOR SOLAR</p>
+        <div className="bg-orange-500 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            {company?.logo_url ? (
+              <img
+                src={company.logo_url}
+                alt="Logo"
+                className="w-10 h-10 rounded-lg object-contain bg-white flex-shrink-0"
+                style={{ padding: 2 }}
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-lg bg-orange-600 flex items-center justify-center flex-shrink-0">
+                <span className="text-white font-black text-sm">D&D</span>
+              </div>
+            )}
+            <div className="min-w-0">
+              <h1 className="text-white font-black text-sm leading-tight tracking-wide truncate">ITTEK SOLUTION</h1>
+              <p className="text-orange-100 text-xs font-medium leading-tight truncate">DAN & DOR SOLAR</p>
+            </div>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden text-white hover:text-orange-200 p-1"
+            className="lg:hidden text-white hover:text-orange-200 p-1 flex-shrink-0"
           >
             <FiX size={20} />
           </button>
@@ -164,7 +180,11 @@ export default function Layout() {
               >
                 <FiMenu size={20} />
               </button>
-              <span className="font-black text-orange-500 text-base">ITTEK</span>
+              {company?.logo_url ? (
+                <img src={company.logo_url} alt="Logo" className="h-8 w-8 rounded-md object-contain" style={{ background: 'white', padding: 2 }} />
+              ) : (
+                <span className="font-black text-orange-500 text-base">ITTEK</span>
+              )}
               <h2 className="text-sm font-semibold text-gray-500 hidden sm:block">
                 {visibleNavItems.find(n => n.to === location.pathname)?.label || 'Dashboard'}
               </h2>

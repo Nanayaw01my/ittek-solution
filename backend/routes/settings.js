@@ -5,7 +5,10 @@ const path = require('path');
 const { authenticate } = require('../middleware/auth');
 const { requireLevel, requireRoles } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
-const { getSettings, updateSettings, updateEmailConfig, uploadLogo, clearAllData } = require('../controllers/settingsController');
+const { getSettings, updateSettings, updateEmailConfig, uploadLogo, clearAllData, getPublicSettings } = require('../controllers/settingsController');
+
+// Public route — no auth required
+router.get('/public', getPublicSettings);
 
 // Logo upload multer
 const storage = multer.diskStorage({

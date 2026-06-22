@@ -2,6 +2,26 @@ const Settings = require('../models/Settings');
 const multer = require('multer');
 const path = require('path');
 
+/**
+ * GET /api/settings/public  — no auth required, returns logo + company name only
+ */
+const getPublicSettings = async (req, res) => {
+  try {
+    const settings = await Settings.findOne().lean();
+    return res.status(200).json({
+      success: true,
+      data: {
+        company_name: settings?.company_name || 'DAN & DOR SOLAR COMPANY LIMITED',
+        logo_url: settings?.logo_url || null,
+        currency_symbol: settings?.currency_symbol || 'GHC',
+        company_phone: settings?.company_phone || '',
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 const CLEARABLE_MODELS = [
   '../models/Sale', '../models/Debt', '../models/Product', '../models/Category',
   '../models/Supplier', '../models/Purchase', '../models/Expense', '../models/WorkerPayment',
@@ -151,4 +171,4 @@ const clearAllData = async (req, res) => {
   }
 };
 
-module.exports = { getSettings, updateSettings, updateEmailConfig, uploadLogo, clearAllData };
+module.exports = { getSettings, updateSettings, updateEmailConfig, uploadLogo, clearAllData, getPublicSettings };
