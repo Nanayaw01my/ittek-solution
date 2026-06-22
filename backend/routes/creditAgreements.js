@@ -6,7 +6,7 @@ const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
   getCreditAgreements, createCreditAgreement, getCreditAgreement,
-  updateCreditAgreement, recordPayment, generatePDF,
+  updateCreditAgreement, recordPayment, generatePDF, deleteCreditAgreement,
 } = require('../controllers/creditAgreementsController');
 
 // Manager (2) and above
@@ -41,6 +41,12 @@ router.post(
   [body('amount').isNumeric({ min: 0.01 }).withMessage('Payment amount must be positive.')],
   auditLog('CREDIT_AGREEMENT_PAYMENT', (req) => ({ agreement_id: req.params.id, amount: req.body.amount })),
   recordPayment
+);
+
+router.delete(
+  '/:id',
+  auditLog('DELETE_CREDIT_AGREEMENT', (req) => ({ agreement_id: req.params.id })),
+  deleteCreditAgreement
 );
 
 module.exports = router;

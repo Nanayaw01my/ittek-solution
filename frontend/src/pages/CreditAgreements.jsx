@@ -2,9 +2,9 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEye, FiDownload, FiFileText } from 'react-icons/fi'
+import { FiPlus, FiEye, FiDownload, FiFileText, FiTrash2 } from 'react-icons/fi'
 import {
-  getCreditAgreements, createCreditAgreement, recordCreditPayment, generateCreditPDF
+  getCreditAgreements, createCreditAgreement, recordCreditPayment, generateCreditPDF, deleteCreditAgreement
 } from '../api/creditAgreements'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
@@ -445,6 +445,23 @@ export default function CreditAgreements() {
     queryFn: () => getCreditAgreements({ search: search || undefined, page, limit: 15 }).then(r => r.data),
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: (id) => deleteCreditAgreement(id),
+    onSuccess: () => {
+      toast.success('Credit agreement deleted')
+      queryClient.invalidateQueries(['credit-agreements'])
+      queryClient.invalidateQueries(['debts'])
+      queryClient.invalidateQueries(['debt-summary'])
+    },
+    onError: err => toast.error(err.response?.data?.message || 'Failed to delete'),
+  })
+
+  const handleDelete = (e, id, name) => {
+    e.stopPropagation()
+    if (!window.confirm(`Delete credit agreement for "${name}"?\nThis will also remove the linked debt record.`)) return
+    deleteMutation.mutate(id)
+  }
+
   const createMutation = useMutation({
     mutationFn: createCreditAgreement,
     onSuccess: () => {
@@ -489,10 +506,19 @@ export default function CreditAgreements() {
       header: 'Actions',
       key: '_id',
       render: (id, row) => (
-        <button onClick={e => { e.stopPropagation(); setViewAgreement(row) }}
-          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg">
-          <FiEye size={14} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={e => { e.stopPropagation(); setViewAgreement(row) }}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-blue-600 hover:bg-blue-50 border border-blue-100 rounded-lg text-xs font-bold transition-colors">
+            <FiEye size={11} /> View
+          </button>
+          <button
+            onClick={e => handleDelete(e, id, row.customer_name)}
+            disabled={deleteMutation.isPending}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg text-xs font-bold transition-colors disabled:opacity-40"
+          >
+            <FiTrash2 size={11} /> Delete
+          </button>
+        </div>
       ),
     },
   ]

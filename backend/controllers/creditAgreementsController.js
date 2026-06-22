@@ -199,7 +199,27 @@ const generatePDF = async (req, res) => {
   }
 };
 
+/**
+ * DELETE /api/credit-agreements/:id
+ * Removes the agreement and its linked debt record (if any).
+ */
+const deleteCreditAgreement = async (req, res) => {
+  try {
+    const agreement = await CreditAgreement.findById(req.params.id);
+    if (!agreement) return res.status(404).json({ success: false, message: 'Credit agreement not found.' });
+
+    // Remove the linked debt record too so it disappears from the Debts page
+    await Debt.deleteOne({ credit_agreement_id: agreement._id });
+    await CreditAgreement.findByIdAndDelete(req.params.id);
+
+    return res.status(200).json({ success: true, message: 'Credit agreement deleted.' });
+  } catch (err) {
+    console.error('Delete credit agreement error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 module.exports = {
   getCreditAgreements, createCreditAgreement, getCreditAgreement,
-  updateCreditAgreement, recordPayment, generatePDF,
+  updateCreditAgreement, recordPayment, generatePDF, deleteCreditAgreement,
 };
