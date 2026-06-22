@@ -203,9 +203,10 @@ function DebtRow({ debt, onPay, onDeleted }) {
               onClick={handleDelete}
               disabled={deleting}
               title="Delete debt record"
-              className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
+              className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg text-xs font-bold transition-colors disabled:opacity-40"
             >
-              <FiTrash2 size={14} />
+              <FiTrash2 size={11} />
+              {deleting ? 'Deleting…' : 'Delete'}
             </button>
           </div>
         </td>
