@@ -35,7 +35,7 @@ async function sendSMS(to, message) {
   }
 
   const payload = JSON.stringify({
-    sender: process.env.ARKESEL_SENDER_ID || 'DANDORSOLAR',
+    sender: process.env.ARKESEL_SENDER_ID || 'DANDORSOLTD',
     message,
     recipients,
   });
