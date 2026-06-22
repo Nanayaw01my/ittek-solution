@@ -4,7 +4,7 @@ const { body } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
-const { getDebts, getDebt, getDebtSummary, recordPayment, sendReminder, sendAllReminders } = require('../controllers/debtsController');
+const { getDebts, getDebt, getDebtSummary, recordPayment, sendReminder, sendAllReminders, deleteDebt } = require('../controllers/debtsController');
 
 // Manager (2) and above
 const managerPlus = [authenticate, requireLevel(2)];
@@ -36,6 +36,12 @@ router.post(
   '/:id/remind',
   auditLog('DEBT_REMIND', (req) => ({ debt_id: req.params.id })),
   sendReminder
+);
+
+router.delete(
+  '/:id',
+  auditLog('DELETE_DEBT', (req) => ({ debt_id: req.params.id })),
+  deleteDebt
 );
 
 module.exports = router;

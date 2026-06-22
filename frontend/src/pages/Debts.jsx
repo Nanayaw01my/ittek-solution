@@ -2,8 +2,8 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp, FiMessageSquare, FiSend } from 'react-icons/fi'
-import { getDebts, recordDebtPayment, getDebtSummary, sendDebtReminder, sendAllDebtReminders } from '../api/debts'
+import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp, FiMessageSquare, FiSend, FiTrash2 } from 'react-icons/fi'
+import { getDebts, recordDebtPayment, getDebtSummary, sendDebtReminder, sendAllDebtReminders, deleteDebt } from '../api/debts'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -103,9 +103,10 @@ function PaymentModal({ debt, onClose, isOpen }) {
   )
 }
 
-function DebtRow({ debt, onPay }) {
+function DebtRow({ debt, onPay, onDeleted }) {
   const [showHistory, setShowHistory] = useState(false)
   const [sending, setSending] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const remaining = Math.max(0, (debt.amount_owed || 0) - (debt.amount_paid || 0))
   const dueDateStr = debt.due_date ? debt.due_date.slice(0, 10) : null
@@ -123,6 +124,19 @@ function DebtRow({ debt, onPay }) {
       toast.error(err.response?.data?.message || 'Failed to send SMS')
     } finally {
       setSending(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete debt record for "${debt.customer_name}"? This cannot be undone.`)) return
+    setDeleting(true)
+    try {
+      await deleteDebt(debt._id)
+      toast.success(`Debt record for ${debt.customer_name} deleted`)
+      onDeleted()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete')
+      setDeleting(false)
     }
   }
 
@@ -185,6 +199,14 @@ function DebtRow({ debt, onPay }) {
                 {showHistory ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
               </button>
             )}
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              title="Delete debt record"
+              className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
+            >
+              <FiTrash2 size={14} />
+            </button>
           </div>
         </td>
       </tr>
@@ -208,11 +230,17 @@ function DebtRow({ debt, onPay }) {
 }
 
 export default function Debts() {
+  const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [payTarget, setPayTarget] = useState(null)
   const [page, setPage] = useState(1)
   const [sendingAll, setSendingAll] = useState(false)
+
+  const handleDebtDeleted = () => {
+    queryClient.invalidateQueries(['debts'])
+    queryClient.invalidateQueries(['debt-summary'])
+  }
 
   const handleRemindAll = async () => {
     if (sendingAll) return
@@ -329,7 +357,7 @@ export default function Debts() {
                 </tr>
               ) : (
                 debts.map(debt => (
-                  <DebtRow key={debt._id} debt={debt} onPay={setPayTarget} />
+                  <DebtRow key={debt._id} debt={debt} onPay={setPayTarget} onDeleted={handleDebtDeleted} />
                 ))
               )}
             </tbody>

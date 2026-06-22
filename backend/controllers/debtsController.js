@@ -261,4 +261,20 @@ const sendAllReminders = async (req, res) => {
   }
 };
 
-module.exports = { getDebts, getDebt, getDebtSummary, recordPayment, sendReminder, sendAllReminders };
+/**
+ * DELETE /api/debts/:id
+ */
+const deleteDebt = async (req, res) => {
+  try {
+    const debt = await Debt.findById(req.params.id);
+    if (!debt) return res.status(404).json({ success: false, message: 'Debt record not found.' });
+
+    await Debt.findByIdAndDelete(req.params.id);
+    return res.status(200).json({ success: true, message: 'Debt record deleted.' });
+  } catch (err) {
+    console.error('Delete debt error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+module.exports = { getDebts, getDebt, getDebtSummary, recordPayment, sendReminder, sendAllReminders, deleteDebt };
