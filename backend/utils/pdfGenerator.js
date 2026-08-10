@@ -69,7 +69,7 @@ const generateReceipt = async (saleData, options = {}) => {
         debt_amount, payment_method, payment_status, sale_date, user_id,
       } = saleData;
 
-      const cashierName = options.cashierName || user_id?.username || 'Staff';
+      const servedBy = options.servedBy || options.cashierName || user_id?.username || 'Staff';
       const companyName = options.companyName || 'DAN & DOR SOLAR COMPANY LIMITED';
       const companyAddress = options.companyAddress || 'Bogoso, Western Region';
       const companyPhone = options.companyPhone || '+233 598565277';
@@ -97,7 +97,7 @@ const generateReceipt = async (saleData, options = {}) => {
       doc.fontSize(7);
       doc.text(`Invoice: ${invoice_no}`);
       doc.text(`Date: ${new Date(sale_date || Date.now()).toLocaleString('en-GH')}`);
-      doc.text(`Cashier: ${cashierName}`);
+      doc.text(`Served by: ${servedBy}`);
       if (customer_name) doc.text(`Customer: ${customer_name}`);
       if (customer_phone) doc.text(`Phone: ${customer_phone}`);
 
@@ -137,6 +137,19 @@ const generateReceipt = async (saleData, options = {}) => {
       doc.text(`Status: ${(payment_status || '').toUpperCase()}`);
 
       doc.fontSize(7).text('--------------------------------', { align: 'center' });
+
+      // QR code — scans through to the public receipt page
+      if (options.qrBuffer) {
+        try {
+          const qrSize = 90;
+          doc.moveDown(0.3);
+          doc.image(options.qrBuffer, (226 - qrSize) / 2, doc.y, { width: qrSize });
+          doc.y += qrSize + 4;
+          doc.fontSize(6).text('Scan to view this receipt online', 10, doc.y, { width: W, align: 'center' });
+          doc.fontSize(7).text('--------------------------------', { align: 'center' });
+        } catch {}
+      }
+
       doc.fontSize(7).text('Thank you for your business!', { align: 'center' });
       doc.text('Powered by ITTEK Solution', { align: 'center' });
 

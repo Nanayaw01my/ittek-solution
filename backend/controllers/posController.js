@@ -7,6 +7,7 @@ const Settings = require('../models/Settings');
 const { generateInvoiceNo } = require('../utils/generateInvoice');
 const { queueEmail, templates } = require('../utils/email');
 const { generateReceipt } = require('../utils/pdfGenerator');
+const { withReceiptQr, buildReceiptUrl, generateReceiptQrBuffer } = require('../utils/receipt');
 
 /**
  * Calculate cart totals with discount.
@@ -113,7 +114,11 @@ const processSale = async (req, res) => {
     }
 
     const populated = await Sale.findById(sale._id).populate('user_id', 'username');
-    return res.status(201).json({ success: true, message: 'Sale processed successfully.', data: populated });
+    return res.status(201).json({
+      success: true,
+      message: 'Sale processed successfully.',
+      data: await withReceiptQr(populated),
+    });
   } catch (err) {
     console.error('Process sale error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
@@ -221,7 +226,7 @@ const processShortPayment = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: 'Short payment processed. Debt created.',
-      data: { sale, debt },
+      data: { sale: await withReceiptQr(sale), debt },
     });
   } catch (err) {
     console.error('Short payment error:', err.message);
@@ -315,7 +320,7 @@ const getSale = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
-    return res.status(200).json({ success: true, data: sale });
+    return res.status(200).json({ success: true, data: await withReceiptQr(sale) });
   } catch (err) {
     console.error('Get sale error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
@@ -330,10 +335,18 @@ const generateSaleReceipt = async (req, res) => {
     const sale = await Sale.findById(req.params.id).populate('user_id', 'username');
     if (!sale) return res.status(404).json({ success: false, message: 'Sale not found.' });
 
+    if (!sale.receipt_token) {
+      sale.receipt_token = require('../utils/receipt').generateReceiptToken();
+      await sale.save();
+    }
+
     const settings = await Settings.findOne().lean();
+    const receiptUrl = buildReceiptUrl(sale.receipt_token);
     const pdfBuffer = await generateReceipt(sale.toObject(), {
       logoUrl: settings?.logo_url,
-      cashierName: sale.user_id?.username,
+      servedBy: sale.user_id?.username,
+      receiptUrl,
+      qrBuffer: await generateReceiptQrBuffer(receiptUrl),
       companyName: settings?.company_name,
       companyAddress: settings?.company_address,
       companyPhone: settings?.company_phone,

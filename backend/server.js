@@ -132,6 +132,7 @@ app.get('/health', (req, res) => {
 
 // ─── STEP 8: API ROUTES ───────────────────────────────────────────────────────
 
+app.use('/api/public', require('./routes/publicReceipt'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/products', require('./routes/products'));

@@ -24,6 +24,7 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.7",
     "pdfkit": "^0.14.0",
+    "qrcode": "^1.5.4",
     "uuid": "^9.0.0"
   },
   "devDependencies": {

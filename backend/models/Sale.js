@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { generateReceiptToken } = require('../utils/receipt');
 
 const SaleItemSchema = new mongoose.Schema(
   {
@@ -22,6 +23,16 @@ const SaleSchema = new mongoose.Schema(
       type: String,
       unique: true,
       required: true,
+    },
+    // Random public handle for the receipt page. Never expose the ObjectId in
+    // receipt URLs — ObjectIds are guessable and would leak other customers'
+    // receipts to anyone who increments one.
+    receipt_token: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+      default: generateReceiptToken,
     },
     user_id: {
       type: mongoose.Schema.Types.ObjectId,

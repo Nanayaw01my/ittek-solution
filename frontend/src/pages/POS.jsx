@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart } from 'react-icons/fi'
+import { FaWhatsapp } from 'react-icons/fa'
 import { getProducts } from '../api/products'
 import { createSale, createShortPayment } from '../api/pos'
 import { getSettings } from '../api/settings'
@@ -9,6 +10,7 @@ import useAuthStore from '../store/authStore'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import useOnlineStatus from '../hooks/useOnlineStatus'
 import { queueSale, saveProductsCache, getCachedProducts } from '../utils/offlineQueue'
+import { buildWhatsAppReceiptLink } from '../utils/phone'
 import Modal from '../components/Modal'
 import { format, addDays } from 'date-fns'
 
@@ -91,7 +93,7 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
   // Support both snake_case (online API) and camelCase (offline)
   const invoiceNo = saleData.invoice_no || saleData.invoiceNo || saleData._id?.slice(-8).toUpperCase()
   const saleDate = saleData.sale_date || saleData.createdAt
-  const cashierName = saleData.user_id?.username || saleData.cashier?.username || saleData.soldBy?.username || 'Staff'
+  const servedBy = saleData.user_id?.username || saleData.cashier?.username || saleData.soldBy?.username || 'Staff'
   const items = saleData.items || []
   const subtotal = parseFloat(saleData.subtotal || 0)
   const cartTotal = parseFloat(saleData.cart_total || saleData.grandTotal || saleData.total_amount || 0)
@@ -100,6 +102,19 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
   const change = parseFloat(saleData.change || 0)
   const balanceDue = parseFloat(saleData.debt_amount || saleData.balanceDue || 0)
   const paymentMethod = (saleData.payment_method || saleData.paymentMethod || '').replace(/_/g, ' ').toUpperCase()
+  const customerPhone = saleData.customer_phone || saleData.customer?.phone || ''
+  const qrCode = saleData.qr_code || null
+  const receiptUrl = saleData.receipt_url || null
+
+  // Null when the number isn't a valid Ghana number — the button stays disabled
+  // rather than opening a chat with a bad recipient.
+  const whatsappLink = buildWhatsAppReceiptLink({
+    phone: customerPhone,
+    invoiceNo,
+    total: cartTotal,
+    receiptUrl,
+    companyName,
+  })
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Sale Receipt" size="md">
@@ -131,8 +146,8 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
               <span>{format(new Date(saleDate || new Date()), 'dd/MM/yyyy HH:mm')}</span>
             </div>
             <div className="flex justify-between">
-              <span>Cashier:</span>
-              <span>{cashierName}</span>
+              <span>Served by:</span>
+              <span>{servedBy}</span>
             </div>
             {(saleData.customer_name || saleData.customer?.name) && (
               <div className="flex justify-between">
@@ -211,13 +226,48 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
             )}
           </div>
 
+          {/* QR code — generated server-side, links to the public receipt page */}
+          {qrCode && (
+            <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
+              <img src={qrCode} alt="Receipt QR code" className="h-28 w-28 mx-auto" />
+              <p className="text-[10px] text-gray-500 mt-1">Scan to view this receipt online</p>
+            </div>
+          )}
+
           <div className="text-center text-xs text-gray-500">
             <p className="font-semibold">Thank you for your business!</p>
             <p>Powered by ITTEK Solution</p>
           </div>
         </div>
 
-        <div className="flex gap-3 mt-4 no-print">
+        <div className="mt-4 no-print space-y-3">
+          {customerPhone && (
+            whatsappLink ? (
+              <a
+                href={whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#25D366] hover:bg-[#1eb457] text-white rounded-xl font-semibold text-sm transition-colors"
+              >
+                <FaWhatsapp size={18} /> Send to WhatsApp
+              </a>
+            ) : (
+              <div>
+                <button
+                  disabled
+                  title="Not a valid Ghana phone number"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-200 text-gray-400 rounded-xl font-semibold text-sm cursor-not-allowed"
+                >
+                  <FaWhatsapp size={18} /> Send to WhatsApp
+                </button>
+                <p className="text-xs text-gray-400 mt-1 text-center">
+                  {customerPhone} isn't a valid Ghana number — check it and re-enter.
+                </p>
+              </div>
+            )
+          )}
+
+        <div className="flex gap-3">
           <button
             onClick={() => window.print()}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
@@ -230,6 +280,7 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
           >
             Close
           </button>
+        </div>
         </div>
       </div>
     </Modal>

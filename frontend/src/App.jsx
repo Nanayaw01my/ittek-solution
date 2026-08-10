@@ -27,6 +27,7 @@ import Notifications from './pages/Notifications'
 import Search from './pages/Search'
 import Refunds from './pages/Refunds'
 import SalesHistory from './pages/SalesHistory'
+import PublicReceipt from './pages/PublicReceipt'
 
 const ROLE_LEVELS = { 'Sales': 1, 'Manager': 2, 'CEO': 3, 'Super Admin': 4 }
 
@@ -63,6 +64,8 @@ export default function App() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
+      {/* Public receipt — what the QR code on a receipt opens. No login. */}
+      <Route path="/r/:token" element={<PublicReceipt />} />
 
       {/* Root redirect */}
       <Route path="/" element={<RootRedirect />} />
