@@ -57,6 +57,7 @@ if (process.env.NODE_ENV !== 'test') {
 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
+  'https://ittek-solution.vercel.app',
   'https://dandorsolar.online',
   'https://www.dandorsolar.online',
   'https://ittek-solution-1.onrender.com',

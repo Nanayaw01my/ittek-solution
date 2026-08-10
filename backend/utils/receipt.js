@@ -10,7 +10,7 @@ const generateReceiptToken = () => crypto.randomBytes(16).toString('hex');
 
 /** Public base URL of the app (where the React receipt page is served from). */
 const getPublicBaseUrl = () =>
-  (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || 'https://dandorsolar.online').replace(/\/+$/, '');
+  (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || 'https://ittek-solution.vercel.app').replace(/\/+$/, '');
 
 /** Public, login-free URL for a receipt. */
 const buildReceiptUrl = (token) => `${getPublicBaseUrl()}/r/${token}`;
