@@ -22,7 +22,6 @@ export default {
     confirm: 'Confirm',
     reason: 'Reason',
     notes: 'Notes',
-    language: 'Language',
     currency: 'Currency',
   },
   pos: {

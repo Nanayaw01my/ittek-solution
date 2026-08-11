@@ -39,7 +39,7 @@ const updateSettings = async (req, res) => {
       company_name, company_address, company_phone, company_email,
       tax_rate, low_stock_alert, receipt_header, receipt_footer,
       currency_symbol, notification_settings, logo_url,
-      base_currency, currencies, default_language, loyalty_settings, fraud_settings,
+      base_currency, currencies, loyalty_settings, fraud_settings,
     } = req.body;
 
     let settings = await Settings.findOne();
@@ -72,7 +72,6 @@ const updateSettings = async (req, res) => {
         is_active: c.is_active !== false,
       }));
     }
-    if (default_language !== undefined) settings.default_language = default_language;
     if (loyalty_settings !== undefined) {
       settings.loyalty_settings = { ...(settings.loyalty_settings || {}), ...loyalty_settings };
     }

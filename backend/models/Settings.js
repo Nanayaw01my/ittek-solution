@@ -82,9 +82,6 @@ const SettingsSchema = new mongoose.Schema(
       ],
     },
 
-    // ─── Language ──────────────────────────────────────────────────────────
-    default_language: { type: String, enum: ['en', 'fr'], default: 'en' },
-
     // ─── Loyalty ───────────────────────────────────────────────────────────
     loyalty_settings: {
       enabled: { type: Boolean, default: true },
