@@ -17,10 +17,17 @@ const PORT = process.env.PORT || 5000;
 // Trust Render's reverse proxy so rate limiting uses real client IPs
 app.set('trust proxy', 1);
 
-// Ensure uploads directory exists
-const uploadsPath = path.resolve(process.env.UPLOAD_PATH || './uploads');
-if (!fs.existsSync(uploadsPath)) {
-  fs.mkdirSync(uploadsPath, { recursive: true });
+// Ensure uploads directory exists.
+// On Vercel the bundle is read-only — only /tmp is writable — so fall back
+// there, and never let a failed mkdir take the whole function down at import.
+const defaultUploadPath = process.env.VERCEL ? '/tmp/uploads' : './uploads';
+const uploadsPath = path.resolve(process.env.VERCEL ? defaultUploadPath : (process.env.UPLOAD_PATH || defaultUploadPath));
+try {
+  if (!fs.existsSync(uploadsPath)) {
+    fs.mkdirSync(uploadsPath, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`Could not create uploads dir at ${uploadsPath}: ${err.message}`);
 }
 
 // ─── STEP 1: SERVE STATIC FILES FIRST (before CORS/rate-limit) ───────────────
@@ -271,8 +278,13 @@ process.on('SIGINT', () => process.exit(0));
 if (require.main === module) {
   startServer();
 } else {
-  // Serverless (Vercel): connect DB on cold start, no app.listen()
-  connectDB().catch(err => console.error('DB connect error:', err.message));
+  // Serverless (Vercel): connect DB on cold start, no app.listen().
+  // ensureSuperAdmin() also has to run here — without it a Vercel-only
+  // deployment never gets its default admin or Settings document, and every
+  // login fails with "Invalid credentials".
+  connectDB()
+    .then(() => ensureSuperAdmin())
+    .catch((err) => console.error('Serverless startup error:', err.message));
 }
 
 module.exports = app;
