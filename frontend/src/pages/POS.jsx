@@ -9,7 +9,10 @@ import { getSettings } from '../api/settings'
 import useAuthStore from '../store/authStore'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import useOnlineStatus from '../hooks/useOnlineStatus'
-import { queueSale, saveProductsCache, getCachedProducts } from '../utils/offlineQueue'
+import {
+  queueSale, saveProductsCache, getCachedProducts,
+  saveSettingsCache, getCachedSettings, saveLocalHold, removeLocalHold,
+} from '../utils/offlineQueue'
 import { buildWhatsAppReceiptLink } from '../utils/phone'
 import Modal from '../components/Modal'
 import SplitPaymentModal from '../components/SplitPaymentModal'
@@ -466,8 +469,15 @@ export default function POS() {
     queryKey: ['settings'],
     queryFn: () => getSettings().then(r => r.data),
     staleTime: 5 * 60 * 1000,
+    enabled: isOnline,
+    retry: false,
   })
-  const settings = settingsData || {}
+  // Offline the receipt still needs the shop name, address, phone and logo.
+  const settings = settingsData || getCachedSettings() || {}
+
+  useEffect(() => {
+    if (settingsData) saveSettingsCache(settingsData)
+  }, [settingsData])
 
   const { data: productsData, isLoading: productsLoading, refetch: refetchProducts, isFetching: productsFetching } = useQuery({
     queryKey: ['pos-products', debouncedSearch],
@@ -619,7 +629,8 @@ export default function POS() {
 
   const handleHoldCart = () => {
     if (cart.length === 0) { toast.error('Cart is empty'); return }
-    holdMutation.mutate({
+
+    const holdPayload = {
       items: cart.map(i => ({
         product_id: i._id,
         variant_sku: i.variant_sku,
@@ -633,7 +644,23 @@ export default function POS() {
       label: customerName || undefined,
       discount: parseFloat(discountValue) || 0,
       discount_type: discountType === 'percent' ? 'percentage' : 'fixed',
-    })
+    }
+
+    // Offline the hold stays on this device. Another till genuinely cannot see
+    // a cart parked on a machine with no connection, so we say so plainly
+    // rather than pretending it was shared.
+    if (!isOnline) {
+      const saved = saveLocalHold(holdPayload)
+      if (saved) {
+        toast.success(`Held on this device as ${saved.reference}`)
+        clearCart()
+      } else {
+        toast.error('Could not hold cart')
+      }
+      return
+    }
+
+    holdMutation.mutate(holdPayload)
   }
 
   /** Load a parked cart back into the till. */
@@ -653,7 +680,9 @@ export default function POS() {
     setCustomerPhone(hold.customer_phone || '')
     setDiscountValue(hold.discount ? String(hold.discount) : '')
     setDiscountType(hold.discount_type === 'percentage' ? 'percent' : 'fixed')
-    setResumedHoldId(hold._id)
+    // A device-local hold has no server record to clear on completion.
+    setResumedHoldId(hold.local ? null : hold._id)
+    if (hold.local) removeLocalHold(hold._id)
     toast.success(`Resumed ${hold.reference}`)
   }
 
@@ -674,8 +703,20 @@ export default function POS() {
 
   /** Complete the sale with an explicit multi-tender breakdown. */
   const handleSplitConfirm = (payments) => {
-    saleMutation.mutate(buildSalePayload({ payments }))
+    const payload = buildSalePayload({ payments })
     setShowSplitModal(false)
+
+    // Same offline path as a normal sale — a split sale must queue rather than
+    // fail when there is no connection.
+    if (!isOnline) {
+      queueSale('sale', payload)
+      setLastSale(buildOfflineReceipt({ payments }))
+      setShowReceipt(true)
+      clearCart()
+      toast.success('Offline split sale queued — will sync when connected')
+      return
+    }
+    saleMutation.mutate(payload)
   }
 
   const shortPayMutation = useMutation({
@@ -909,13 +950,15 @@ export default function POS() {
             />
           </div>
 
-          {/* Loyalty — looked up live from the phone number */}
-          <LoyaltyPanel
+          {/* Loyalty — looked up live from the phone number. Offline the panel
+              hides itself, since the balance lives on the server and two tills
+              could otherwise spend the same points. */}
+          {isOnline && <LoyaltyPanel
             phone={customerPhone}
             cartTotal={grandTotal}
             redeemPoints={redeemPoints}
             onRedeemChange={setRedeemPoints}
-          />
+          />}
 
           {/* Payment Method — Split sits alongside the single tenders rather
               than as another full-width button competing for vertical space */}

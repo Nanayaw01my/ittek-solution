@@ -7,17 +7,29 @@ import Modal from './Modal'
 import { useTranslation } from '../i18n'
 import { formatCurrency } from '../utils/helpers'
 import { getHolds, deleteHold } from '../api/pos'
+import useOnlineStatus from '../hooks/useOnlineStatus'
+import { getLocalHolds, removeLocalHold } from '../utils/offlineQueue'
 
 /** Parked carts, ready to be resumed at the till. */
 export default function HeldSalesModal({ isOpen, onClose, onResume }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const isOnline = useOnlineStatus()
+  const [localHolds, setLocalHolds] = React.useState([])
 
-  const { data: holds = [], isLoading } = useQuery({
+  const { data: serverHolds = [], isLoading } = useQuery({
     queryKey: ['held-sales'],
     queryFn: () => getHolds().then((r) => r.data),
-    enabled: isOpen,
+    enabled: isOpen && isOnline,
+    retry: false,
   })
+
+  React.useEffect(() => {
+    if (isOpen) setLocalHolds(getLocalHolds())
+  }, [isOpen])
+
+  // Device-local holds first — they are the ones only this till can see.
+  const holds = [...localHolds, ...serverHolds]
 
   const removeMutation = useMutation({
     mutationFn: (id) => deleteHold(id),
@@ -50,13 +62,18 @@ export default function HeldSalesModal({ isOpen, onClose, onResume }) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{hold.reference}</span>
+                      {hold.local && (
+                        <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                          THIS DEVICE
+                        </span>
+                      )}
                       <p className="font-semibold text-sm text-gray-800 truncate">
                         {hold.label || hold.customer_name || '—'}
                       </p>
                     </div>
                     <p className="text-xs text-gray-500 mt-0.5">
                       {hold.items?.length || 0} item(s) · {formatCurrency(total)} ·{' '}
-                      {hold.held_by?.username || '—'} ·{' '}
+                      {hold.held_by?.username || (hold.local ? 'offline' : '—')} ·{' '}
                       {hold.createdAt ? format(new Date(hold.createdAt), 'dd/MM HH:mm') : ''}
                     </p>
                     {hold.note && <p className="text-xs text-gray-400 italic mt-0.5 truncate">{hold.note}</p>}
@@ -68,7 +85,15 @@ export default function HeldSalesModal({ isOpen, onClose, onResume }) {
                     <FiPlay size={12} /> {t('pos.resume')}
                   </button>
                   <button
-                    onClick={() => removeMutation.mutate(hold._id)}
+                    onClick={() => {
+                      if (hold.local) {
+                        removeLocalHold(hold._id)
+                        setLocalHolds(getLocalHolds())
+                        toast.success('Held sale discarded')
+                        return
+                      }
+                      removeMutation.mutate(hold._id)
+                    }}
                     className="text-red-400 hover:text-red-600 p-1.5 transition-colors"
                     aria-label="Discard held sale"
                   >

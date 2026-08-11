@@ -3,6 +3,10 @@ const Debt = require('../models/Debt');
 const Product = require('../models/Product');
 const Notification = require('../models/Notification');
 const { generateInvoiceNo } = require('../utils/generateInvoice');
+const { buildSaleItems, deductStock, validatePayments } = require('../utils/saleHelpers');
+const { normaliseGhanaPhone } = require('../utils/phone');
+const loyalty = require('../utils/loyalty');
+const fraud = require('../utils/fraudDetection');
 
 const calcTotals = (items, discount = 0, discount_type = 'fixed') => {
   const subtotal = items.reduce((sum, i) => sum + i.total, 0);
@@ -13,25 +17,19 @@ const calcTotals = (items, discount = 0, discount_type = 'fixed') => {
 };
 
 const processSingleSale = async (type, payload, userId, username) => {
-  const { customer_name, customer_phone, cart, discount = 0, discount_type = 'fixed', payment_method, amount_paid } = payload;
+  const {
+    customer_name, customer_phone, cart, discount = 0, discount_type = 'fixed',
+    payment_method, amount_paid, payments, redeem_points = 0,
+  } = payload;
 
   if (!cart || !cart.length) throw new Error('Empty cart');
 
-  const items = [];
-  for (const cartItem of cart) {
-    const product = await Product.findById(cartItem.product_id);
-    if (!product || !product.is_active) throw new Error(`Product not found: ${cartItem.product_id}`);
-    if (product.quantity < cartItem.quantity) throw new Error(`Insufficient stock for ${product.name}`);
-    items.push({
-      product_id: product._id,
-      product_name: product.name,
-      barcode: product.barcode,
-      quantity: cartItem.quantity,
-      unit_price: product.selling_price,
-      cost_price: product.cost_price,
-      total: product.selling_price * cartItem.quantity,
-    });
-  }
+  // Use the same builder as the online till so variants are resolved and
+  // priced identically — an offline sale of a variant must not sync back as
+  // the parent product at the parent's price.
+  const built = await buildSaleItems(cart);
+  if (built.error) throw new Error(built.error);
+  const items = built.items;
 
   const { subtotal, cart_total } = calcTotals(items, discount, discount_type);
   const invoice_no = await generateInvoiceNo();
@@ -41,16 +39,19 @@ const processSingleSale = async (type, payload, userId, username) => {
     const paidAmount = Math.min(Number(amount_paid) || 0, cart_total);
     const debtAmount = cart_total - paidAmount;
 
+    const tender = validatePayments(payments, paidAmount, payment_method || 'cash');
+    if (tender.error) throw new Error(tender.error);
+
     const sale = await Sale.create({
       invoice_no, user_id: userId, customer_name, customer_phone,
       subtotal, discount, discount_type,
       total_amount: paidAmount, cart_total, debt_amount: debtAmount,
-      payment_status: 'partial', payment_method, items,
+      payment_status: 'partial', payment_method: tender.method, payments: tender.payments,
+      loyalty_phone: normaliseGhanaPhone(customer_phone) || undefined,
+      items,
     });
 
-    for (const item of items) {
-      await Product.findByIdAndUpdate(item.product_id, { $inc: { quantity: -item.quantity } });
-    }
+    await deductStock(items);
 
     const debt = await Debt.create({
       sale_id: sale._id, customer_name, customer_phone,
@@ -67,16 +68,41 @@ const processSingleSale = async (type, payload, userId, username) => {
   }
 
   // Regular full-payment sale
+  const tender = validatePayments(payments, cart_total, payment_method || 'cash');
+  if (tender.error) throw new Error(tender.error);
+
   const sale = await Sale.create({
     invoice_no, user_id: userId, customer_name, customer_phone,
     subtotal, discount, discount_type,
     total_amount: cart_total, cart_total, debt_amount: 0,
-    payment_status: 'paid', payment_method, items,
+    payment_status: 'paid', payment_method: tender.method, payments: tender.payments,
+    loyalty_phone: normaliseGhanaPhone(customer_phone) || undefined,
+    items,
   });
 
-  for (const item of items) {
-    await Product.findByIdAndUpdate(item.product_id, { $inc: { quantity: -item.quantity } });
+  await deductStock(items);
+
+  // Points are awarded on sync, not offline, because the balance lives on the
+  // server and two tills could otherwise spend the same points.
+  try {
+    const result = await loyalty.applySale({
+      rawPhone: customer_phone,
+      customerName: customer_name,
+      amountPaid: cart_total,
+      redeemPoints: Math.max(0, Math.floor(Number(redeem_points) || 0)),
+      sale,
+      userId,
+    });
+    if (result.points_earned || result.points_redeemed) {
+      sale.points_earned = result.points_earned;
+      sale.points_redeemed = result.points_redeemed;
+      await sale.save();
+    }
+  } catch (err) {
+    console.error('Loyalty sync error:', err.message);
   }
+
+  fraud.checkSale(sale, { _id: userId, username }).catch(() => {});
 
   await Notification.create({
     user_id: null, type: 'info', title: 'Sale synced (offline)',

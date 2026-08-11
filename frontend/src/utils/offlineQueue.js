@@ -56,7 +56,63 @@ export const clearAllOfflineData = () => {
     localStorage.removeItem(QUEUE_KEY)
     localStorage.removeItem(PRODUCTS_KEY)
     localStorage.removeItem(CACHE_TIME_KEY)
+    localStorage.removeItem('ittek_settings_cache')
+    localStorage.removeItem('ittek_local_holds')
   } catch {}
 }
 
 export const getPendingCount = () => getPendingQueue().length
+
+// ─── Settings cache ──────────────────────────────────────────────────────────
+// The receipt needs the shop name, address, phone and logo. Offline those come
+// from here instead of the server, so a queued sale still prints properly.
+
+const SETTINGS_KEY = 'ittek_settings_cache'
+
+export const saveSettingsCache = (settings) => {
+  try {
+    if (settings) localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+  } catch {}
+}
+
+export const getCachedSettings = () => {
+  try {
+    return JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null')
+  } catch { return null }
+}
+
+// ─── Local held sales ────────────────────────────────────────────────────────
+// Holds are normally server-side so any till can resume them. Offline they are
+// kept here and marked `local: true`; they stay on this device until it is back
+// online, which is the honest behaviour — another till genuinely cannot see a
+// cart parked on a machine with no connection.
+
+const LOCAL_HOLDS_KEY = 'ittek_local_holds'
+
+export const getLocalHolds = () => {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_HOLDS_KEY) || '[]')
+  } catch { return [] }
+}
+
+export const saveLocalHold = (hold) => {
+  try {
+    const holds = getLocalHolds()
+    const entry = {
+      ...hold,
+      _id: `local_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      reference: `HOLD-L${String(Date.now()).slice(-5)}`,
+      local: true,
+      createdAt: new Date().toISOString(),
+    }
+    holds.push(entry)
+    localStorage.setItem(LOCAL_HOLDS_KEY, JSON.stringify(holds))
+    return entry
+  } catch { return null }
+}
+
+export const removeLocalHold = (id) => {
+  try {
+    localStorage.setItem(LOCAL_HOLDS_KEY, JSON.stringify(getLocalHolds().filter(h => h._id !== id)))
+  } catch {}
+}
