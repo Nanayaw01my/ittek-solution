@@ -58,7 +58,7 @@ function ProductCard({ product, onAdd }) {
 
 function CartItem({ item, onUpdateQty, onRemove }) {
   return (
-    <div className="flex items-center gap-2 py-3 border-b border-gray-100 last:border-0">
+    <div className="flex items-center gap-2 py-2 border-b border-gray-100 last:border-0">
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-gray-800 truncate">{item.name}</p>
         <p className="text-xs text-orange-600 font-medium">{formatCurrency(item.selling_price)} each</p>
@@ -806,8 +806,9 @@ export default function POS() {
           )}
         </div>
 
-        {/* Cart Items */}
-        <div className="flex-1 overflow-y-auto px-4 min-h-0">
+        {/* Cart Items — min height guarantees the list stays visible no
+            matter how many actions sit below it */}
+        <div className="flex-1 overflow-y-auto px-4 min-h-[9rem]">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-gray-300">
               <FiShoppingCart size={32} className="mb-2" />
@@ -890,7 +891,8 @@ export default function POS() {
             onRedeemChange={setRedeemPoints}
           />
 
-          {/* Payment Method */}
+          {/* Payment Method — Split sits alongside the single tenders rather
+              than as another full-width button competing for vertical space */}
           <div className="flex gap-1">
             {PAYMENT_METHODS.map(m => (
               <button
@@ -902,6 +904,17 @@ export default function POS() {
                 {m}
               </button>
             ))}
+            <button
+              onClick={() => {
+                if (cart.length === 0) { toast.error('Cart is empty'); return }
+                setShowSplitModal(true)
+              }}
+              disabled={cart.length === 0}
+              title={t('pos.split')}
+              className="flex-1 py-2 rounded-lg text-xs font-bold bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
+            >
+              <FiCreditCard size={12} /> Split
+            </button>
           </div>
 
           {/* Amount Paid & Change */}
@@ -939,50 +952,38 @@ export default function POS() {
               )}
             </button>
 
-            <button
-              onClick={() => {
-                if (cart.length === 0) { toast.error('Cart is empty'); return }
-                setShowSplitModal(true)
-              }}
-              disabled={cart.length === 0 || saleMutation.isPending}
-              className="w-full py-2.5 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-1"
-            >
-              <FiCreditCard size={14} /> {t('pos.split').toUpperCase()}
-            </button>
-
-            <div className="flex gap-2">
+            {/* Secondary actions — one compact row so the cart list keeps
+                the vertical space instead of the buttons */}
+            <div className="grid grid-cols-4 gap-1.5">
               <button
                 onClick={handleHoldCart}
                 disabled={cart.length === 0 || holdMutation.isPending}
-                className="flex-1 py-2.5 bg-slate-500 hover:bg-slate-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-1"
+                className="py-2 bg-slate-500 hover:bg-slate-600 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-[11px] flex flex-col items-center gap-0.5"
               >
-                <FiPause size={14} /> {t('pos.hold').toUpperCase()}
+                <FiPause size={13} /> Hold
               </button>
               <button
                 onClick={() => setShowHeldModal(true)}
-                className="flex-1 py-2.5 border-2 border-slate-300 text-slate-600 hover:bg-slate-50 font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-1"
+                className="py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 font-bold rounded-lg transition-colors text-[11px] flex flex-col items-center gap-0.5"
               >
-                <FiList size={14} /> {t('pos.heldSales').toUpperCase()}
+                <FiList size={13} /> Held
               </button>
-            </div>
-
-            <div className="flex gap-2">
               <button
                 onClick={() => {
                   if (cart.length === 0) { toast.error('Cart is empty'); return }
                   setShowShortModal(true)
                 }}
                 disabled={cart.length === 0}
-                className="flex-1 py-2.5 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-1"
+                className="py-2 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-[11px] flex flex-col items-center gap-0.5"
               >
-                <FiAlertTriangle size={14} /> SHORT PAY
+                <FiAlertTriangle size={13} /> Short
               </button>
               <button
                 onClick={clearCart}
                 disabled={cart.length === 0}
-                className="flex-1 py-2.5 border-2 border-red-300 text-red-500 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold rounded-xl transition-colors text-sm"
+                className="py-2 border border-red-300 text-red-500 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold rounded-lg transition-colors text-[11px] flex flex-col items-center gap-0.5"
               >
-                CLEAR
+                <FiTrash2 size={13} /> Clear
               </button>
             </div>
           </div>
