@@ -34,7 +34,13 @@ api.interceptors.response.use(
     return response
   },
   (error) => {
-    if (error.response?.status === 401) {
+    // Pages that are meant to work without a login. A 401 from a background
+    // request must never bounce a customer reading their receipt to the login
+    // form — they have no account and nothing to log in with.
+    const PUBLIC_PATHS = [/^\/r\//, /^\/login$/]
+    const onPublicPage = PUBLIC_PATHS.some((re) => re.test(window.location.pathname))
+
+    if (error.response?.status === 401 && !onPublicPage) {
       localStorage.removeItem('ittek_token')
       localStorage.removeItem('ittek_auth')
       if (window.location.pathname !== '/login') {

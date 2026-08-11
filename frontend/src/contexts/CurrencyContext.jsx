@@ -15,10 +15,17 @@ const FALLBACK = [{ code: 'GHS', symbol: 'GH₵', rate: 1, is_active: true }]
  * drift can never corrupt stored totals.
  */
 export function CurrencyProvider({ children }) {
+  // /api/settings requires auth. Without this guard the provider fires on
+  // public pages too (the receipt page), 401s, and trips the axios interceptor
+  // into redirecting a customer to the login form.
+  const isAuthenticated = !!localStorage.getItem('ittek_token')
+
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: () => getSettings().then((r) => r.data),
     staleTime: 5 * 60 * 1000,
+    enabled: isAuthenticated,
+    retry: false,
   })
 
   const [displayCode, setDisplayCode] = useState(() => localStorage.getItem(STORAGE_KEY) || '')
