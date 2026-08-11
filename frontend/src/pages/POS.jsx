@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart, FiCreditCard, FiPause, FiList } from 'react-icons/fi'
+import { FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart, FiCreditCard, FiPause, FiList, FiRefreshCw } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
 import { getProducts } from '../api/products'
 import { createSale, createShortPayment } from '../api/pos'
@@ -469,7 +469,7 @@ export default function POS() {
   })
   const settings = settingsData || {}
 
-  const { data: productsData, isLoading: productsLoading } = useQuery({
+  const { data: productsData, isLoading: productsLoading, refetch: refetchProducts, isFetching: productsFetching } = useQuery({
     queryKey: ['pos-products', debouncedSearch],
     // Always use GET /products — pass 'search' param when the user is typing
     queryFn: () => getProducts({
@@ -657,6 +657,21 @@ export default function POS() {
     toast.success(`Resumed ${hold.reference}`)
   }
 
+  /**
+   * Pull fresh stock from the server. Another till selling the same goods is
+   * the normal case in a busy shop, so the cashier needs a way to re-check
+   * quantities without reloading the whole app.
+   */
+  const handleRefresh = async () => {
+    if (!isOnline) {
+      toast.error('Offline — showing cached products')
+      return
+    }
+    await refetchProducts()
+    queryClient.invalidateQueries({ queryKey: ['held-sales'] })
+    toast.success('Products refreshed')
+  }
+
   /** Complete the sale with an explicit multi-tender breakdown. */
   const handleSplitConfirm = (payments) => {
     saleMutation.mutate(buildSalePayload({ payments }))
@@ -757,17 +772,28 @@ export default function POS() {
               Offline — showing cached products. Sales will sync when reconnected.
             </div>
           )}
-          <div className="relative">
-            <FiSearch size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              ref={searchRef}
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              placeholder="Search product or scan barcode (Enter to add)..."
-              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50"
-            />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <FiSearch size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                ref={searchRef}
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Search product or scan barcode (Enter to add)..."
+                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50"
+              />
+            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={productsFetching || !isOnline}
+              title={isOnline ? 'Refresh products and stock levels' : 'Offline — cached products'}
+              aria-label="Refresh products"
+              className="px-3.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-600 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+            >
+              <FiRefreshCw size={16} className={productsFetching ? 'animate-spin' : ''} />
+            </button>
           </div>
         </div>
 
