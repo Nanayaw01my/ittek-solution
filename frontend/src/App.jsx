@@ -1,6 +1,7 @@
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import useAuthStore from './store/authStore'
+import useDocumentTitle from './hooks/useDocumentTitle'
 import Layout from './components/Layout'
 import LoadingSpinner from './components/LoadingSpinner'
 
@@ -62,6 +63,9 @@ function RootRedirect() {
 }
 
 export default function App() {
+  // Window/tab title follows the current screen
+  useDocumentTitle()
+
   return (
     <Routes>
       {/* Public */}
