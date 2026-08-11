@@ -12,6 +12,7 @@ import useOnlineStatus from '../hooks/useOnlineStatus'
 import {
   queueSale, saveProductsCache, getCachedProducts,
   saveSettingsCache, getCachedSettings, saveLocalHold, removeLocalHold,
+  cacheLogo, getCachedLogo, nextOfflineInvoiceNo,
 } from '../utils/offlineQueue'
 import { buildWhatsAppReceiptLink } from '../utils/phone'
 import Modal from '../components/Modal'
@@ -132,7 +133,13 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
           {/* Header */}
           <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
             {logoUrl && (
-              <img src={logoUrl} alt="Company Logo" className="h-14 mx-auto mb-2 object-contain" />
+              <img
+                src={logoUrl}
+                alt=""
+                className="h-14 mx-auto mb-2 object-contain"
+                // An unreachable logo should leave a clean gap, not alt text
+                onError={(e) => { e.currentTarget.style.display = 'none' }}
+              />
             )}
             <p className="font-black text-base">{companyName || 'DAN & DOR SOLAR COMPANY LIMITED'}</p>
             <p className="text-xs text-gray-500">{companyAddress || 'Bogoso, Western Region'}</p>
@@ -262,6 +269,16 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
               </div>
             )}
           </div>
+
+          {/* Offline there is no QR: the token and the public page both come
+              from the server, and the sale hasn't reached it yet. */}
+          {!qrCode && saleData.offline && (
+            <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
+              <p className="text-[10px] text-gray-500">
+                QR code and online receipt will be available once this sale syncs.
+              </p>
+            </div>
+          )}
 
           {/* QR code — generated server-side, links to the public receipt page */}
           {qrCode && (
@@ -476,8 +493,15 @@ export default function POS() {
   const settings = settingsData || getCachedSettings() || {}
 
   useEffect(() => {
-    if (settingsData) saveSettingsCache(settingsData)
+    if (settingsData) {
+      saveSettingsCache(settingsData)
+      // Grab the logo bytes while we still have a connection.
+      cacheLogo(settingsData.logo_url)
+    }
   }, [settingsData])
+
+  // Offline the Cloudinary URL is unreachable, so use the cached copy.
+  const receiptLogo = isOnline ? (settings.logo_url || getCachedLogo()) : (getCachedLogo() || null)
 
   const { data: productsData, isLoading: productsLoading, refetch: refetchProducts, isFetching: productsFetching } = useQuery({
     queryKey: ['pos-products', debouncedSearch],
@@ -736,7 +760,7 @@ export default function POS() {
   })
 
   const buildOfflineReceipt = (extras = {}) => ({
-    invoiceNo: `OFFLINE-${Date.now()}`,
+    invoiceNo: nextOfflineInvoiceNo(),
     items: cart.map(i => ({ name: i.name, quantity: i.qty, unitPrice: i.selling_price, total: i.selling_price * i.qty })),
     subtotal,
     discount: discountAmount,
@@ -1097,7 +1121,7 @@ export default function POS() {
         isOpen={showReceipt}
         onClose={() => setShowReceipt(false)}
         saleData={lastSale}
-        logoUrl={settings.logo_url}
+        logoUrl={receiptLogo}
         companyName={settings.company_name}
         companyAddress={settings.company_address}
         companyPhone={settings.company_phone}
