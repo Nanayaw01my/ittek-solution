@@ -49,6 +49,23 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+/**
+ * Reload once when a new service worker takes over.
+ *
+ * The PWA is set to autoUpdate, but that only installs the new build in the
+ * background — the tab keeps running the old bundle until the *next* load.
+ * That one-reload lag is why a fresh deploy looks like "nothing changed".
+ * Reloading on controllerchange makes a deploy land immediately instead.
+ */
+if ('serviceWorker' in navigator) {
+  let reloading = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return // guard against a reload loop
+    reloading = true
+    window.location.reload()
+  })
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
