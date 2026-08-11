@@ -14,6 +14,7 @@ import { logout as apiLogout } from '../api/auth'
 import toast from 'react-hot-toast'
 import OfflineBanner from './OfflineBanner'
 import LocaleSwitcher from './LocaleSwitcher'
+import InstallAppButton from './InstallAppButton'
 
 const NAV_ITEMS = [
   // All logged-in users
@@ -187,7 +188,10 @@ export default function Layout() {
                 <FiSearch size={18} />
               </NavLink>
 
-              {/* Language + display currency */}
+              {/* Install as a desktop app — hides itself once installed */}
+              <InstallAppButton compact />
+
+              {/* Display currency */}
               <LocaleSwitcher />
 
               {/* Notification bell */}
