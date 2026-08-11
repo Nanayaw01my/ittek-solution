@@ -273,8 +273,21 @@ const ensureSuperAdmin = async () => {
     if (!settingsExists) {
       await Settings.create(COMPANY_DEFAULTS);
     } else {
-      // Always sync company defaults on startup
-      await Settings.updateOne({}, { $set: COMPANY_DEFAULTS });
+      // Seed ONLY the fields that are still empty. This used to $set every
+      // default on every boot, which silently reverted anything an admin saved
+      // — a new logo would disappear the next time the service restarted, and
+      // on Render's free tier that happens whenever it idles down.
+      const missing = {};
+      for (const [key, value] of Object.entries(COMPANY_DEFAULTS)) {
+        const current = settingsExists[key];
+        if (current === undefined || current === null || String(current).trim() === '') {
+          missing[key] = value;
+        }
+      }
+      if (Object.keys(missing).length > 0) {
+        await Settings.updateOne({ _id: settingsExists._id }, { $set: missing });
+        console.log(`Seeded missing company settings: ${Object.keys(missing).join(', ')}`);
+      }
     }
   } catch (error) {
     console.error('Super admin init error:', error.message);
