@@ -39,7 +39,26 @@ export const normaliseGhanaPhone = (raw) => {
 export const isValidGhanaPhone = (raw) => normaliseGhanaPhone(raw) !== null
 
 /**
- * Build the wa.me deep link for a receipt.
+ * Rough "is this a phone/tablet" check.
+ * Only used to pick which WhatsApp surface to open — never for anything
+ * where being wrong would break the flow.
+ */
+const isMobileDevice = () => {
+  if (typeof navigator === 'undefined') return false
+  return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|Mobile/i.test(navigator.userAgent)
+}
+
+/**
+ * Build the WhatsApp deep link for a receipt.
+ *
+ * Note: no deep link can auto-send — WhatsApp only lets us pre-fill the
+ * message, the staff member still taps send. That is a WhatsApp restriction,
+ * not something we can work around without the paid Business Cloud API.
+ *
+ * On phones we use wa.me, which opens the app straight on the chat. On desktop
+ * wa.me shows an "Open app / Continue to WhatsApp Web" landing page first, so
+ * we skip it by going directly to WhatsApp Web.
+ *
  * Returns null when the number isn't a usable Ghana number — callers should
  * disable the button rather than open a broken chat.
  */
@@ -58,5 +77,9 @@ export const buildWhatsAppReceiptLink = ({ phone, invoiceNo, total, receiptUrl, 
     lines.push('', `View your receipt online: ${receiptUrl}`)
   }
 
-  return `https://wa.me/${msisdn}?text=${encodeURIComponent(lines.join('\n'))}`
+  const text = encodeURIComponent(lines.join('\n'))
+
+  return isMobileDevice()
+    ? `https://wa.me/${msisdn}?text=${text}`
+    : `https://web.whatsapp.com/send?phone=${msisdn}&text=${text}`
 }
