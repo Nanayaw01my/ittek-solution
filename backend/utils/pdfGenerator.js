@@ -67,6 +67,7 @@ const generateReceipt = async (saleData, options = {}) => {
         invoice_no, customer_name, customer_phone, items,
         subtotal, discount, discount_type, cart_total, total_amount,
         debt_amount, payment_method, payment_status, sale_date, user_id,
+        payments, points_earned, points_redeemed, loyalty_discount,
       } = saleData;
 
       const servedBy = options.servedBy || options.cashierName || user_id?.username || 'Staff';
@@ -133,8 +134,24 @@ const generateReceipt = async (saleData, options = {}) => {
         doc.text(`Paid:                  GHC${Number(total_amount || 0).toFixed(2)}`);
         doc.font('Helvetica-Bold').text(`BALANCE DUE:           GHC${Number(debt_amount).toFixed(2)}`).font('Helvetica');
       }
+      if (loyalty_discount > 0) {
+        doc.text(`Points discount:      -GHC${Number(loyalty_discount).toFixed(2)}`);
+      }
       doc.text(`Payment: ${(payment_method || '').replace(/_/g, ' ').toUpperCase()}`);
+      // Split tenders, itemised so the customer can see how it was settled
+      if (Array.isArray(payments) && payments.length > 1) {
+        payments.forEach((p) => {
+          const label = `  ${(p.method || '').replace(/_/g, ' ')}`.padEnd(22);
+          doc.text(`${label}GHC${Number(p.amount).toFixed(2)}`);
+        });
+      }
       doc.text(`Status: ${(payment_status || '').toUpperCase()}`);
+
+      if (points_earned > 0 || points_redeemed > 0) {
+        doc.fontSize(7).text('--------------------------------', { align: 'center' });
+        if (points_redeemed > 0) doc.text(`Points redeemed: ${points_redeemed}`);
+        if (points_earned > 0) doc.text(`Points earned: ${points_earned}`);
+      }
 
       doc.fontSize(7).text('--------------------------------', { align: 'center' });
 

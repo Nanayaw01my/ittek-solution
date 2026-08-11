@@ -8,6 +8,11 @@ const { generateInvoiceNo } = require('../utils/generateInvoice');
 const { queueEmail, templates } = require('../utils/email');
 const { generateReceipt } = require('../utils/pdfGenerator');
 const { withReceiptQr, buildReceiptUrl, generateReceiptQrBuffer } = require('../utils/receipt');
+const { buildSaleItems, deductStock, validatePayments } = require('../utils/saleHelpers');
+const loyalty = require('../utils/loyalty');
+const fraud = require('../utils/fraudDetection');
+const { fromBase } = require('../utils/currency');
+const { normaliseGhanaPhone } = require('../utils/phone');
 
 /**
  * Calculate cart totals with discount.
@@ -34,38 +39,47 @@ const processSale = async (req, res) => {
       return res.status(400).json({ success: false, message: errors.array()[0].msg });
     }
 
-    const { customer_name, customer_phone, cart, discount = 0, discount_type = 'fixed', payment_method } = req.body;
+    const {
+      customer_name, customer_phone, cart, discount = 0, discount_type = 'fixed',
+      payment_method, payments, redeem_points = 0, currency, held_sale_id,
+    } = req.body;
 
     if (!cart || cart.length === 0) {
       return res.status(400).json({ success: false, message: 'Cart cannot be empty.' });
     }
 
-    // Validate stock and build items
-    const items = [];
-    for (const cartItem of cart) {
-      const product = await Product.findById(cartItem.product_id);
-      if (!product || !product.is_active) {
-        return res.status(400).json({ success: false, message: `Product not found: ${cartItem.product_id}` });
+    // Resolve variants, validate stock, price the lines
+    const built = await buildSaleItems(cart);
+    if (built.error) {
+      return res.status(400).json({ success: false, message: built.error });
+    }
+    const items = built.items;
+
+    const { subtotal, cart_total: totalBeforeLoyalty } = calcTotals(items, discount, discount_type);
+
+    // Loyalty redemption comes off before payment is collected
+    let loyaltyDiscount = 0;
+    let pointsToRedeem = Math.max(0, Math.floor(Number(redeem_points) || 0));
+    if (pointsToRedeem > 0) {
+      const cfg = await loyalty.getLoyaltySettings();
+      const account = await loyalty.getAccount(customer_phone);
+      const allowed = loyalty.maxRedeemable(account, totalBeforeLoyalty, cfg);
+      if (pointsToRedeem > allowed.points) {
+        pointsToRedeem = allowed.points;
       }
-      if (product.quantity < cartItem.quantity) {
-        return res.status(400).json({
-          success: false,
-          message: `Insufficient stock for ${product.name}. Available: ${product.quantity}`,
-        });
-      }
-      items.push({
-        product_id: product._id,
-        product_name: product.name,
-        barcode: product.barcode,
-        quantity: cartItem.quantity,
-        unit_price: product.selling_price,
-        cost_price: product.cost_price,
-        total: product.selling_price * cartItem.quantity,
-      });
+      loyaltyDiscount = loyalty.pointsToCurrency(pointsToRedeem, cfg);
     }
 
-    const { subtotal, cart_total } = calcTotals(items, discount, discount_type);
+    const cart_total = Math.max(0, Number((totalBeforeLoyalty - loyaltyDiscount).toFixed(2)));
+
+    // Split payments must add up to what is due
+    const tender = validatePayments(payments, cart_total, payment_method || 'cash');
+    if (tender.error) {
+      return res.status(400).json({ success: false, message: tender.error });
+    }
+
     const invoice_no = await generateInvoiceNo();
+    const display = currency ? await fromBase(cart_total, currency) : null;
 
     // Create sale
     const sale = await Sale.create({
@@ -80,14 +94,47 @@ const processSale = async (req, res) => {
       cart_total,
       debt_amount: 0,
       payment_status: 'paid',
-      payment_method,
+      payment_method: tender.method,
+      payments: tender.payments,
+      currency: display?.currency || 'GHS',
+      exchange_rate: display?.rate || 1,
+      display_total: display?.amount ?? cart_total,
+      loyalty_phone: normaliseGhanaPhone(customer_phone) || undefined,
+      loyalty_discount: loyaltyDiscount,
       items,
     });
 
-    // Deduct stock
-    for (const item of items) {
-      await Product.findByIdAndUpdate(item.product_id, { $inc: { quantity: -item.quantity } });
+    await deductStock(items);
+
+    // Loyalty: redeem what was used, earn on what was paid
+    try {
+      const result = await loyalty.applySale({
+        rawPhone: customer_phone,
+        customerName: customer_name,
+        amountPaid: cart_total,
+        redeemPoints: pointsToRedeem,
+        sale,
+        userId: req.user._id,
+      });
+      if (result.points_earned || result.points_redeemed) {
+        sale.points_earned = result.points_earned;
+        sale.points_redeemed = result.points_redeemed;
+        await sale.save();
+      }
+    } catch (loyaltyErr) {
+      // A loyalty failure must never void a completed sale.
+      console.error('Loyalty error:', loyaltyErr.message);
     }
+
+    // Clear the held cart this sale came from, if any
+    if (held_sale_id) {
+      try {
+        await require('../models/HeldSale').findByIdAndDelete(held_sale_id);
+      } catch (_) {}
+    }
+
+    // Anomaly scan — never blocks the sale
+    fraud.checkSale(sale, req.user).catch(() => {});
 
     // Create notification
     await Notification.create({
@@ -139,33 +186,23 @@ const processShortPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Customer name required for debt.' });
     }
 
-    // Validate stock and build items
-    const items = [];
-    for (const cartItem of cart) {
-      const product = await Product.findById(cartItem.product_id);
-      if (!product || !product.is_active) {
-        return res.status(400).json({ success: false, message: `Product not found: ${cartItem.product_id}` });
-      }
-      if (product.quantity < cartItem.quantity) {
-        return res.status(400).json({
-          success: false,
-          message: `Insufficient stock for ${product.name}. Available: ${product.quantity}`,
-        });
-      }
-      items.push({
-        product_id: product._id,
-        product_name: product.name,
-        barcode: product.barcode,
-        quantity: cartItem.quantity,
-        unit_price: product.selling_price,
-        cost_price: product.cost_price,
-        total: product.selling_price * cartItem.quantity,
-      });
+    // Resolve variants, validate stock, price the lines
+    const built = await buildSaleItems(cart);
+    if (built.error) {
+      return res.status(400).json({ success: false, message: built.error });
     }
+    const items = built.items;
 
     const { subtotal, cart_total } = calcTotals(items, discount, discount_type);
     const paidAmount = Math.min(Number(amount_paid) || 0, cart_total);
     const debtAmount = cart_total - paidAmount;
+
+    // The split breakdown applies to the amount actually handed over
+    const tender = validatePayments(req.body.payments, paidAmount, payment_method || 'cash');
+    if (tender.error) {
+      return res.status(400).json({ success: false, message: tender.error });
+    }
+
     const invoice_no = await generateInvoiceNo();
 
     // Create sale
@@ -181,14 +218,15 @@ const processShortPayment = async (req, res) => {
       cart_total,
       debt_amount: debtAmount,
       payment_status: 'partial',
-      payment_method,
+      payment_method: tender.method,
+      payments: tender.payments,
+      loyalty_phone: normaliseGhanaPhone(customer_phone) || undefined,
       items,
     });
 
-    // Deduct stock
-    for (const item of items) {
-      await Product.findByIdAndUpdate(item.product_id, { $inc: { quantity: -item.quantity } });
-    }
+    await deductStock(items);
+
+    fraud.checkSale(sale, req.user).catch(() => {});
 
     // Create Debt record
     const debt = await Debt.create({

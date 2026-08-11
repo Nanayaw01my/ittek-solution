@@ -108,7 +108,10 @@ export default function PublicReceipt() {
           {receipt.items.map((item, i) => (
             <div key={i} className="flex justify-between text-xs py-1.5 border-b border-gray-50 last:border-0">
               <div className="flex-1 pr-2">
-                <p className="font-medium text-gray-800">{item.product_name}</p>
+                <p className="font-medium text-gray-800">
+                  {item.product_name}
+                  {item.variant_name ? <span className="text-gray-500"> — {item.variant_name}</span> : null}
+                </p>
                 <p className="text-gray-400">{money(item.unit_price)} each</p>
               </div>
               <span className="w-10 text-center text-gray-700">{item.quantity}</span>
@@ -137,10 +140,28 @@ export default function PublicReceipt() {
             <span className="text-gray-500">Amount paid</span>
             <span className="text-gray-800">{money(receipt.amount_paid)}</span>
           </div>
+          {receipt.loyalty_discount > 0 && (
+            <div className="flex justify-between text-amber-700">
+              <span>Points discount</span>
+              <span>-{money(receipt.loyalty_discount)}</span>
+            </div>
+          )}
+          {(receipt.payment_splits || []).length > 1 && (receipt.payment_splits || []).map((p, i) => (
+            <div key={i} className="flex justify-between text-gray-500 pl-3">
+              <span className="capitalize">{(p.method || '').replace(/_/g, ' ')}</span>
+              <span>{money(p.amount)}</span>
+            </div>
+          ))}
           {receipt.balance_due > 0 && (
             <div className="flex justify-between font-bold text-red-600">
               <span>Balance due</span>
               <span>{money(receipt.balance_due)}</span>
+            </div>
+          )}
+          {receipt.points_earned > 0 && (
+            <div className="flex justify-between text-amber-700 font-semibold">
+              <span>Points earned</span>
+              <span>+{receipt.points_earned}</span>
             </div>
           )}
         </div>

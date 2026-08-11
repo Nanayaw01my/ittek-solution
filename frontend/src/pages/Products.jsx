@@ -11,9 +11,11 @@ import Table from '../components/Table'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Badge from '../components/Badge'
 import ImageUpload from '../components/ImageUpload'
+import VariantEditor from '../components/VariantEditor'
 
 function ProductForm({ product, categories = [], suppliers = [], onSubmit, loading }) {
   const [imageUrl, setImageUrl] = useState(product?.image_url || null)
+  const [variants, setVariants] = useState(product?.variants || [])
   const { register, handleSubmit, watch, formState: { errors } } = useForm({
     defaultValues: product || {}
   })
@@ -22,7 +24,7 @@ function ProductForm({ product, categories = [], suppliers = [], onSubmit, loadi
   const margin = costPrice > 0 ? (((sellingPrice - costPrice) / costPrice) * 100).toFixed(1) : 0
 
   return (
-    <form onSubmit={handleSubmit(data => onSubmit({ ...data, image_url: imageUrl || undefined }))} className="p-5 space-y-4">
+    <form onSubmit={handleSubmit(data => onSubmit({ ...data, image_url: imageUrl || undefined, variants }))} className="p-5 space-y-4">
       <ImageUpload
         value={imageUrl}
         onChange={setImageUrl}
@@ -129,6 +131,8 @@ function ProductForm({ product, categories = [], suppliers = [], onSubmit, loadi
           />
         </div>
       </div>
+
+      <VariantEditor variants={variants} onChange={setVariants} />
 
       <div className="flex gap-3 pt-2">
         <button
@@ -350,6 +354,19 @@ export default function Products() {
               quantity: parseInt(formData.quantity) || 0,
               low_stock_level: parseInt(formData.lowStockLevel) || 5,
               image_url: formData.image_url || undefined,
+              // Empty rows are dropped; a product with no variants stays a
+              // plain single-SKU product.
+              variants: (formData.variants || [])
+                .filter(v => v.name?.trim() && v.sku?.trim())
+                .map(v => ({
+                  sku: v.sku.trim(),
+                  name: v.name.trim(),
+                  barcode: v.barcode?.trim() || undefined,
+                  cost_price: parseFloat(v.cost_price) || 0,
+                  selling_price: parseFloat(v.selling_price) || 0,
+                  quantity: parseInt(v.quantity) || 0,
+                  is_active: v.is_active !== false,
+                })),
             }
             if (editProduct) {
               updateMutation.mutate({ id: editProduct._id, data: payload })

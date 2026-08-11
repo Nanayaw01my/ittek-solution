@@ -153,12 +153,27 @@ const getProduct = async (req, res) => {
  */
 const updateProduct = async (req, res) => {
   try {
-    const product = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
+    // Load-assign-save rather than findByIdAndUpdate: the pre('save') hook is
+    // what keeps has_variants and the rolled-up stock quantity correct, and
+    // findByIdAndUpdate bypasses it.
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
+
+    if (Array.isArray(req.body.variants)) {
+      const skus = req.body.variants.map((v) => String(v.sku || '').trim()).filter(Boolean);
+      if (new Set(skus).size !== skus.length) {
+        return res.status(400).json({ success: false, message: 'Variant SKUs must be unique within a product.' });
+      }
+    }
+
+    Object.assign(product, req.body);
+    await product.save();
+
+    const populated = await Product.findById(product._id)
       .populate('category_id', 'name')
       .populate('supplier_id', 'name');
 
-    if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
-    return res.status(200).json({ success: true, message: 'Product updated.', data: product });
+    return res.status(200).json({ success: true, message: 'Product updated.', data: populated });
   } catch (err) {
     console.error('Update product error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });

@@ -6,6 +6,7 @@ const { auditLog } = require('../middleware/auditLogger');
 const {
   processSale, processShortPayment, getSales, getTodaySales, getSale, generateSaleReceipt,
 } = require('../controllers/posController');
+const { holdSale, getHolds, getHold, deleteHold } = require('../controllers/holdController');
 
 // All authenticated roles can access POS
 router.use(authenticate);
@@ -33,6 +34,12 @@ router.post(
   auditLog('PROCESS_SHORT_PAYMENT'),
   processShortPayment
 );
+
+// Hold / resume — declared before /sales/:id so "holds" is never read as an id
+router.post('/holds', auditLog('HOLD_SALE'), holdSale);
+router.get('/holds', getHolds);
+router.get('/holds/:id', getHold);
+router.delete('/holds/:id', auditLog('DELETE_HELD_SALE'), deleteHold);
 
 router.get('/sales/today', getTodaySales);
 router.get('/sales', getSales);

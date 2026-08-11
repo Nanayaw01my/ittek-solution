@@ -7,11 +7,13 @@ import {
   FiHome, FiShoppingCart, FiPackage, FiTag, FiTruck, FiDollarSign,
   FiAlertCircle, FiUsers, FiShoppingBag, FiInbox, FiFileText,
   FiBarChart2, FiSettings, FiDatabase, FiBell, FiSearch, FiLogOut,
-  FiMenu, FiX, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList
+  FiMenu, FiX, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
+  FiArchive, FiShield, FiGlobe
 } from 'react-icons/fi'
 import { logout as apiLogout } from '../api/auth'
 import toast from 'react-hot-toast'
 import OfflineBanner from './OfflineBanner'
+import LocaleSwitcher from './LocaleSwitcher'
 
 const NAV_ITEMS = [
   // All logged-in users
@@ -25,6 +27,8 @@ const NAV_ITEMS = [
   { to: '/debts', label: 'Debts', icon: FiAlertCircle, minLevel: 2 },
   { to: '/stock-requests', label: 'Stock Requests', icon: FiInbox, minLevel: 2 },
   { to: '/credit-agreements', label: 'Credit Agreements', icon: FiCreditCard, minLevel: 2 },
+  { to: '/layaways', label: 'Layaways', icon: FiArchive, minLevel: 1 },
+  { to: '/fraud-alerts', label: 'Fraud Alerts', icon: FiShield, minLevel: 2 },
   { to: '/products', label: 'Products', icon: FiPackage, minLevel: 3 },
   { to: '/categories', label: 'Categories', icon: FiTag, minLevel: 3 },
   { to: '/suppliers', label: 'Suppliers', icon: FiTruck, minLevel: 3 },
@@ -182,6 +186,9 @@ export default function Layout() {
               >
                 <FiSearch size={18} />
               </NavLink>
+
+              {/* Language + display currency */}
+              <LocaleSwitcher />
 
               {/* Notification bell */}
               <NavLink

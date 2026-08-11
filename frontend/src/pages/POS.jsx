@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart } from 'react-icons/fi'
+import { FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart, FiCreditCard, FiPause, FiList } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
 import { getProducts } from '../api/products'
 import { createSale, createShortPayment } from '../api/pos'
@@ -12,6 +12,12 @@ import useOnlineStatus from '../hooks/useOnlineStatus'
 import { queueSale, saveProductsCache, getCachedProducts } from '../utils/offlineQueue'
 import { buildWhatsAppReceiptLink } from '../utils/phone'
 import Modal from '../components/Modal'
+import SplitPaymentModal from '../components/SplitPaymentModal'
+import HeldSalesModal from '../components/HeldSalesModal'
+import VariantPickerModal from '../components/VariantPickerModal'
+import LoyaltyPanel from '../components/LoyaltyPanel'
+import { holdSale } from '../api/pos'
+import { useTranslation } from '../i18n'
 import { format, addDays } from 'date-fns'
 
 const PAYMENT_METHODS = ['Cash', 'Card', 'Mobile Money']
@@ -59,14 +65,14 @@ function CartItem({ item, onUpdateQty, onRemove }) {
       </div>
       <div className="flex items-center gap-1">
         <button
-          onClick={() => onUpdateQty(item._id, item.qty - 1)}
+          onClick={() => onUpdateQty(item.lineId || item._id, item.qty - 1)}
           className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-orange-100 hover:text-orange-600 flex items-center justify-center transition-colors"
         >
           <FiMinus size={13} />
         </button>
         <span className="w-8 text-center text-sm font-bold">{item.qty}</span>
         <button
-          onClick={() => onUpdateQty(item._id, item.qty + 1)}
+          onClick={() => onUpdateQty(item.lineId || item._id, item.qty + 1)}
           disabled={item.qty >= item.quantity}
           className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-orange-100 hover:text-orange-600 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -75,7 +81,7 @@ function CartItem({ item, onUpdateQty, onRemove }) {
       </div>
       <p className="text-sm font-bold text-gray-900 w-20 text-right">{formatCurrency(item.selling_price * item.qty)}</p>
       <button
-        onClick={() => onRemove(item._id)}
+        onClick={() => onRemove(item.lineId || item._id)}
         className="text-red-400 hover:text-red-600 p-1 rounded transition-colors"
       >
         <FiTrash2 size={14} />
@@ -173,7 +179,10 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
             </div>
             {items.map((item, i) => (
               <div key={i} className="text-xs mb-1">
-                <p className="font-medium">{item.product_name || item.product?.name || item.name}</p>
+                <p className="font-medium">
+                  {item.product_name || item.product?.name || item.name}
+                  {item.variant_name ? <span className="text-gray-500"> — {item.variant_name}</span> : null}
+                </p>
                 <div className="flex justify-between text-gray-600">
                   <span className="flex-1"></span>
                   <span className="w-8 text-center">{item.quantity}</span>
@@ -196,6 +205,12 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
                 <span>-{cur}{discountAmount.toFixed(2)}</span>
               </div>
             )}
+            {parseFloat(saleData.loyalty_discount || 0) > 0 && (
+              <div className="flex justify-between text-amber-700">
+                <span>Points discount:</span>
+                <span>-{cur}{parseFloat(saleData.loyalty_discount).toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-black text-base">
               <span>TOTAL:</span>
               <span>{cur}{cartTotal.toFixed(2)}</span>
@@ -208,6 +223,13 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
               <span>Method:</span>
               <span className="font-bold">{paymentMethod}</span>
             </div>
+            {/* Multi-tender breakdown */}
+            {(saleData.payments || []).length > 1 && (saleData.payments || []).map((p, i) => (
+              <div key={i} className="flex justify-between text-gray-500 pl-3">
+                <span className="capitalize">{(p.method || '').replace(/_/g, ' ')}</span>
+                <span>{cur}{parseFloat(p.amount || 0).toFixed(2)}</span>
+              </div>
+            ))}
             <div className="flex justify-between">
               <span>Amount Paid:</span>
               <span className="font-bold">{cur}{amountPaid.toFixed(2)}</span>
@@ -222,6 +244,18 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
               <div className="flex justify-between text-red-600 font-bold">
                 <span>BALANCE DUE:</span>
                 <span>{cur}{balanceDue.toFixed(2)}</span>
+              </div>
+            )}
+            {saleData.points_redeemed > 0 && (
+              <div className="flex justify-between text-amber-700">
+                <span>Points redeemed:</span>
+                <span>{saleData.points_redeemed}</span>
+              </div>
+            )}
+            {saleData.points_earned > 0 && (
+              <div className="flex justify-between text-amber-700 font-semibold">
+                <span>Points earned:</span>
+                <span>+{saleData.points_earned}</span>
               </div>
             )}
           </div>
@@ -412,6 +446,12 @@ export default function POS() {
   const [showShortModal, setShowShortModal] = useState(false)
   const [showReceipt, setShowReceipt] = useState(false)
   const [lastSale, setLastSale] = useState(null)
+  const [showSplitModal, setShowSplitModal] = useState(false)
+  const [showHeldModal, setShowHeldModal] = useState(false)
+  const [variantProduct, setVariantProduct] = useState(null)
+  const [redeemPoints, setRedeemPoints] = useState(0)
+  const [resumedHoldId, setResumedHoldId] = useState(null)
+  const { t } = useTranslation()
 
   // Auto-focus search
   useEffect(() => { searchRef.current?.focus() }, [])
@@ -474,17 +514,37 @@ export default function POS() {
   const paidAmount = parseFloat(amountPaid || 0)
   const change = Math.max(0, paidAmount - grandTotal)
 
-  const addToCart = useCallback((product) => {
+  // A cart line is a product + variant pair, so two sizes of the same shirt
+  // are separate lines rather than colliding on the product id.
+  const addToCart = useCallback((product, variant = null) => {
+    if (product.has_variants && !variant) {
+      setVariantProduct(product)
+      return
+    }
+
+    const lineId = variant ? `${product._id}:${variant.sku}` : product._id
+    const stock = variant ? variant.quantity : product.quantity
+    const price = variant ? variant.selling_price : product.selling_price
+
     setCart(prev => {
-      const exists = prev.find(i => i._id === product._id)
+      const exists = prev.find(i => i.lineId === lineId)
       if (exists) {
-        if (exists.qty >= product.quantity) {
+        if (exists.qty >= stock) {
           toast.error('Not enough stock')
           return prev
         }
-        return prev.map(i => i._id === product._id ? { ...i, qty: i.qty + 1 } : i)
+        return prev.map(i => i.lineId === lineId ? { ...i, qty: i.qty + 1 } : i)
       }
-      return [...prev, { ...product, qty: 1 }]
+      return [...prev, {
+        ...product,
+        lineId,
+        variant_sku: variant?.sku,
+        variant_name: variant?.name,
+        name: variant ? `${product.name} — ${variant.name}` : product.name,
+        selling_price: price,
+        quantity: stock,
+        qty: 1,
+      }]
     })
   }, [])
 
@@ -494,7 +554,7 @@ export default function POS() {
       return
     }
     setCart(prev => prev.map(i => {
-      if (i._id === id) {
+      if ((i.lineId || i._id) === id) {
         if (newQty > i.quantity) { toast.error('Not enough stock'); return i }
         return { ...i, qty: newQty }
       }
@@ -503,7 +563,7 @@ export default function POS() {
   }
 
   const removeFromCart = (id) => {
-    setCart(prev => prev.filter(i => i._id !== id))
+    setCart(prev => prev.filter(i => (i.lineId || i._id) !== id))
   }
 
   const clearCart = () => {
@@ -512,13 +572,18 @@ export default function POS() {
     setAmountPaid('')
     setCustomerName('')
     setCustomerPhone('')
+    setRedeemPoints(0)
+    setResumedHoldId(null)
   }
 
   const buildSalePayload = (extras = {}) => ({
     cart: cart.map(i => ({
       product_id: i._id,
+      variant_sku: i.variant_sku,
       quantity: i.qty,
     })),
+    redeem_points: redeemPoints || 0,
+    held_sale_id: resumedHoldId || undefined,
     discount: parseFloat(discountValue) || 0,
     discount_type: discountType === 'percent' ? 'percentage' : 'fixed',
     payment_method: paymentMethod.toLowerCase().replace(' ', '_'),
@@ -541,6 +606,62 @@ export default function POS() {
       toast.error(err.response?.data?.message || 'Sale failed')
     },
   })
+
+  const holdMutation = useMutation({
+    mutationFn: (data) => holdSale(data),
+    onSuccess: (res) => {
+      toast.success(`Cart held as ${res.data?.reference || 'hold'}`)
+      clearCart()
+      queryClient.invalidateQueries({ queryKey: ['held-sales'] })
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not hold cart'),
+  })
+
+  const handleHoldCart = () => {
+    if (cart.length === 0) { toast.error('Cart is empty'); return }
+    holdMutation.mutate({
+      items: cart.map(i => ({
+        product_id: i._id,
+        variant_sku: i.variant_sku,
+        product_name: i.name,
+        barcode: i.barcode,
+        quantity: i.qty,
+        unit_price: i.selling_price,
+      })),
+      customer_name: customerName || undefined,
+      customer_phone: customerPhone || undefined,
+      label: customerName || undefined,
+      discount: parseFloat(discountValue) || 0,
+      discount_type: discountType === 'percent' ? 'percentage' : 'fixed',
+    })
+  }
+
+  /** Load a parked cart back into the till. */
+  const handleResumeHold = (hold) => {
+    setCart((hold.items || []).map(i => ({
+      _id: i.product_id?._id || i.product_id,
+      lineId: i.variant_sku ? `${i.product_id?._id || i.product_id}:${i.variant_sku}` : (i.product_id?._id || i.product_id),
+      variant_sku: i.variant_sku,
+      name: i.product_name,
+      barcode: i.barcode,
+      selling_price: i.unit_price,
+      // Stock is re-checked server-side on completion; this only bounds the +/- buttons.
+      quantity: Number.MAX_SAFE_INTEGER,
+      qty: i.quantity,
+    })))
+    setCustomerName(hold.customer_name || '')
+    setCustomerPhone(hold.customer_phone || '')
+    setDiscountValue(hold.discount ? String(hold.discount) : '')
+    setDiscountType(hold.discount_type === 'percentage' ? 'percent' : 'fixed')
+    setResumedHoldId(hold._id)
+    toast.success(`Resumed ${hold.reference}`)
+  }
+
+  /** Complete the sale with an explicit multi-tender breakdown. */
+  const handleSplitConfirm = (payments) => {
+    saleMutation.mutate(buildSalePayload({ payments }))
+    setShowSplitModal(false)
+  }
 
   const shortPayMutation = useMutation({
     mutationFn: (data) => createShortPayment(data),
@@ -695,7 +816,7 @@ export default function POS() {
           ) : (
             cart.map(item => (
               <CartItem
-                key={item._id}
+                key={item.lineId || item._id}
                 item={item}
                 onUpdateQty={updateQty}
                 onRemove={removeFromCart}
@@ -761,6 +882,14 @@ export default function POS() {
             />
           </div>
 
+          {/* Loyalty — looked up live from the phone number */}
+          <LoyaltyPanel
+            phone={customerPhone}
+            cartTotal={grandTotal}
+            redeemPoints={redeemPoints}
+            onRedeemChange={setRedeemPoints}
+          />
+
           {/* Payment Method */}
           <div className="flex gap-1">
             {PAYMENT_METHODS.map(m => (
@@ -810,6 +939,33 @@ export default function POS() {
               )}
             </button>
 
+            <button
+              onClick={() => {
+                if (cart.length === 0) { toast.error('Cart is empty'); return }
+                setShowSplitModal(true)
+              }}
+              disabled={cart.length === 0 || saleMutation.isPending}
+              className="w-full py-2.5 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-1"
+            >
+              <FiCreditCard size={14} /> {t('pos.split').toUpperCase()}
+            </button>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleHoldCart}
+                disabled={cart.length === 0 || holdMutation.isPending}
+                className="flex-1 py-2.5 bg-slate-500 hover:bg-slate-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-1"
+              >
+                <FiPause size={14} /> {t('pos.hold').toUpperCase()}
+              </button>
+              <button
+                onClick={() => setShowHeldModal(true)}
+                className="flex-1 py-2.5 border-2 border-slate-300 text-slate-600 hover:bg-slate-50 font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-1"
+              >
+                <FiList size={14} /> {t('pos.heldSales').toUpperCase()}
+              </button>
+            </div>
+
             <div className="flex gap-2">
               <button
                 onClick={() => {
@@ -840,6 +996,30 @@ export default function POS() {
         cartTotal={grandTotal}
         onConfirm={handleShortPaymentConfirm}
         loading={shortPayMutation.isPending}
+      />
+
+      {/* Split payment */}
+      <SplitPaymentModal
+        isOpen={showSplitModal}
+        onClose={() => setShowSplitModal(false)}
+        total={grandTotal}
+        onConfirm={handleSplitConfirm}
+        loading={saleMutation.isPending}
+      />
+
+      {/* Held sales */}
+      <HeldSalesModal
+        isOpen={showHeldModal}
+        onClose={() => setShowHeldModal(false)}
+        onResume={handleResumeHold}
+      />
+
+      {/* Variant picker */}
+      <VariantPickerModal
+        isOpen={!!variantProduct}
+        onClose={() => setVariantProduct(null)}
+        product={variantProduct}
+        onSelect={addToCart}
       />
 
       {/* Receipt Modal */}

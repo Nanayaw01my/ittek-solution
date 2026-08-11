@@ -45,6 +45,7 @@ const getPublicReceipt = async (req, res) => {
           customer_name: sale.customer_name || '',
           items: (sale.items || []).map((item) => ({
             product_name: item.product_name,
+            variant_name: item.variant_name || '',
             quantity: item.quantity,
             unit_price: item.unit_price,
             total: item.total,
@@ -56,6 +57,10 @@ const getPublicReceipt = async (req, res) => {
           balance_due: sale.debt_amount || 0,
           payment_method: sale.payment_method,
           payment_status: sale.payment_status,
+          // Method + amount only — no card or MoMo references leave the server.
+          payment_splits: (sale.payments || []).map((p) => ({ method: p.method, amount: p.amount })),
+          loyalty_discount: sale.loyalty_discount || 0,
+          points_earned: sale.points_earned || 0,
         },
       },
     });

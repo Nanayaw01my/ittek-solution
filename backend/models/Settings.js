@@ -57,6 +57,57 @@ const SettingsSchema = new mongoose.Schema(
       expense_threshold: { type: Number, default: 1000 },
       email_notifications: { type: Boolean, default: true },
     },
+
+    // ─── Multi-currency ────────────────────────────────────────────────────
+    // Everything is stored in base_currency; the rest are display currencies
+    // converted at `rate` (1 base = rate foreign).
+    base_currency: { type: String, default: 'GHS', uppercase: true, trim: true },
+    currencies: {
+      type: [
+        new mongoose.Schema(
+          {
+            code: { type: String, required: true, uppercase: true, trim: true },
+            symbol: { type: String, required: true, trim: true },
+            rate: { type: Number, required: true, min: 0 }, // 1 GHS = rate <code>
+            is_active: { type: Boolean, default: true },
+          },
+          { _id: false }
+        ),
+      ],
+      default: () => [
+        { code: 'GHS', symbol: 'GH₵', rate: 1, is_active: true },
+        { code: 'USD', symbol: '$', rate: 0.065, is_active: true },
+        { code: 'EUR', symbol: '€', rate: 0.06, is_active: true },
+        { code: 'GBP', symbol: '£', rate: 0.051, is_active: true },
+      ],
+    },
+
+    // ─── Language ──────────────────────────────────────────────────────────
+    default_language: { type: String, enum: ['en', 'fr'], default: 'en' },
+
+    // ─── Loyalty ───────────────────────────────────────────────────────────
+    loyalty_settings: {
+      enabled: { type: Boolean, default: true },
+      // Points earned per unit of base currency spent.
+      points_per_currency: { type: Number, default: 1 },
+      // Base-currency value of one point when redeemed.
+      currency_per_point: { type: Number, default: 0.01 },
+      min_points_to_redeem: { type: Number, default: 100 },
+      // Cap redemption so points can never zero out a sale.
+      max_redeem_percent: { type: Number, default: 50, min: 0, max: 100 },
+    },
+
+    // ─── Fraud detection thresholds ────────────────────────────────────────
+    fraud_settings: {
+      enabled: { type: Boolean, default: true },
+      max_discount_percent: { type: Number, default: 20 }, // above this, flag it
+      large_cash_sale: { type: Number, default: 10000 },
+      // Trading hours; sales outside them get flagged.
+      open_hour: { type: Number, default: 6, min: 0, max: 23 },
+      close_hour: { type: Number, default: 21, min: 0, max: 23 },
+      refunds_per_day: { type: Number, default: 3 },
+      sales_per_minute: { type: Number, default: 5 },
+    },
     updated_at: {
       type: Date,
       default: Date.now,

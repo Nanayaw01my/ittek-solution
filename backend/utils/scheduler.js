@@ -121,6 +121,36 @@ const runEmailQueueProcessor = async () => {
 /**
  * Start all scheduled jobs.
  */
+/** Nightly anomaly sweep plus overdue-layaway marking. */
+const runFraudScan = async () => {
+  try {
+    const { runDailyScan } = require('./fraudDetection');
+    const alerts = await runDailyScan();
+    console.log(`[Scheduler] Fraud scan complete — ${alerts.length} new alert(s).`);
+  } catch (err) {
+    console.error('[Scheduler] Fraud scan error:', err.message);
+  }
+};
+
+const markOverdueLayaways = async () => {
+  try {
+    const Layaway = require('../models/Layaway');
+    const cutoff = new Date();
+    // A plan is only "defaulted" once it is well past its final date, not the
+    // moment one installment slips — customers pay late all the time.
+    cutoff.setDate(cutoff.getDate() - 30);
+    const result = await Layaway.updateMany(
+      { status: 'active', due_date: { $lt: cutoff }, balance: { $gt: 0 } },
+      { $set: { status: 'defaulted' } }
+    );
+    if (result.modifiedCount) {
+      console.log(`[Scheduler] Marked ${result.modifiedCount} layaway(s) defaulted.`);
+    }
+  } catch (err) {
+    console.error('[Scheduler] Layaway overdue error:', err.message);
+  }
+};
+
 const startSchedulers = () => {
   console.log('[Scheduler] Initializing scheduled jobs...');
 
@@ -147,10 +177,24 @@ const startSchedulers = () => {
     await checkLowStock();
   });
   console.log('[Scheduler] Low stock checker scheduled at 9:00 AM.');
+
+  // Fraud sweep at 11:30 PM, after the day's trading is done
+  cron.schedule('30 23 * * *', async () => {
+    await runFraudScan();
+  });
+  console.log('[Scheduler] Fraud scan scheduled at 11:30 PM.');
+
+  // Overdue layaway marking at 1:00 AM
+  cron.schedule('0 1 * * *', async () => {
+    await markOverdueLayaways();
+  });
+  console.log('[Scheduler] Layaway overdue check scheduled at 1:00 AM.');
 };
 
 module.exports = {
   startSchedulers,
+  runFraudScan,
+  markOverdueLayaways,
   sendDailySummary,
   updateOverdueDebts,
   checkLowStock,

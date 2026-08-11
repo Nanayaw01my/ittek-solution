@@ -28,6 +28,8 @@ import Search from './pages/Search'
 import Refunds from './pages/Refunds'
 import SalesHistory from './pages/SalesHistory'
 import PublicReceipt from './pages/PublicReceipt'
+import Layaways from './pages/Layaways'
+import FraudAlerts from './pages/FraudAlerts'
 
 const ROLE_LEVELS = { 'Sales': 1, 'Manager': 2, 'CEO': 3, 'Super Admin': 4 }
 
@@ -90,6 +92,9 @@ export default function App() {
         <Route path="debts" element={<ProtectedRoute minLevel={2}><Debts /></ProtectedRoute>} />
         <Route path="stock-requests" element={<ProtectedRoute minLevel={2}><StockRequests /></ProtectedRoute>} />
         <Route path="credit-agreements" element={<ProtectedRoute minLevel={2}><CreditAgreements /></ProtectedRoute>} />
+        <Route path="layaways" element={<ProtectedRoute minLevel={1}><Layaways /></ProtectedRoute>} />
+        {/* Staff conduct alerts — managers and above only */}
+        <Route path="fraud-alerts" element={<ProtectedRoute minLevel={2}><FraudAlerts /></ProtectedRoute>} />
 
         {/* CEO+ */}
         <Route

@@ -39,6 +39,7 @@ const updateSettings = async (req, res) => {
       company_name, company_address, company_phone, company_email,
       tax_rate, low_stock_alert, receipt_header, receipt_footer,
       currency_symbol, notification_settings, logo_url,
+      base_currency, currencies, default_language, loyalty_settings, fraud_settings,
     } = req.body;
 
     let settings = await Settings.findOne();
@@ -59,6 +60,25 @@ const updateSettings = async (req, res) => {
       settings.notification_settings = { ...settings.notification_settings, ...notification_settings };
     }
     if (logo_url !== undefined) settings.logo_url = logo_url;
+    if (base_currency !== undefined) settings.base_currency = base_currency;
+    if (Array.isArray(currencies)) {
+      // The base currency must always sit at rate 1, or every conversion drifts.
+      settings.currencies = currencies.map((c) => ({
+        code: String(c.code || '').toUpperCase(),
+        symbol: c.symbol,
+        rate: String(c.code || '').toUpperCase() === (base_currency || settings.base_currency)
+          ? 1
+          : Number(c.rate) || 0,
+        is_active: c.is_active !== false,
+      }));
+    }
+    if (default_language !== undefined) settings.default_language = default_language;
+    if (loyalty_settings !== undefined) {
+      settings.loyalty_settings = { ...(settings.loyalty_settings || {}), ...loyalty_settings };
+    }
+    if (fraud_settings !== undefined) {
+      settings.fraud_settings = { ...(settings.fraud_settings || {}), ...fraud_settings };
+    }
 
     settings.updated_at = new Date();
     settings.updated_by = req.user._id;
