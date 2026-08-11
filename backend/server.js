@@ -62,8 +62,16 @@ if (process.env.NODE_ENV !== 'test') {
 
 // ─── STEP 4: CORS — scoped to /api only ──────────────────────────────────────
 
+// ALLOWED_ORIGINS lets you add hosts from the dashboard without a code change.
+const extraOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
 const allowedOrigins = [
   process.env.FRONTEND_URL,
+  process.env.PUBLIC_APP_URL,
+  ...extraOrigins,
   'https://ittek-solution.vercel.app',
   'https://dandorsolar.online',
   'https://www.dandorsolar.online',
@@ -71,22 +79,43 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
   'http://localhost:8081',
-].filter(Boolean);
+]
+  .filter(Boolean)
+  .map((o) => o.replace(/\/+$/, ''));
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS: origin not allowed — ${origin}`));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+/**
+ * The frontend is served by this same Express app on Render/Vercel, so most
+ * traffic is same-origin — but browsers still send an Origin header on
+ * same-origin POSTs, which the plain allowlist would reject. Compare the
+ * Origin against the host the request actually arrived on and let those
+ * through, so a new deploy URL never locks the app out of its own API.
+ */
+const isSameOrigin = (req, origin) => {
+  const host = req.get('host');
+  if (!host) return false;
+  return origin === `https://${host}` || origin === `http://${host}`;
 };
 
-app.use('/api', cors(corsOptions));
+const corsDelegate = (req, callback) => {
+  const origin = req.headers.origin;
+  const base = {
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  };
+
+  // No Origin header: server-to-server, curl, native app — nothing to enforce.
+  if (!origin) return callback(null, { ...base, origin: true });
+
+  const normalised = origin.replace(/\/+$/, '');
+  if (allowedOrigins.includes(normalised) || isSameOrigin(req, normalised)) {
+    return callback(null, { ...base, origin: true });
+  }
+
+  return callback(new Error(`CORS: origin not allowed — ${origin}`));
+};
+
+app.use('/api', cors(corsDelegate));
 
 // ─── STEP 5: RATE LIMITING — scoped to /api only ────────────────────────────
 

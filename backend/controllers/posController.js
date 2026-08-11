@@ -117,7 +117,7 @@ const processSale = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: 'Sale processed successfully.',
-      data: await withReceiptQr(populated),
+      data: await withReceiptQr(populated, req),
     });
   } catch (err) {
     console.error('Process sale error:', err.message);
@@ -226,7 +226,7 @@ const processShortPayment = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: 'Short payment processed. Debt created.',
-      data: { sale: await withReceiptQr(sale), debt },
+      data: { sale: await withReceiptQr(sale, req), debt },
     });
   } catch (err) {
     console.error('Short payment error:', err.message);
@@ -320,7 +320,7 @@ const getSale = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
-    return res.status(200).json({ success: true, data: await withReceiptQr(sale) });
+    return res.status(200).json({ success: true, data: await withReceiptQr(sale, req) });
   } catch (err) {
     console.error('Get sale error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
@@ -341,7 +341,7 @@ const generateSaleReceipt = async (req, res) => {
     }
 
     const settings = await Settings.findOne().lean();
-    const receiptUrl = buildReceiptUrl(sale.receipt_token);
+    const receiptUrl = buildReceiptUrl(sale.receipt_token, req);
     const pdfBuffer = await generateReceipt(sale.toObject(), {
       logoUrl: settings?.logo_url,
       servedBy: sale.user_id?.username,

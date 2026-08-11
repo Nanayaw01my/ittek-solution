@@ -8,12 +8,28 @@ const QRCode = require('qrcode');
  */
 const generateReceiptToken = () => crypto.randomBytes(16).toString('hex');
 
-/** Public base URL of the app (where the React receipt page is served from). */
-const getPublicBaseUrl = () =>
-  (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || 'https://ittek-solution.vercel.app').replace(/\/+$/, '');
+/**
+ * Public base URL of the app (where the React receipt page is served from).
+ *
+ * Prefers explicit config, then falls back to the host the request actually
+ * arrived on — so QR codes point at whatever domain the app is deployed under
+ * (Render, Vercel, a custom domain) without needing a code change.
+ */
+const getPublicBaseUrl = (req) => {
+  const configured = process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL;
+  if (configured) return configured.replace(/\/+$/, '');
+
+  const host = req?.get?.('host');
+  if (host) {
+    const proto = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';
+    return `${proto}://${host}`;
+  }
+
+  return 'https://ittek-solution.vercel.app';
+};
 
 /** Public, login-free URL for a receipt. */
-const buildReceiptUrl = (token) => `${getPublicBaseUrl()}/r/${token}`;
+const buildReceiptUrl = (token, req) => `${getPublicBaseUrl(req)}/r/${token}`;
 
 /**
  * Render a receipt URL as a QR code.
@@ -49,9 +65,10 @@ const generateReceiptQrBuffer = async (url) => {
  * Attach receipt_url + qr_code to a sale payload being returned to the POS.
  * Backfills receipt_token on older sales that predate this feature.
  * @param {import('mongoose').Document} saleDoc - a Sale mongoose document
+ * @param {Object} [req] - Express request, used to derive the public host
  * @returns {Promise<Object>} plain object safe to send to the till
  */
-const withReceiptQr = async (saleDoc) => {
+const withReceiptQr = async (saleDoc, req) => {
   if (!saleDoc) return saleDoc;
 
   let token = saleDoc.receipt_token;
@@ -61,7 +78,7 @@ const withReceiptQr = async (saleDoc) => {
     await saleDoc.save();
   }
 
-  const receipt_url = buildReceiptUrl(token);
+  const receipt_url = buildReceiptUrl(token, req);
   const obj = typeof saleDoc.toObject === 'function' ? saleDoc.toObject() : { ...saleDoc };
   return { ...obj, receipt_url, qr_code: await generateReceiptQr(receipt_url) };
 };
