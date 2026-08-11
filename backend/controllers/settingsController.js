@@ -127,10 +127,23 @@ const uploadLogo = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No file uploaded.' });
     }
 
+    // Push to Cloudinary so the logo survives restarts and redeploys. Storing
+    // a /uploads/... path here used to produce a logo that worked until the
+    // service next restarted, then 404'd.
+    const cloudinary = require('../config/cloudinary');
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader
+        .upload_stream(
+          { folder: 'ittek/logo', resource_type: 'image', transformation: [{ quality: 'auto', fetch_format: 'auto' }] },
+          (err, data) => (err ? reject(err) : resolve(data))
+        )
+        .end(req.file.buffer);
+    });
+
     let settings = await Settings.findOne();
     if (!settings) settings = new Settings();
 
-    settings.logo_url = `/uploads/${req.file.filename}`;
+    settings.logo_url = result.secure_url;
     settings.updated_at = new Date();
     settings.updated_by = req.user._id;
     await settings.save();

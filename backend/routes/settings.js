@@ -7,16 +7,11 @@ const { requireLevel, requireRoles } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const { getSettings, updateSettings, updateEmailConfig, uploadLogo, clearAllData } = require('../controllers/settingsController');
 
-// Logo upload multer
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, process.env.UPLOAD_PATH || './uploads'),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `logo-${Date.now()}${ext}`);
-  },
-});
+// Logo upload — memory storage, then straight to Cloudinary.
+// Disk storage would be worse than useless here: Render's filesystem is
+// ephemeral (the file vanishes on the next restart) and Vercel's is read-only.
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5242880 },
   fileFilter: (req, file, cb) => {
     const allowed = /jpeg|jpg|png|gif|webp|svg/;
