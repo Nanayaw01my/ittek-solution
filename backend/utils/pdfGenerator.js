@@ -318,7 +318,7 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
       drawField('Date', start ? start.toLocaleDateString('en-GH') : '—', ML, y, c3 - 4);
       drawField('Location', customer_address, ML + c3, y, c3 - 4);
       drawField('Phone / Tel', customer_phone, ML + c3 * 2, y, c3 - 4);
-      y += 36;
+      y += 30;
 
       // ── Product & Payment Terms ────────────────────────────────────────────────
       y = sectionTitle('PRODUCT AND PAYMENT TERMS', y);
@@ -341,7 +341,7 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
 
       // Payment schedule table
       doc.fontSize(8).font('Helvetica-Bold').fillColor('#111').text('Payment Schedule (3 equal instalments):', ML, y);
-      y += 14;
+      y += 12;
 
       const TH = 18;
       const tCols = [W * 0.22, W * 0.44, W * 0.34];
@@ -380,7 +380,7 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
         .text('TOTAL BALANCE', tX + 3, y + 5, { width: tCols[0] + tCols[1] - 6, align: 'right', lineBreak: false });
       doc.text('GHC ' + balance.toFixed(2), tX + tCols[0] + tCols[1] + 3, y + 5, { width: tCols[2] - 6, align: 'center', lineBreak: false });
       resetColors();
-      y += TH + 10;
+      y += TH + 8;
 
       // ── Guarantor Details ─────────────────────────────────────────────────────
       y = sectionTitle('GUARANTOR DETAILS', y);
@@ -389,30 +389,52 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
       drawField('Ghana Card No.', guarantor_ghana_card || '—', ML + c4 + 4, y, c4 - 3);
       drawField('Location', guarantor_address, ML + (c4 + 4) * 2, y, c4 - 3);
       drawField('Phone Number', guarantor_phone, ML + (c4 + 4) * 3, y, c4 - 3);
-      y += 36;
+      y += 30;
 
       // ── Agreement Text ────────────────────────────────────────────────────────
       y = sectionTitle('CUSTOMER AGREEMENT', y);
       const custText =
-        'I (' + customer_name + ') have agreed to the terms and conditions of DAN AND DOR SOLAR COMPANY LIMITED. ' +
-        'I understand and agree that I am entering into a legally binding contract with DAN AND DOR SOLAR COMPANY LIMITED, ' +
-        'and that I will be bound by the terms and conditions of the contract.\n\n' +
-        'I have agreed that the company can repossess the devices when I (' + customer_name + ') fail(s) to pay on time, ' +
-        'by the way the company wants me to pay.\n\n' +
-        'I agree that one third (1/3) of the down payment should be paid back to me when I am not able to pay on time.';
-      doc.fontSize(8).font('Helvetica').fillColor('#222222').text(custText, ML, y, { width: W, lineGap: 1.5 });
-      y = doc.y + 10;
+        'I, ' + customer_name + ', enter into this agreement with DAN & DOR SOLAR COMPANY LIMITED ("the Company") of my own free will. ' +
+        'I confirm that the information I have given is true, and I understand that this is a legally binding contract.\n' +
+        'I agree to pay each instalment in full and on the due date shown in the schedule above. Ownership of the goods remains ' +
+        'with the Company until the total amount has been paid in full. Until then I may not sell, pledge, hire out, or part with ' +
+        'the goods, and I must keep them in good condition.\n' +
+        'If I fail to pay on the due date, I agree that the Company may repossess the goods and recover any outstanding balance, ' +
+        'and that one third (1/3) of my down payment will be refunded to me.';
+      doc.fontSize(7.5).font('Helvetica').fillColor('#222222').text(custText, ML, y, { width: W, lineGap: 1 });
+      y = doc.y + 8;
+
+      // ── Default and Enforcement ────────────────────────────────────────────
+      y = sectionTitle('DEFAULT AND ENFORCEMENT', y);
+      const enforceText =
+        '1. If any instalment remains unpaid for fourteen (14) days after its due date, the whole outstanding balance becomes ' +
+        'due immediately, and the Company may repossess the goods without further notice.\n' +
+        '2. Should the customer refuse or neglect to pay, the Company shall be entitled to recover the outstanding balance ' +
+        'through lawful debt-recovery proceedings before a court of competent jurisdiction in the Republic of Ghana. ' +
+        'All reasonable costs of recovery, including legal fees, shall be borne by the customer.\n' +
+        '3. The goods remain the property of the Company until paid for in full. Selling, pledging, hiding or otherwise ' +
+        'disposing of them, or giving false information in order to obtain them, may constitute a criminal offence and may be ' +
+        'reported to the Ghana Police Service for investigation and prosecution.\n' +
+        '4. Where the customer defaults, the guarantor named below becomes liable for the full outstanding balance.';
+      doc.fontSize(7.5).font('Helvetica').fillColor('#222222').text(enforceText, ML, y, { width: W, lineGap: 1 });
+      y = doc.y + 8;
 
       // ── Guarantor Section ─────────────────────────────────────────────────────
       y = sectionTitle('GUARANTOR SECTION', y);
       const guarText =
-        'I (' + guarantor_name + ') have agreed to witness for (' + customer_name + ') in case he/she does not pay on time. ' +
-        'And I stand to pay his/her debt.';
-      doc.fontSize(8).font('Helvetica').fillColor('#222222').text(guarText, ML, y, { width: W, lineGap: 1.5 });
-      y = doc.y + 14;
+        'I, ' + guarantor_name + ', stand as guarantor for ' + customer_name + '. I confirm that I know the customer personally ' +
+        'and I have read and understood this agreement. If the customer fails to pay any amount when it falls due, I undertake to ' +
+        'pay that amount to the Company on demand, and I accept that the Company may pursue the same remedies against me as ' +
+        'against the customer.';
+      doc.fontSize(7.5).font('Helvetica').fillColor('#222222').text(guarText, ML, y, { width: W, lineGap: 1 });
+      y = doc.y + 10;
 
       // ── Signatories ───────────────────────────────────────────────────────────
-      if (y > 680) { doc.addPage(); y = 50; }
+      // The agreement must fit one A4 sheet: instead of spilling onto a second
+      // page, pull the signature block up to sit just above the bottom margin.
+      const SIG_BLOCK_H = 92;
+      const PAGE_BOTTOM = 802 - 40; // A4 height minus the bottom margin
+      if (y + SIG_BLOCK_H > PAGE_BOTTOM) y = PAGE_BOTTOM - SIG_BLOCK_H;
 
       y = sectionTitle('SIGNATORIES', y);
 
@@ -422,18 +444,18 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
 
       sigLabels.forEach((label, i) => {
         const sx = ML + i * (sigW + 4);
-        doc.rect(sx, y, sigW, 48).lineWidth(0.5).strokeColor('#cccccc').stroke();
+        doc.rect(sx, y, sigW, 42).lineWidth(0.5).strokeColor('#cccccc').stroke();
         doc.fontSize(6).fillColor('#bbbbbb').text('Signature', sx + 2, y + 4, { width: sigW - 4, align: 'center', lineBreak: false });
-        doc.moveTo(sx + 6, y + 40).lineTo(sx + sigW - 6, y + 40).lineWidth(0.5).strokeColor('#999999').stroke();
+        doc.moveTo(sx + 6, y + 34).lineTo(sx + sigW - 6, y + 34).lineWidth(0.5).strokeColor('#999999').stroke();
         resetColors();
-        doc.fontSize(8).font('Helvetica-Bold').fillColor('#111').text(label, sx, y + 52, { width: sigW, align: 'center', lineBreak: false });
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#111').text(label, sx, y + 46, { width: sigW, align: 'center', lineBreak: false });
         if (sigSubNames[i]) {
-          doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY).text(sigSubNames[i], sx, y + 63, { width: sigW, align: 'center', lineBreak: false });
+          doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY).text(sigSubNames[i], sx, y + 57, { width: sigW, align: 'center', lineBreak: false });
         }
         resetColors();
       });
 
-      y += 78;
+      y += 70;
       doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
         .text('Date: ___________________________', ML + W / 2 - 60, y);
       resetColors();

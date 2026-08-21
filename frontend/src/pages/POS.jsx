@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart, FiCreditCard, FiPause, FiList, FiRefreshCw } from 'react-icons/fi'
+import { FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart, FiCreditCard, FiPause, FiList, FiRefreshCw, FiPackage } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
 import { getProducts } from '../api/products'
 import { createSale, createShortPayment } from '../api/pos'
@@ -20,6 +20,7 @@ import SplitPaymentModal from '../components/SplitPaymentModal'
 import HeldSalesModal from '../components/HeldSalesModal'
 import VariantPickerModal from '../components/VariantPickerModal'
 import LoyaltyPanel from '../components/LoyaltyPanel'
+import PayLaterModal from '../components/PayLaterModal'
 import { holdSale } from '../api/pos'
 import { useTranslation } from '../i18n'
 import { format, addDays } from 'date-fns'
@@ -468,6 +469,7 @@ export default function POS() {
   const [lastSale, setLastSale] = useState(null)
   const [showSplitModal, setShowSplitModal] = useState(false)
   const [showHeldModal, setShowHeldModal] = useState(false)
+  const [showPayLaterModal, setShowPayLaterModal] = useState(false)
   const [variantProduct, setVariantProduct] = useState(null)
   const [redeemPoints, setRedeemPoints] = useState(0)
   const [resumedHoldId, setResumedHoldId] = useState(null)
@@ -1047,7 +1049,7 @@ export default function POS() {
 
             {/* Secondary actions — one compact row so the cart list keeps
                 the vertical space instead of the buttons */}
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-5 gap-1.5">
               <button
                 onClick={handleHoldCart}
                 disabled={cart.length === 0 || holdMutation.isPending}
@@ -1070,6 +1072,18 @@ export default function POS() {
                 className="py-2 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-[11px] flex flex-col items-center gap-0.5"
               >
                 <FiAlertTriangle size={13} /> Short
+              </button>
+              <button
+                onClick={() => {
+                  if (cart.length === 0) { toast.error('Cart is empty'); return }
+                  if (!isOnline) { toast.error('Pay & Pick Later needs a connection'); return }
+                  setShowPayLaterModal(true)
+                }}
+                disabled={cart.length === 0}
+                title="Customer pays in instalments and collects when fully paid"
+                className="py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-[11px] flex flex-col items-center gap-0.5"
+              >
+                <FiPackage size={13} /> Pay Later
               </button>
               <button
                 onClick={clearCart}
@@ -1099,6 +1113,15 @@ export default function POS() {
         total={grandTotal}
         onConfirm={handleSplitConfirm}
         loading={saleMutation.isPending}
+      />
+
+      {/* Pay & Pick Later — instalments, goods held until fully paid */}
+      <PayLaterModal
+        isOpen={showPayLaterModal}
+        onClose={() => setShowPayLaterModal(false)}
+        cart={cart}
+        cartTotal={grandTotal}
+        onCreated={() => clearCart()}
       />
 
       {/* Held sales */}
