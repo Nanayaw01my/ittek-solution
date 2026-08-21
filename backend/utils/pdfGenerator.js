@@ -405,6 +405,17 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
       y = doc.y + 8;
 
       // ── Default and Enforcement ────────────────────────────────────────────
+      // The enforcement clauses, the guarantor undertaking and the signature
+      // boxes belong together — a signature block stranded on its own sheet
+      // reads as an afterthought, and someone could sign without the terms in
+      // front of them. Break here if the whole tail won't fit.
+      const A4_BOTTOM = 802 - 40;
+      const TAIL_H = 300; // enforcement + guarantor section + signatures
+      if (y + TAIL_H > A4_BOTTOM) {
+        doc.addPage();
+        y = 50;
+      }
+
       y = sectionTitle('DEFAULT AND ENFORCEMENT', y);
       const enforceText =
         '1. If any instalment remains unpaid for fourteen (14) days after its due date, the whole outstanding balance becomes ' +
@@ -430,11 +441,15 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
       y = doc.y + 10;
 
       // ── Signatories ───────────────────────────────────────────────────────────
-      // The agreement must fit one A4 sheet: instead of spilling onto a second
-      // page, pull the signature block up to sit just above the bottom margin.
-      const SIG_BLOCK_H = 92;
-      const PAGE_BOTTOM = 802 - 40; // A4 height minus the bottom margin
-      if (y + SIG_BLOCK_H > PAGE_BOTTOM) y = PAGE_BOTTOM - SIG_BLOCK_H;
+      // Never drag this block upwards to save a page — doing so printed the
+      // signature boxes on top of the guarantor text. If it doesn't fit below
+      // the preceding clauses, start a second sheet.
+      const SIG_BLOCK_H = 100;
+      const PAGE_BOTTOM = A4_BOTTOM;
+      if (y + SIG_BLOCK_H > PAGE_BOTTOM) {
+        doc.addPage();
+        y = 50;
+      }
 
       y = sectionTitle('SIGNATORIES', y);
 
