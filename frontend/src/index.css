@@ -41,17 +41,69 @@ body {
 ::-webkit-scrollbar-thumb { background: #F97316; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #EA580C; }
 
-/* Print styles for thermal receipt */
+/* Print styles for thermal receipt.
+   The receipt lives inside a modal that is capped at 90vh and scrolls, so a
+   naive window.print() printed only the visible slice of a long receipt and
+   the whole app behind it. Everything is hidden except the receipt, which is
+   lifted to the top-left of the page with its height cap removed. */
+@page {
+  size: 80mm auto;   /* thermal roll: fixed width, whatever length it needs */
+  margin: 4mm;
+}
+
 @media print {
   .no-print { display: none !important; }
   .print-only { display: block !important; }
-  body { font-size: 12px; background: white; }
+
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    font-size: 12px;
+  }
+
+  /* Hide the app, then reveal just the receipt subtree. */
+  body * { visibility: hidden !important; }
+  .receipt-print-area,
+  .receipt-print-area * { visibility: visible !important; }
+
   .receipt-print-area {
-    width: 80mm;
-    margin: 0 auto;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
     font-family: monospace;
     font-size: 12px;
   }
+
+  /* Ancestors must not clip or scroll, or the absolute receipt is cut off. */
+  .print-container,
+  .print-container * {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .print-container { position: static !important; }
+
+  /* Keep the logo, QR and status colours rather than printing grey boxes. */
+  .receipt-print-area * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .receipt-print-area img {
+    max-width: 100% !important;
+    display: block;
+  }
+
+  /* Don't split a line item across two pages. */
+  .receipt-print-area > div { break-inside: avoid; page-break-inside: avoid; }
 }
 
 /* Animations */

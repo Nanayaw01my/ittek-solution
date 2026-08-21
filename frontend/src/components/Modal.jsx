@@ -31,16 +31,16 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', h
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="print-container fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm"
+        className="no-print absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm"
         onClick={onClose}
       />
       {/* Modal */}
-      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizeMap[size] || sizeMap.md} animate-fadeIn max-h-[90vh] flex flex-col`}>
+      <div className={`print-container relative bg-white rounded-2xl shadow-2xl w-full ${sizeMap[size] || sizeMap.md} animate-fadeIn max-h-[90vh] flex flex-col`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-orange-500 rounded-t-2xl flex-shrink-0">
+        <div className="no-print flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-orange-500 rounded-t-2xl flex-shrink-0">
           <h3 className="text-white font-bold text-lg">{title}</h3>
           {!hideClose && (
             <button
@@ -52,7 +52,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', h
           )}
         </div>
         {/* Body */}
-        <div className="overflow-y-auto flex-1">
+        <div className="print-container overflow-y-auto flex-1">
           {children}
         </div>
       </div>
