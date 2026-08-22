@@ -48,7 +48,10 @@ body {
    lifted to the top-left of the page with its height cap removed. */
 @page {
   size: 80mm auto;   /* thermal roll: fixed width, whatever length it needs */
-  margin: 4mm;
+  /* Zero margin is what suppresses the browser's own header and footer — the
+     date, page title and URL Chrome stamps on every printed page. The receipt
+     supplies its own padding below. */
+  margin: 0;
 }
 
 @media print {
@@ -76,13 +79,44 @@ body {
     max-height: none !important;
     overflow: visible !important;
     margin: 0 !important;
-    padding: 0 !important;
+    /* Own padding, since @page has none */
+    padding: 4mm 3mm !important;
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     font-family: monospace;
-    font-size: 12px;
+    /* 80mm is only ~302px. At 12px the fixed item columns overflowed the sheet
+       and the right-hand edge was sliced off mid-word. */
+    font-size: 9px;
+    line-height: 1.35;
   }
+
+  /* Nothing inside may exceed the roll width, and long words must wrap rather
+     than push the layout wider than the page. */
+  .receipt-print-area * {
+    max-width: 100% !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
+  }
+
+  /* The item table's fixed columns are sized for a screen, not a 302px roll.
+     Wide enough that a price like GHC3500.00 stays on one line, narrow enough
+     that the product name still gets usable space. */
+  /* Pixels, not rem: the print block sets html{font-size:12px}, so 1rem is
+     12px here and a rem-based width silently came out a third too narrow. */
+  .receipt-print-area .w-20 { width: 58px !important; flex: none !important; }
+  .receipt-print-area .w-8  { width: 20px !important; flex: none !important; }
+  /* Without flex:none these are flex items with flex-shrink:1, so the row
+     squeezed them below their set width and "GHC3500.00" wrapped onto a second
+     line. The name column absorbs the difference instead. */
+  .receipt-print-area .flex-1 { min-width: 0 !important; }
+
+  /* Keep headline sizes in proportion with the smaller base. */
+  .receipt-print-area .text-base { font-size: 11px !important; }
+  .receipt-print-area .text-sm   { font-size: 9.5px !important; }
+  .receipt-print-area .text-xs   { font-size: 8.5px !important; }
+
+  .receipt-print-area img { max-width: 42% !important; height: auto !important; }
 
   /* Ancestors must not clip or scroll, or the absolute receipt is cut off. */
   .print-container,
