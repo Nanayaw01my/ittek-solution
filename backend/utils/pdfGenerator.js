@@ -482,6 +482,249 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
   });
 };
 
+
+/**
+ * Generate a Pay & Pick Later (layaway) agreement — A4.
+ *
+ * Deliberately NOT a copy of the credit sale agreement. There the customer
+ * takes the goods away and owes money, so the clauses are about repossession.
+ * Here the shop keeps the goods until they are paid for, so the risks are the
+ * reverse: the customer needs certainty that their money is held against
+ * specific reserved items and that the price won't move, and the shop needs a
+ * clear rule for abandoned plans and uncollected goods.
+ *
+ * @param {Object} layaway - Layaway document (plain object)
+ * @param {Object} options - { logoUrl, company, terms }
+ * @returns {Promise<Buffer>}
+ */
+const generateLayawayAgreement = async (layaway, options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, bottom: 40, left: 50, right: 50 } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 50;
+      const W = 495;
+      const ORANGE = '#e86b00';
+      const LGRAY = '#777777';
+      const A4_BOTTOM = 802 - 40;
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+      const companyAddress = company.address || 'Bogoso, Western Region';
+      const companyPhone = company.phone || '+233 598565277';
+
+      const terms = options.terms || {};
+      const cancelFee = Number(terms.cancellation_fee_percent ?? 10);
+      const collectionDays = Number(terms.collection_days ?? 30);
+      const defaultDays = Number(terms.default_after_days ?? 30);
+
+      const {
+        reference, customer_name = '', customer_phone = '', customer_address = '',
+        customer_id_type = '', customer_id_number = '', items = [],
+        total_amount = 0, down_payment = 0, balance = 0,
+        installments = 0, frequency = 'weekly', schedule = [], createdAt,
+      } = layaway;
+
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      const sectionTitle = (text, yy) => {
+        doc.fontSize(9).font('Helvetica-Bold').fillColor(ORANGE).text(text, ML, yy, { width: W });
+        const lineY = yy + 13;
+        doc.moveTo(ML, lineY).lineTo(ML + W, lineY).lineWidth(0.8).strokeColor(ORANGE).stroke();
+        reset();
+        return lineY + 6;
+      };
+
+      const drawField = (lbl, value, x, yy, width) => {
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor(LGRAY).text(lbl, x, yy, { width, lineBreak: false });
+        doc.fontSize(8.5).font('Helvetica').fillColor('#111111').text(String(value || '—'), x, yy + 9, { width, lineBreak: false });
+        doc.moveTo(x, yy + 21).lineTo(x + width, yy + 21).lineWidth(0.3).strokeColor('#cccccc').stroke();
+        reset();
+      };
+
+      // ── Header ──────────────────────────────────────────────────────────────
+      let y = 42;
+      if (logoBuf) {
+        try { doc.image(logoBuf, ML, y, { width: 52 }); } catch {}
+      }
+      doc.fontSize(13).font('Helvetica-Bold').fillColor('#111111')
+        .text(companyName, ML + 60, y + 4, { width: W - 60 });
+      doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
+        .text(companyAddress + '  |  Tel: ' + companyPhone, ML + 60, y + 22, { width: W - 60 });
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(ORANGE)
+        .text('PAY & PICK LATER AGREEMENT', ML + 60, y + 36, { width: W - 60 });
+      reset();
+
+      y += 62;
+      doc.moveTo(ML, y).lineTo(ML + W, y).lineWidth(1.2).strokeColor(ORANGE).stroke();
+      reset();
+      y += 10;
+
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#111')
+        .text('Agreement No: ' + (reference || '—'), ML, y, { width: W / 2, lineBreak: false });
+      doc.font('Helvetica').fillColor(LGRAY)
+        .text('Date: ' + new Date(createdAt || Date.now()).toLocaleDateString('en-GH'),
+          ML + W / 2, y, { width: W / 2, align: 'right', lineBreak: false });
+      reset();
+      y += 18;
+
+      // ── Customer ────────────────────────────────────────────────────────────
+      y = sectionTitle('CUSTOMER DETAILS', y);
+      const c3 = (W - 10) / 3;
+      drawField('Full Name', customer_name, ML, y, c3 - 4);
+      drawField('Phone Number', customer_phone, ML + c3, y, c3 - 4);
+      drawField('Address / Location', customer_address, ML + c3 * 2, y, c3 - 4);
+      y += 30;
+      const c2 = (W - 6) / 2;
+      drawField('ID Type', customer_id_type, ML, y, c2 - 3);
+      drawField('ID Number', customer_id_number, ML + c2 + 6, y, c2 - 3);
+      y += 30;
+
+      // ── Goods reserved ──────────────────────────────────────────────────────
+      y = sectionTitle('GOODS RESERVED', y);
+      const TH = 17;
+      const cols = [W * 0.50, W * 0.12, W * 0.19, W * 0.19];
+      doc.fillColor(ORANGE).rect(ML, y, W, TH).fill();
+      ['Item', 'Qty', 'Unit Price', 'Total'].forEach((h, i) => {
+        const cx = ML + cols.slice(0, i).reduce((a, b) => a + b, 0);
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#fff')
+          .text(h, cx + 4, y + 5, { width: cols[i] - 8, align: i === 0 ? 'left' : 'center', lineBreak: false });
+      });
+      y += TH;
+
+      items.forEach((it, ri) => {
+        doc.fillColor(ri % 2 === 0 ? '#fff9f5' : '#ffffff').rect(ML, y, W, TH).fill();
+        doc.strokeColor('#e5e7eb').lineWidth(0.4).rect(ML, y, W, TH).stroke();
+        reset();
+        const name = it.product_name + (it.variant_name ? ' — ' + it.variant_name : '');
+        const row = [name, String(it.quantity), 'GHC ' + Number(it.unit_price).toFixed(2), 'GHC ' + Number(it.total).toFixed(2)];
+        row.forEach((cell, ci) => {
+          const cx = ML + cols.slice(0, ci).reduce((a, b) => a + b, 0);
+          doc.fontSize(7.5).font('Helvetica').fillColor('#111')
+            .text(cell, cx + 4, y + 5, { width: cols[ci] - 8, align: ci === 0 ? 'left' : 'center', lineBreak: false });
+        });
+        y += TH;
+      });
+
+      doc.fillColor('#fff3e0').rect(ML, y, W, TH).fill();
+      doc.strokeColor(ORANGE).lineWidth(0.8).rect(ML, y, W, TH).stroke();
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(ORANGE)
+        .text('AGREED PRICE', ML + 4, y + 5, { width: W * 0.62, align: 'right', lineBreak: false });
+      doc.text('GHC ' + Number(total_amount).toFixed(2), ML + W * 0.62 + 4, y + 5, { width: W * 0.38 - 8, align: 'center', lineBreak: false });
+      reset();
+      y += TH + 10;
+
+      // ── Payment plan ────────────────────────────────────────────────────────
+      y = sectionTitle('PAYMENT PLAN', y);
+      const c4 = (W - 12) / 4;
+      drawField('Paid Today', 'GHC ' + Number(down_payment).toFixed(2), ML, y, c4 - 3);
+      drawField('Balance', 'GHC ' + Number(balance).toFixed(2), ML + c4 + 4, y, c4 - 3);
+      drawField('Instalments', String(installments), ML + (c4 + 4) * 2, y, c4 - 3);
+      drawField('Frequency', frequency.charAt(0).toUpperCase() + frequency.slice(1), ML + (c4 + 4) * 3, y, c4 - 3);
+      y += 30;
+
+      if (schedule.length) {
+        const SH = 15;
+        const sCols = [W * 0.15, W * 0.5, W * 0.35];
+        doc.fillColor('#f3f4f6').rect(ML, y, W, SH).fill();
+        ['No.', 'Due Date', 'Amount (GHC)'].forEach((h, i) => {
+          const cx = ML + sCols.slice(0, i).reduce((a, b) => a + b, 0);
+          doc.fontSize(7).font('Helvetica-Bold').fillColor('#374151')
+            .text(h, cx + 4, y + 4, { width: sCols[i] - 8, align: 'center', lineBreak: false });
+        });
+        reset();
+        y += SH;
+
+        // Cap the printed rows so a long plan can't run away with the page.
+        schedule.slice(0, 12).forEach((entry, i) => {
+          doc.strokeColor('#e5e7eb').lineWidth(0.3).rect(ML, y, W, SH).stroke();
+          reset();
+          const row = [
+            String(i + 1),
+            new Date(entry.due_date).toLocaleDateString('en-GH'),
+            'GHC ' + Number(entry.amount).toFixed(2),
+          ];
+          row.forEach((cell, ci) => {
+            const cx = ML + sCols.slice(0, ci).reduce((a, b) => a + b, 0);
+            doc.fontSize(7.5).font('Helvetica').fillColor('#111')
+              .text(cell, cx + 4, y + 4, { width: sCols[ci] - 8, align: 'center', lineBreak: false });
+          });
+          y += SH;
+        });
+        if (schedule.length > 12) {
+          doc.fontSize(7).font('Helvetica-Oblique').fillColor(LGRAY)
+            .text('… and ' + (schedule.length - 12) + ' further instalments as scheduled.', ML, y + 2, { width: W });
+          reset();
+          y += 14;
+        }
+        y += 8;
+      }
+
+      // ── Terms ───────────────────────────────────────────────────────────────
+      const TAIL_H = 300;
+      if (y + TAIL_H > A4_BOTTOM) { doc.addPage(); y = 50; }
+
+      y = sectionTitle('TERMS OF THIS AGREEMENT', y);
+      const termsText =
+        '1. The goods listed above are reserved for the customer and remain in the custody and ownership of the ' +
+        'Company until the agreed price has been paid in full. They will not be sold to any other person while ' +
+        'this agreement is in force.\n' +
+        '2. The agreed price is fixed for the duration of this agreement and will not be increased, even if the ' +
+        'shop price of the goods changes.\n' +
+        '3. The customer undertakes to pay each instalment on or before the due date shown above. Payments may be ' +
+        'made in person at the shop, and a receipt will be issued for every payment.\n' +
+        '4. The goods will be released to the customer only when the balance reaches zero. Proof of identity may ' +
+        'be required at collection.\n' +
+        '5. The customer should collect the goods within ' + collectionDays + ' days of the final payment.\n' +
+        '6. If no payment is made for ' + defaultDays + ' days, the Company may cancel this agreement and return the ' +
+        'goods to stock. In that event the amounts already paid will be refunded to the customer, less an ' +
+        'administrative charge of ' + cancelFee + '% of the agreed price.\n' +
+        '7. The customer may cancel at any time on the same terms as clause 6.\n' +
+        '8. This agreement is governed by the laws of the Republic of Ghana. Any dispute that cannot be settled ' +
+        'between the parties may be referred to a court of competent jurisdiction.';
+      doc.fontSize(7.5).font('Helvetica').fillColor('#222222').text(termsText, ML, y, { width: W, lineGap: 1 });
+      y = doc.y + 12;
+
+      // ── Signatures ──────────────────────────────────────────────────────────
+      const SIG_H = 96;
+      if (y + SIG_H > A4_BOTTOM) { doc.addPage(); y = 50; }
+
+      y = sectionTitle('SIGNATURES', y);
+      const sig = [['CUSTOMER', customer_name], ['FOR THE COMPANY', '']];
+      const sigW = (W - 20) / 2;
+      sig.forEach(([lbl, sub], i) => {
+        const sx = ML + i * (sigW + 20);
+        doc.rect(sx, y, sigW, 44).lineWidth(0.5).strokeColor('#cccccc').stroke();
+        doc.fontSize(6).fillColor('#bbbbbb').text('Signature', sx + 3, y + 4, { width: sigW - 6, lineBreak: false });
+        doc.moveTo(sx + 8, y + 36).lineTo(sx + sigW - 8, y + 36).lineWidth(0.5).strokeColor('#999999').stroke();
+        reset();
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#111')
+          .text(lbl, sx, y + 48, { width: sigW, align: 'center', lineBreak: false });
+        if (sub) {
+          doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY)
+            .text(sub, sx, y + 59, { width: sigW, align: 'center', lineBreak: false });
+        }
+        reset();
+      });
+      y += 74;
+      doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+        .text('Date: ______________________', ML, y, { width: sigW, align: 'center' });
+      doc.text('Date: ______________________', ML + sigW + 20, y, { width: sigW, align: 'center' });
+      reset();
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 /**
  * Generate a general report PDF (A4).
  * @param {Object} reportData - Data for the report
@@ -536,4 +779,4 @@ const generateReport = (reportData, title = 'Report') => {
   });
 };
 
-module.exports = { generateReceipt, generateCreditAgreement, generateReport };
+module.exports = { generateReceipt, generateCreditAgreement, generateLayawayAgreement, generateReport };

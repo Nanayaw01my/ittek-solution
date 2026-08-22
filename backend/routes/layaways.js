@@ -3,7 +3,7 @@ const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const { auditLog } = require('../middleware/auditLogger');
 const {
-  createLayaway, getLayaways, getLayaway, addPayment, collectLayaway, cancelLayaway,
+  createLayaway, getLayaways, getLayaway, addPayment, collectLayaway, cancelLayaway, getLayawayAgreement,
 } = require('../controllers/layawayController');
 
 router.use(authenticate);
@@ -19,6 +19,7 @@ const requireManager = (req, res, next) => {
 router.post('/', auditLog('CREATE_LAYAWAY'), createLayaway);
 router.get('/', getLayaways);
 router.get('/:id', getLayaway);
+router.get('/:id/agreement', getLayawayAgreement);
 router.post('/:id/payments', auditLog('LAYAWAY_PAYMENT'), addPayment);
 router.post('/:id/collect', auditLog('LAYAWAY_COLLECT'), collectLayaway);
 // Cancelling returns stock and voids a customer commitment — manager call.

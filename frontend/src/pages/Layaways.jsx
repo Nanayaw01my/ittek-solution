@@ -2,14 +2,14 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
-import { FiPackage, FiDollarSign, FiCheckCircle, FiXCircle, FiAlertTriangle, FiPlus } from 'react-icons/fi'
+import { FiPackage, FiDollarSign, FiCheckCircle, FiXCircle, FiAlertTriangle, FiPlus, FiPrinter } from 'react-icons/fi'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
 import LoadingSpinner from '../components/LoadingSpinner'
 import LayawayWizard from '../components/LayawayWizard'
 import { useTranslation } from '../i18n'
 import { formatCurrency } from '../utils/helpers'
-import { getLayaways, addLayawayPayment, collectLayaway, cancelLayaway } from '../api/layaways'
+import { getLayaways, addLayawayPayment, collectLayaway, cancelLayaway, getLayawayAgreement } from '../api/layaways'
 
 const STATUS_STYLES = {
   active: 'bg-blue-100 text-blue-700',
@@ -126,6 +126,25 @@ function DetailModal({ layaway, onClose }) {
     onError: (err) => toast.error(err.response?.data?.message || 'Could not cancel'),
   })
 
+  const [printing, setPrinting] = useState(false)
+
+  /** Open the agreement in a new tab so staff can print or save it. */
+  const handlePrintAgreement = async () => {
+    setPrinting(true)
+    try {
+      const res = await getLayawayAgreement(layaway._id)
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      const win = window.open(url, '_blank')
+      if (!win) toast.error('Allow pop-ups to open the agreement')
+      // Give the tab time to load before releasing the object URL.
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch {
+      toast.error('Could not generate the agreement')
+    } finally {
+      setPrinting(false)
+    }
+  }
+
   const paidPct = layaway.total_amount ? (layaway.amount_paid / layaway.total_amount) * 100 : 0
 
   return (
@@ -214,6 +233,13 @@ function DetailModal({ layaway, onClose }) {
           </div>
         ) : (
           <div className="flex gap-2">
+            <button
+              onClick={handlePrintAgreement}
+              disabled={printing}
+              className="flex-1 py-2.5 border-2 border-teal-300 text-teal-700 hover:bg-teal-50 disabled:opacity-60 rounded-xl font-bold text-sm flex items-center justify-center gap-1"
+            >
+              <FiPrinter size={15} /> {printing ? 'Preparing…' : 'Print Agreement'}
+            </button>
             {layaway.balance <= 0 && !layaway.collected && (
               <button
                 onClick={() => collectMutation.mutate()}

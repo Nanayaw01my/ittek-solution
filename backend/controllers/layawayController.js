@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const Layaway = require('../models/Layaway');
 const Notification = require('../models/Notification');
 const { buildSaleItems, deductStock, restoreStock } = require('../utils/saleHelpers');
+const Settings = require('../models/Settings');
+const { generateLayawayAgreement } = require('../utils/pdfGenerator');
 
 const makeReference = () => `LAY-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
@@ -263,4 +265,34 @@ const cancelLayaway = async (req, res) => {
   }
 };
 
-module.exports = { createLayaway, getLayaways, getLayaway, addPayment, collectLayaway, cancelLayaway };
+/**
+ * GET /api/layaways/:id/agreement — printable Pay & Pick Later agreement.
+ */
+const getLayawayAgreement = async (req, res) => {
+  try {
+    const layaway = await Layaway.findById(req.params.id).lean();
+    if (!layaway) return res.status(404).json({ success: false, message: 'Layaway not found.' });
+
+    const settings = (await Settings.findOne().lean()) || {};
+    const pdf = await generateLayawayAgreement(layaway, {
+      logoUrl: settings.logo_url,
+      company: {
+        name: settings.company_name,
+        address: settings.company_address,
+        phone: settings.company_phone,
+      },
+      terms: settings.layaway_settings || {},
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="agreement-${layaway.reference}.pdf"`);
+    return res.end(pdf);
+  } catch (err) {
+    console.error('Layaway agreement error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error generating agreement.' });
+  }
+};
+
+module.exports = {
+  createLayaway, getLayaways, getLayaway, addPayment, collectLayaway, cancelLayaway, getLayawayAgreement,
+};

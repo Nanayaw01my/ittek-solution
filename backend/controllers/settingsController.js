@@ -39,7 +39,7 @@ const updateSettings = async (req, res) => {
       company_name, company_address, company_phone, company_email,
       tax_rate, low_stock_alert, receipt_header, receipt_footer,
       currency_symbol, notification_settings, logo_url,
-      base_currency, currencies, loyalty_settings, fraud_settings,
+      base_currency, currencies, loyalty_settings, fraud_settings, layaway_settings,
     } = req.body;
 
     let settings = await Settings.findOne();
@@ -77,6 +77,9 @@ const updateSettings = async (req, res) => {
     }
     if (fraud_settings !== undefined) {
       settings.fraud_settings = { ...(settings.fraud_settings || {}), ...fraud_settings };
+    }
+    if (layaway_settings !== undefined) {
+      settings.layaway_settings = { ...(settings.layaway_settings || {}), ...layaway_settings };
     }
 
     settings.updated_at = new Date();

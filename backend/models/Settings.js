@@ -94,6 +94,18 @@ const SettingsSchema = new mongoose.Schema(
       max_redeem_percent: { type: Number, default: 50, min: 0, max: 100 },
     },
 
+    // ─── Pay & Pick Later (layaway) terms ──────────────────────────────────
+    // Printed on the agreement, so they are shop policy rather than a hardcoded
+    // number buried in the PDF generator.
+    layaway_settings: {
+      // Deducted from a refund when the customer abandons the plan.
+      cancellation_fee_percent: { type: Number, default: 10, min: 0, max: 100 },
+      // Days after final payment within which the goods must be collected.
+      collection_days: { type: Number, default: 30, min: 1 },
+      // Days in arrears before the agreement may be cancelled.
+      default_after_days: { type: Number, default: 30, min: 1 },
+    },
+
     // ─── Fraud detection thresholds ────────────────────────────────────────
     fraud_settings: {
       enabled: { type: Boolean, default: true },
