@@ -10,6 +10,7 @@ import LayawayWizard from '../components/LayawayWizard'
 import { useTranslation } from '../i18n'
 import { formatCurrency } from '../utils/helpers'
 import { getLayaways, addLayawayPayment, collectLayaway, cancelLayaway, getLayawayAgreement } from '../api/layaways'
+import { openPdfInNewTab } from '../utils/openPdf'
 
 const STATUS_STYLES = {
   active: 'bg-blue-100 text-blue-700',
@@ -132,14 +133,12 @@ function DetailModal({ layaway, onClose }) {
   const handlePrintAgreement = async () => {
     setPrinting(true)
     try {
-      const res = await getLayawayAgreement(layaway._id)
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
-      const win = window.open(url, '_blank')
-      if (!win) toast.error('Allow pop-ups to open the agreement')
-      // Give the tab time to load before releasing the object URL.
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
-    } catch {
-      toast.error('Could not generate the agreement')
+      await openPdfInNewTab(
+        () => getLayawayAgreement(layaway._id),
+        `agreement-${layaway.reference}.pdf`
+      )
+    } catch (err) {
+      toast.error(err.message)
     } finally {
       setPrinting(false)
     }

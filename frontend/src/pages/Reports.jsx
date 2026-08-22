@@ -10,6 +10,7 @@ import { formatCurrency, formatDate } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 import { FiTag } from 'react-icons/fi'
 import { getPriceList } from '../api/reports'
+import { openPdfInNewTab } from '../utils/openPdf'
 import DateRangePicker from '../components/DateRangePicker'
 import Table from '../components/Table'
 import { format, startOfMonth } from 'date-fns'
@@ -290,17 +291,17 @@ export default function Reports() {
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [priceListLoading, setPriceListLoading] = useState(false)
 
-  /** Open the price list in a new tab for printing or saving. */
+  /**
+   * Open the price list in a new tab for printing or saving.
+   * openPdfInNewTab must be called synchronously here — it opens the tab
+   * before awaiting, or the popup blocker kills it.
+   */
   const handlePriceList = async () => {
     setPriceListLoading(true)
     try {
-      const res = await getPriceList()
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
-      const win = window.open(url, '_blank')
-      if (!win) toast.error('Allow pop-ups to open the price list')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
-    } catch {
-      toast.error('Could not generate the price list')
+      await openPdfInNewTab(() => getPriceList(), 'price-list.pdf')
+    } catch (err) {
+      toast.error(err.message)
     } finally {
       setPriceListLoading(false)
     }
