@@ -231,22 +231,22 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
       };
 
       const sectionTitle = (text, y) => {
-        doc.fontSize(9).font('Helvetica-Bold').fillColor(ORANGE).text(text, ML, y, { width: W });
-        const lineY = y + 13;
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor(ORANGE).text(text, ML, y, { width: W });
+        const lineY = y + 11;
         doc.moveTo(ML, lineY).lineTo(ML + W, lineY).lineWidth(0.8).strokeColor(ORANGE).stroke();
         resetColors();
-        return lineY + 6;
+        return lineY + 4;
       };
 
       const drawField = (label, value, x, y, width) => {
-        doc.fontSize(6.5).font('Helvetica-Bold').fillColor(LGRAY).text(label, x, y, { width, lineBreak: false });
-        doc.fontSize(8.5).font('Helvetica').fillColor('#111111').text(String(value || '—'), x, y + 9, { width, lineBreak: false });
-        doc.moveTo(x, y + 21).lineTo(x + width, y + 21).lineWidth(0.3).strokeColor('#cccccc').stroke();
+        doc.fontSize(6).font('Helvetica-Bold').fillColor(LGRAY).text(label, x, y, { width, lineBreak: false });
+        doc.fontSize(8).font('Helvetica').fillColor('#111111').text(String(value || '—'), x, y + 8, { width, lineBreak: false });
+        doc.moveTo(x, y + 18).lineTo(x + width, y + 18).lineWidth(0.3).strokeColor('#cccccc').stroke();
         resetColors();
       };
 
       const drawPhotoBox = (x, y, buf, topLabel) => {
-        const PW = 65; const PH = 80;
+        const PW = 62; const PH = 72;
         doc.rect(x, y, PW, PH).lineWidth(0.8).strokeColor('#aaaaaa').stroke();
         if (buf) {
           try { doc.image(buf, x + 2, y + 2, { width: PW - 4, height: PH - 4, cover: [PW - 4, PH - 4] }); } catch {}
@@ -285,8 +285,8 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
 
       // ── Header: passport photos + company info ─────────────────────────────
       const H_Y = 42;
-      const PHOTO_W = 65;
-      const PHOTO_H = 80;
+      const PHOTO_W = 62;
+      const PHOTO_H = 72;
 
       drawPhotoBox(ML, H_Y, customerPhotoBuf, 'CUSTOMER');
       drawPhotoBox(ML + W - PHOTO_W, H_Y, guarantorPhotoBuf, 'GUARANTOR');
@@ -301,7 +301,7 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
         .text('CREDIT SALE AGREEMENT', cX, H_Y + 46, { width: cW, align: 'center' });
       resetColors();
 
-      let y = H_Y + PHOTO_H + 18;
+      let y = H_Y + PHOTO_H + 14;
 
       // ── Separator ─────────────────────────────────────────────────────────────
       doc.moveTo(ML, y).lineTo(ML + W, y).lineWidth(1.2).strokeColor(ORANGE).stroke();
@@ -314,36 +314,36 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
       drawField('Customer Name', customer_name, ML, y, c3 - 4);
       drawField('Document Type', document_type, ML + c3, y, c3 - 4);
       drawField('ID Number', id_number, ML + c3 * 2, y, c3 - 4);
-      y += 32;
+      y += 26;
       drawField('Date', start ? start.toLocaleDateString('en-GH') : '—', ML, y, c3 - 4);
       drawField('Location', customer_address, ML + c3, y, c3 - 4);
       drawField('Phone / Tel', customer_phone, ML + c3 * 2, y, c3 - 4);
-      y += 30;
+      y += 24;
 
       // ── Product & Payment Terms ────────────────────────────────────────────────
       y = sectionTitle('PRODUCT AND PAYMENT TERMS', y);
       drawField('Product Type', product_type, ML, y, c3 - 4);
       drawField('Serial Number', serial_number || '—', ML + c3, y, c3 - 4);
       drawField('Down Payment (GHC)', 'GHC ' + Number(down_payment).toFixed(2), ML + c3 * 2, y, c3 - 4);
-      y += 32;
+      y += 26;
 
       const c2 = (W - 6) / 2;
       drawField('Payment Plan', (planLabel[payment_plan] || 'Week') + 'ly', ML, y, c2 - 3);
       drawField('Loan Total Amount (GHC)', 'GHC ' + Number(total_amount).toFixed(2), ML + c2 + 6, y, c2 - 3);
-      y += 32;
+      y += 26;
 
       // Balance display
-      doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY).text('Balance (Loan Total - Down Payment)', ML, y);
-      doc.fontSize(12).font('Helvetica-Bold').fillColor(ORANGE)
-        .text('GHC ' + balance.toFixed(2), ML, y + 9);
+      doc.fontSize(6.5).font('Helvetica-Bold').fillColor(LGRAY).text('Balance (Loan Total - Down Payment)', ML, y);
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(ORANGE)
+        .text('GHC ' + balance.toFixed(2), ML, y + 8);
       resetColors();
-      y += 32;
+      y += 26;
 
       // Payment schedule table
       doc.fontSize(8).font('Helvetica-Bold').fillColor('#111').text('Payment Schedule (3 equal instalments):', ML, y);
       y += 12;
 
-      const TH = 18;
+      const TH = 15;
       const tCols = [W * 0.22, W * 0.44, W * 0.34];
       const tX = ML;
 
@@ -352,7 +352,7 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
       ['Period', 'Due Date', 'Amount (GHC)'].forEach((h, i) => {
         const cx = tX + tCols.slice(0, i).reduce((a, b) => a + b, 0);
         doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#fff')
-          .text(h, cx + 3, y + 5, { width: tCols[i] - 6, align: 'center', lineBreak: false });
+          .text(h, cx + 4, y + 4, { width: tCols[i] - 6, align: 'center', lineBreak: false });
       });
       y += TH;
 
@@ -367,8 +367,8 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
         ];
         row.forEach((cell, ci) => {
           const cx = tX + tCols.slice(0, ci).reduce((a, b) => a + b, 0);
-          doc.fontSize(8).font('Helvetica').fillColor('#111')
-            .text(cell, cx + 3, y + 5, { width: tCols[ci] - 6, align: 'center', lineBreak: false });
+          doc.fontSize(7.5).font('Helvetica').fillColor('#111')
+            .text(cell, cx + 4, y + 4, { width: tCols[ci] - 6, align: 'center', lineBreak: false });
         });
         y += TH;
       });
@@ -377,8 +377,8 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
       doc.fillColor('#fff3e0').rect(tX, y, W, TH).fill();
       doc.strokeColor(ORANGE).lineWidth(0.8).rect(tX, y, W, TH).stroke();
       doc.fontSize(7.5).font('Helvetica-Bold').fillColor(ORANGE)
-        .text('TOTAL BALANCE', tX + 3, y + 5, { width: tCols[0] + tCols[1] - 6, align: 'right', lineBreak: false });
-      doc.text('GHC ' + balance.toFixed(2), tX + tCols[0] + tCols[1] + 3, y + 5, { width: tCols[2] - 6, align: 'center', lineBreak: false });
+        .text('TOTAL BALANCE', tX + 3, y + 4, { width: tCols[0] + tCols[1] - 6, align: 'right', lineBreak: false });
+      doc.text('GHC ' + balance.toFixed(2), tX + tCols[0] + tCols[1] + 3, y + 4, { width: tCols[2] - 6, align: 'center', lineBreak: false });
       resetColors();
       y += TH + 8;
 
@@ -389,7 +389,7 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
       drawField('Ghana Card No.', guarantor_ghana_card || '—', ML + c4 + 4, y, c4 - 3);
       drawField('Location', guarantor_address, ML + (c4 + 4) * 2, y, c4 - 3);
       drawField('Phone Number', guarantor_phone, ML + (c4 + 4) * 3, y, c4 - 3);
-      y += 30;
+      y += 24;
 
       // ── Agreement Text ────────────────────────────────────────────────────────
       y = sectionTitle('CUSTOMER AGREEMENT', y);
@@ -401,22 +401,18 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
         'the goods, and I must keep them in good condition.\n' +
         'If I fail to pay on the due date, I agree that the Company may repossess the goods and recover any outstanding balance, ' +
         'and that one third (1/3) of my down payment will be refunded to me.';
-      doc.fontSize(7.5).font('Helvetica').fillColor('#222222').text(custText, ML, y, { width: W, lineGap: 1 });
-      y = doc.y + 8;
+      doc.fontSize(7).font('Helvetica').fillColor('#222222').text(custText, ML, y, { width: W, lineGap: 0.5 });
+      y = doc.y + 6;
 
       // ── Default and Enforcement ────────────────────────────────────────────
-      // The enforcement clauses, the guarantor undertaking and the signature
-      // boxes belong together — a signature block stranded on its own sheet
-      // reads as an afterthought, and someone could sign without the terms in
-      // front of them. Break here if the whole tail won't fit.
-      const A4_BOTTOM = 802 - 40;
-      const TAIL_H = 300; // enforcement + guarantor section + signatures
-      if (y + TAIL_H > A4_BOTTOM) {
-        doc.addPage();
-        y = 50;
-      }
-
-      y = sectionTitle('DEFAULT AND ENFORCEMENT', y);
+      // One sheet whenever the content allows, spilling to a second only when it
+      // genuinely does not fit. The tail is measured with heightOfString rather
+      // than estimated — a guessed allowance forced a page break that was not
+      // needed once the layout was tightened.
+      //
+      // Enforcement, the guarantor undertaking and the signatures move together:
+      // a signature block stranded alone on sheet two would let someone sign
+      // without the terms in front of them.
       const enforceText =
         '1. If any instalment remains unpaid for fourteen (14) days after its due date, the whole outstanding balance becomes ' +
         'due immediately, and the Company may repossess the goods without further notice.\n' +
@@ -427,26 +423,42 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
         'disposing of them, or giving false information in order to obtain them, may constitute a criminal offence and may be ' +
         'reported to the Ghana Police Service for investigation and prosecution.\n' +
         '4. Where the customer defaults, the guarantor named below becomes liable for the full outstanding balance.';
-      doc.fontSize(7.5).font('Helvetica').fillColor('#222222').text(enforceText, ML, y, { width: W, lineGap: 1 });
-      y = doc.y + 8;
 
-      // ── Guarantor Section ─────────────────────────────────────────────────────
-      y = sectionTitle('GUARANTOR SECTION', y);
       const guarText =
         'I, ' + guarantor_name + ', stand as guarantor for ' + customer_name + '. I confirm that I know the customer personally ' +
         'and I have read and understood this agreement. If the customer fails to pay any amount when it falls due, I undertake to ' +
         'pay that amount to the Company on demand, and I accept that the Company may pursue the same remedies against me as ' +
         'against the customer.';
-      doc.fontSize(7.5).font('Helvetica').fillColor('#222222').text(guarText, ML, y, { width: W, lineGap: 1 });
-      y = doc.y + 10;
+
+      const A4_BOTTOM = 802 - 40;
+      const SECTION_H = 15;   // heading + rule + gap
+      const SIG_BLOCK_H = 86; // signature boxes, labels and date line
+
+      doc.fontSize(7).font('Helvetica');
+      const tailHeight =
+        SECTION_H + doc.heightOfString(enforceText, { width: W, lineGap: 0.5 }) + 6 +
+        SECTION_H + doc.heightOfString(guarText, { width: W, lineGap: 0.5 }) + 8 +
+        SECTION_H + SIG_BLOCK_H;
+
+      if (y + tailHeight > A4_BOTTOM) {
+        doc.addPage();
+        y = 50;
+      }
+
+      y = sectionTitle('DEFAULT AND ENFORCEMENT', y);
+      doc.fontSize(7).font('Helvetica').fillColor('#222222').text(enforceText, ML, y, { width: W, lineGap: 0.5 });
+      y = doc.y + 6;
+
+      // ── Guarantor Section ─────────────────────────────────────────────────────
+      y = sectionTitle('GUARANTOR SECTION', y);
+      doc.fontSize(7).font('Helvetica').fillColor('#222222').text(guarText, ML, y, { width: W, lineGap: 0.5 });
+      y = doc.y + 8;
 
       // ── Signatories ───────────────────────────────────────────────────────────
-      // Never drag this block upwards to save a page — doing so printed the
-      // signature boxes on top of the guarantor text. If it doesn't fit below
-      // the preceding clauses, start a second sheet.
-      const SIG_BLOCK_H = 100;
-      const PAGE_BOTTOM = A4_BOTTOM;
-      if (y + SIG_BLOCK_H > PAGE_BOTTOM) {
+      // Backstop only: the tail measurement above normally keeps these with the
+      // clauses. Never drag the block upwards to save a page — that printed the
+      // signature boxes on top of the guarantor text.
+      if (y + SIG_BLOCK_H > A4_BOTTOM) {
         doc.addPage();
         y = 50;
       }
@@ -459,19 +471,19 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
 
       sigLabels.forEach((label, i) => {
         const sx = ML + i * (sigW + 4);
-        doc.rect(sx, y, sigW, 42).lineWidth(0.5).strokeColor('#cccccc').stroke();
+        doc.rect(sx, y, sigW, 36).lineWidth(0.5).strokeColor('#cccccc').stroke();
         doc.fontSize(6).fillColor('#bbbbbb').text('Signature', sx + 2, y + 4, { width: sigW - 4, align: 'center', lineBreak: false });
-        doc.moveTo(sx + 6, y + 34).lineTo(sx + sigW - 6, y + 34).lineWidth(0.5).strokeColor('#999999').stroke();
+        doc.moveTo(sx + 6, y + 29).lineTo(sx + sigW - 6, y + 29).lineWidth(0.5).strokeColor('#999999').stroke();
         resetColors();
-        doc.fontSize(8).font('Helvetica-Bold').fillColor('#111').text(label, sx, y + 46, { width: sigW, align: 'center', lineBreak: false });
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#111').text(label, sx, y + 39, { width: sigW, align: 'center', lineBreak: false });
         if (sigSubNames[i]) {
-          doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY).text(sigSubNames[i], sx, y + 57, { width: sigW, align: 'center', lineBreak: false });
+          doc.fontSize(6).font('Helvetica').fillColor(LGRAY).text(sigSubNames[i], sx, y + 48, { width: sigW, align: 'center', lineBreak: false });
         }
         resetColors();
       });
 
-      y += 70;
-      doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+      y += 60;
+      doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
         .text('Date: ___________________________', ML + W / 2 - 60, y);
       resetColors();
 
