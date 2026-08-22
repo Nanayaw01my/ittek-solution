@@ -10,7 +10,7 @@ import {
   FiAlertCircle, FiUsers, FiShoppingBag, FiInbox, FiFileText,
   FiBarChart2, FiSettings, FiDatabase, FiBell, FiSearch, FiLogOut,
   FiMenu, FiX, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
-  FiArchive, FiShield, FiGlobe
+  FiArchive, FiShield, FiGlobe, FiTrash2
 } from 'react-icons/fi'
 import { logout as apiLogout } from '../api/auth'
 import toast from 'react-hot-toast'
@@ -44,6 +44,7 @@ const NAV_ITEMS = [
   { to: '/users', label: 'User Management', icon: FiUser, minLevel: 3 },
   { to: '/audit-logs', label: 'Audit Logs', icon: FiFileText, minLevel: 3 },
   { to: '/backup', label: 'Backup & Restore', icon: FiDatabase, minLevel: 3 },
+  { to: '/delete-records', label: 'Delete Records', icon: FiTrash2, minLevel: 3 },
   { to: '/settings', label: 'Settings', icon: FiSettings, minLevel: 3 },
 ]
 

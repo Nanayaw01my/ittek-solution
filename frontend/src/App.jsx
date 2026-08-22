@@ -32,6 +32,7 @@ import SalesHistory from './pages/SalesHistory'
 import PublicReceipt from './pages/PublicReceipt'
 import Layaways from './pages/Layaways'
 import FraudAlerts from './pages/FraudAlerts'
+import DeleteRecords from './pages/DeleteRecords'
 
 const ROLE_LEVELS = { 'Sales': 1, 'Manager': 2, 'CEO': 3, 'Super Admin': 4 }
 
@@ -192,6 +193,14 @@ export default function App() {
           element={
             <ProtectedRoute minLevel={3}>
               <Backup />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="delete-records"
+          element={
+            <ProtectedRoute minLevel={3}>
+              <DeleteRecords />
             </ProtectedRoute>
           }
         />
