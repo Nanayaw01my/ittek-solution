@@ -72,17 +72,23 @@ body {
 
   .receipt-print-area {
     position: absolute !important;
-    /* Inset by the printer's unimaged side margin: an "80mm" thermal head
-       images about 72mm, so content laid out across the full roll had its left
-       column clipped. */
-    left: 4mm !important;
+    /* Centred on the page, not pinned to a fixed left offset.
+       left+right:0 with auto side margins and a fixed width is the absolute
+       centring trick — it centres within whatever page box the driver actually
+       uses. A fixed left inset only looked centred when the driver honoured the
+       80mm @page exactly; on a wider page everything shifted left, leaving a
+       narrow left margin and a wide right one.
+       72mm because an "80mm" thermal head images only about 72mm. */
+    left: 0 !important;
+    right: 0 !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
     top: 0 !important;
     width: 72mm !important;
     max-width: 72mm !important;
     max-height: none !important;
     overflow: visible !important;
-    margin: 0 !important;
-    /* Vertical padding only — the side inset above provides the margins. */
+    /* Vertical padding only — the auto side margins above do the centring. */
     padding: 4mm 0 !important;
     border: none !important;
     border-radius: 0 !important;

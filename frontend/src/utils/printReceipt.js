@@ -63,14 +63,20 @@ export function printReceipt(widthMm = BASELINE_MM) {
     @page { size: ${width}mm auto; margin: 0; }
     @media print {
       .receipt-print-area {
-        /* Narrower than the roll and inset by the side margin, so nothing sits
-           under the printer's unimaged edge.
-           Stays absolutely positioned: the receipt lives inside a modal, and
-           everything else is hidden with visibility:hidden, which still
-           occupies layout space — in normal flow the receipt would print far
-           down the page after a stack of blank space. So it is lifted out and
-           offset, rather than centred with auto margins. */
-        left: ${SIDE_MARGIN_MM}mm !important;
+        /* Narrower than the roll, and centred rather than pinned to a fixed
+           left offset — left+right:0 with auto side margins centres an
+           absolutely positioned element inside whatever page box the driver
+           uses. A fixed inset only looked right when the driver honoured the
+           @page size exactly; on a wider page the whole receipt shifted left.
+
+           Still absolutely positioned: the receipt lives inside a modal and
+           the rest of the app is hidden with visibility:hidden, which keeps
+           its layout space, so in normal flow the receipt would print after a
+           stack of blank space. */
+        left: 0 !important;
+        right: 0 !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
         width: ${m.contentMm}mm !important;
         max-width: ${m.contentMm}mm !important;
         padding: ${m.padY}mm 0 !important;
