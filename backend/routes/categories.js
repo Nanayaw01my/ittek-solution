@@ -3,11 +3,12 @@ const router = express.Router();
 const { body } = require('express-validator');
 const { validationResult } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
-const { requireLevel } = require('../middleware/rbac');
+const { requireLevel, requirePage } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const Category = require('../models/Category');
 
-const adminOnly = [authenticate, requireLevel(3)];
+// Writing is grantable to an individual user by the CEO.
+const adminOnly = [authenticate, requirePage('categories', 'full')];
 
 // GET /api/categories
 router.get('/', authenticate, async (req, res) => {

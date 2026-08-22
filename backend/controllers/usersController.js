@@ -2,6 +2,7 @@ const { validationResult } = require('express-validator');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Category = require('../models/Category');
+const { sanitizeGrants } = require('../config/pageAccess');
 
 const ROLE_LEVELS = { 'Super Admin': 4, CEO: 3, Manager: 2, Sales: 1 };
 
@@ -42,7 +43,7 @@ const createUser = async (req, res) => {
       return res.status(400).json({ success: false, message: errors.array()[0].msg });
     }
 
-    const { username, email, password, role, assigned_categories } = req.body;
+    const { username, email, password, role, assigned_categories, page_access } = req.body;
     const normalUsername = username.trim().toLowerCase();
     const normalEmail = email ? email.trim().toLowerCase() : null;
 
@@ -61,7 +62,7 @@ const createUser = async (req, res) => {
     // Product categories a new Manager is being put in charge of. Validated
     // the same way as on update, and ignored for any other role.
     let categoryIds = [];
-    if (role === 'Manager' && Array.isArray(assigned_categories)) {
+    if (Array.isArray(assigned_categories)) {
       categoryIds = assigned_categories.filter((id) => mongoose.isValidObjectId(id));
       const found = await Category.countDocuments({ _id: { $in: categoryIds } });
       if (found !== categoryIds.length) {
@@ -78,6 +79,8 @@ const createUser = async (req, res) => {
       created_by: req.user._id,
       ...(avatar_url ? { avatar_url } : {}),
       ...(categoryIds.length ? { assigned_categories: categoryIds } : {}),
+      // Screens this user may reach beyond what their role opens.
+      ...(page_access ? { page_access: sanitizeGrants(page_access) } : {}),
     });
 
     return res.status(201).json({
@@ -125,7 +128,7 @@ const updateUser = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
-    const { username, email, role, avatar_url, assigned_categories } = req.body;
+    const { username, email, role, avatar_url, assigned_categories, page_access } = req.body;
 
     if (role && !canManage(req.user.role, role)) {
       return res.status(403).json({ success: false, message: 'Cannot assign that role.' });
@@ -139,19 +142,18 @@ const updateUser = async (req, res) => {
     // Which product categories this Manager may add products to. Sent as an
     // array of category ids; an empty array withdraws the assignment entirely.
     if (Array.isArray(assigned_categories)) {
-      const finalRole = role || user.role;
-      if (finalRole !== 'Manager') {
-        return res.status(400).json({
-          success: false,
-          message: 'Product categories can only be assigned to a Manager.',
-        });
-      }
       const ids = assigned_categories.filter((id) => mongoose.isValidObjectId(id));
       const found = await Category.countDocuments({ _id: { $in: ids } });
       if (found !== ids.length) {
         return res.status(400).json({ success: false, message: 'One of those categories no longer exists.' });
       }
       user.assigned_categories = ids;
+    }
+
+    // Page grants. Replaces the whole set, so removing a page is just leaving
+    // it out. Only a Super Admin or CEO reaches this route at all.
+    if (page_access && typeof page_access === 'object') {
+      user.page_access = sanitizeGrants(page_access);
     }
 
     await user.save();

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
-const { requireLevel } = require('../middleware/rbac');
+const { requireLevel, requirePage } = require('../middleware/rbac');
 const {
   getDashboardStats,
   getPriceList, getSalesTrend,
@@ -19,9 +19,8 @@ router.get('/sales-trend', authenticate, getSalesTrend);
 router.get('/price-list', authenticate, getPriceList);
 
 // Super Admin (4) and CEO (3) only
-const adminOnly = [authenticate, requireLevel(3)];
-
-router.use(adminOnly);
+// Reading a report can be granted to an individual user by the CEO.
+router.use(authenticate, requirePage('reports'));
 
 router.get('/daily-sales', getDailySales);
 router.get('/sales-by-user', getSalesByUser);
@@ -30,8 +29,9 @@ router.get('/profit-loss', getProfitLoss);
 router.get('/debtors', getDebtors);
 router.get('/stock-valuation', getStockValuation);
 router.get('/expense-breakdown', getExpenseBreakdown);
-router.get('/financial-overview', getFinancialOverview);
-router.get('/cash-flow', getCashFlow);
+// These two back the Financial page, which is granted separately.
+router.get('/financial-overview', requirePage('financial'), getFinancialOverview);
+router.get('/cash-flow', requirePage('financial'), getCashFlow);
 router.get('/export/excel/:reportType', exportData);
 
 module.exports = router;

@@ -14,6 +14,7 @@ import ImageUpload from '../components/ImageUpload'
 import VariantEditor from '../components/VariantEditor'
 import useAuthStore from '../store/authStore'
 import { getMe } from '../api/auth'
+import { effectiveMode } from '../config/pageAccess'
 
 /**
  * The form registers camelCase names but a product document is snake_case, so
@@ -95,7 +96,7 @@ function ProductForm({ product, categories = [], suppliers = [], onSubmit, loadi
           )}
         </div>
 
-        <div>
+        <div className={restricted ? 'hidden' : ''}>
           <label className="block text-sm font-semibold text-gray-700 mb-1">Supplier</label>
           <select
             {...register('supplier')}
@@ -106,13 +107,15 @@ function ProductForm({ product, categories = [], suppliers = [], onSubmit, loadi
           </select>
         </div>
 
-        <div>
+        {/* Cost price is the profit-sensitive figure — inventory-only users
+            never see or set it. An owner fills it in afterwards. */}
+        <div className={restricted ? 'hidden' : ''}>
           <label className="block text-sm font-semibold text-gray-700 mb-1">Cost Price (GH₵) *</label>
           <input
             type="number"
             step="0.01"
             min="0"
-            {...register('costPrice', { required: 'Required', min: { value: 0, message: 'Must be positive' } })}
+            {...register('costPrice', restricted ? {} : { required: 'Required', min: { value: 0, message: 'Must be positive' } })}
             className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
             placeholder="0.00"
           />
@@ -165,7 +168,8 @@ function ProductForm({ product, categories = [], suppliers = [], onSubmit, loadi
         </div>
       </div>
 
-      <VariantEditor variants={variants} onChange={setVariants} />
+      {/* Variant rows carry cost and selling prices, so they are for owners. */}
+      {!restricted && <VariantEditor variants={variants} onChange={setVariants} />}
 
       <div className="flex gap-3 pt-2">
         <button
@@ -180,6 +184,53 @@ function ProductForm({ product, categories = [], suppliers = [], onSubmit, loadi
   )
 }
 
+/** Quantity and low-stock level only — no prices anywhere on it. */
+function StockAdjustForm({ product, onSubmit, loading }) {
+  const { register, handleSubmit } = useForm({
+    defaultValues: {
+      quantity: product.quantity ?? 0,
+      low_stock_level: product.low_stock_level ?? 5,
+    },
+  })
+
+  return (
+    <form
+      onSubmit={handleSubmit(v => onSubmit({
+        quantity: parseInt(v.quantity, 10) || 0,
+        low_stock_level: parseInt(v.low_stock_level, 10) || 0,
+      }))}
+      className="p-5 space-y-4"
+    >
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">Quantity in stock</label>
+        <input
+          type="number"
+          min="0"
+          autoFocus
+          {...register('quantity')}
+          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">Low stock level</label>
+        <input
+          type="number"
+          min="0"
+          {...register('low_stock_level')}
+          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
+      >
+        {loading ? 'Saving...' : 'Save stock'}
+      </button>
+    </form>
+  )
+}
+
 export default function Products() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -188,6 +239,7 @@ export default function Products() {
   const [showModal, setShowModal] = useState(false)
   const [editProduct, setEditProduct] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [stockTarget, setStockTarget] = useState(null)
   const [page, setPage] = useState(1)
 
   const user = useAuthStore(s => s.user)
@@ -195,7 +247,9 @@ export default function Products() {
   // seeing what anything costs or sells for. The `view` flag tells the server
   // to apply that scope — the POS asks for products without it, so selling is
   // unaffected. The server strips the prices; this only hides the columns.
-  const isManager = user?.role === 'Manager'
+  // 'inventory' means the CEO granted this user the Products page in its
+  // limited form: add products and correct stock, never see the money.
+  const inventoryOnly = effectiveMode(user, 'products') === 'inventory'
 
   // The stored user is only refreshed at login, so a manager assigned a
   // category mid-shift would see an empty picker until they logged out. Re-read
@@ -203,7 +257,7 @@ export default function Products() {
   const { data: meData } = useQuery({
     queryKey: ['me-assigned-categories'],
     queryFn: () => getMe().then(r => r.data),
-    enabled: isManager,
+    enabled: inventoryOnly,
     staleTime: 60_000,
     retry: false,
   })
@@ -212,12 +266,12 @@ export default function Products() {
   ).map(c => String(c?._id || c))
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', search, categoryFilter, stockFilter, page, isManager],
+    queryKey: ['products', search, categoryFilter, stockFilter, page, inventoryOnly],
     queryFn: () => getProducts({
       search,
       category: categoryFilter || undefined,
       stockFilter: stockFilter !== 'all' ? stockFilter : undefined,
-      ...(isManager ? { view: 'catalogue' } : {}),
+      ...(inventoryOnly ? { view: 'catalogue' } : {}),
       page,
       limit: 15,
     }).then(r => r.data),
@@ -250,6 +304,7 @@ export default function Products() {
       queryClient.invalidateQueries(['products'])
       setShowModal(false)
       setEditProduct(null)
+      setStockTarget(null)
     },
     onError: err => toast.error(err.response?.data?.message || 'Failed to update'),
   })
@@ -266,7 +321,7 @@ export default function Products() {
 
   const products = data?.products || data || []
   const allCategories = categoriesData?.categories || categoriesData || []
-  const categories = isManager
+  const categories = inventoryOnly
     ? allCategories.filter(c => assignedCategoryIds.includes(String(c._id)))
     : allCategories
   const suppliers = suppliersData?.suppliers || suppliersData || []
@@ -301,8 +356,19 @@ export default function Products() {
         </span>
       ),
     },
-    // Prices, margin and the edit/delete controls are for the owners only.
-    ...(isManager ? [] : [
+    // Inventory-only users get one action: correct the count on the shelf.
+    ...(inventoryOnly ? [{
+      header: 'Stock',
+      key: '_id',
+      render: (id, row) => (
+        <button
+          onClick={e => { e.stopPropagation(); setStockTarget(row) }}
+          className="px-3 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+        >
+          Adjust
+        </button>
+      ),
+    }] : [
     { header: 'Cost Price', key: 'cost_price', render: v => formatCurrency(v) },
     { header: 'Selling Price', key: 'selling_price', render: v => formatCurrency(v) },
     {
@@ -344,7 +410,7 @@ export default function Products() {
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       <PageHeader
         title="Products"
-        subtitle={isManager ? 'Add products to the categories assigned to you' : 'Manage your product catalog'}
+        subtitle={inventoryOnly ? 'Add products to the categories assigned to you' : 'Manage your product catalog'}
         action={
           <button
             onClick={() => { setEditProduct(null); setShowModal(true) }}
@@ -404,7 +470,7 @@ export default function Products() {
              this the form kept whatever the previously opened product left. */
           key={editProduct?._id || 'new'}
           product={editProduct}
-          restricted={isManager}
+          restricted={inventoryOnly}
           categories={categories}
           suppliers={suppliers}
           loading={createMutation.isPending || updateMutation.isPending}
@@ -426,6 +492,8 @@ export default function Products() {
               category_id: formData.category || undefined,
               supplier_id: formData.supplier || undefined,
               cost_price: num(formData.costPrice, editProduct?.cost_price ?? 0),
+              // An inventory-only user never entered a cost price; the field is
+              // hidden and the server ignores it on their updates anyway.
               selling_price: num(formData.sellingPrice, editProduct?.selling_price ?? 0),
               quantity: int(formData.quantity, editProduct?.quantity ?? 0),
               low_stock_level: int(formData.lowStockLevel, editProduct?.low_stock_level ?? 5),
@@ -451,6 +519,23 @@ export default function Products() {
             }
           }}
         />
+      </Modal>
+
+      {/* Stock adjustment — the only edit an inventory-only user may make.
+          The server ignores every other field from them regardless. */}
+      <Modal
+        isOpen={!!stockTarget}
+        onClose={() => setStockTarget(null)}
+        title={stockTarget ? `Adjust stock — ${stockTarget.name}` : 'Adjust stock'}
+        size="sm"
+      >
+        {stockTarget && (
+          <StockAdjustForm
+            product={stockTarget}
+            loading={updateMutation.isPending}
+            onSubmit={(values) => updateMutation.mutate({ id: stockTarget._id, data: values })}
+          />
+        )}
       </Modal>
 
       {/* Delete Confirm */}

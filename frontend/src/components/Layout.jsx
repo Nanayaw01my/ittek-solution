@@ -1,6 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
+import { canAccessPage } from '../config/pageAccess'
+import { getMe } from '../api/auth'
 import useNotificationStore from '../store/notificationStore'
 import { getRoleLabel, getRoleLevel } from '../utils/helpers'
 import {
@@ -53,9 +55,36 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
 
+  // The stored user is written at login and never again, so a page the CEO
+  // grants mid-shift would not appear in the sidebar until the next login.
+  // Re-read it once per mount; a failure (offline, for one) leaves the stored
+  // copy in place rather than logging anyone out.
+  const updateUser = useAuthStore(s => s.updateUser)
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    getMe()
+      .then(r => {
+        const fresh = r.data?.data || r.data
+        if (cancelled || !fresh) return
+        updateUser({
+          role: fresh.role,
+          assigned_categories: (fresh.assigned_categories || []).map(c => String(c?._id || c)),
+          page_access: fresh.page_access || {},
+        })
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const userLevel = getRoleLevel(user?.role)
 
-  const visibleNavItems = NAV_ITEMS.filter(item => userLevel >= item.minLevel)
+  // A screen shows when the role reaches it, or when the CEO granted this user
+  // that page individually. The page id is the route without its slash.
+  const visibleNavItems = NAV_ITEMS.filter(item =>
+    userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1))
+  )
 
   const handleLogout = async () => {
     setLoggingOut(true)

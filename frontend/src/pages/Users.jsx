@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX, FiTrash2, FiEye, FiEyeOff } from 'react-icons/fi'
 import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword } from '../api/users'
 import { getCategories } from '../api/products'
+import { GRANTABLE_PAGES, MODE_LABELS } from '../config/pageAccess'
 import { formatDate, getRoleLabel, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
 
@@ -85,17 +86,28 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
       : {},
   })
 
-  // A Manager is put in charge of specific product categories: they can add
-  // products to these and nothing else, and the Products page shows them
-  // nothing outside them. Only meaningful for the Manager role.
+  // Screens this user may reach on top of what their role opens, as
+  // page -> mode. Ticking Products as 'inventory' lets them add products and
+  // fix stock counts without ever seeing a price.
   const selectedRole = watch('role')
+  const [grants, setGrants] = useState(() => ({ ...(editUser?.page_access || {}) }))
+  const setGrant = (page, mode) =>
+    setGrants(prev => {
+      const next = { ...prev }
+      if (mode) next[page] = mode
+      else delete next[page]
+      return next
+    })
+  const grantablePages = Object.entries(GRANTABLE_PAGES).filter(
+    ([, def]) => getRoleLevel(selectedRole) < def.defaultLevel
+  )
   const [assigned, setAssigned] = useState(
     (editUser?.assigned_categories || []).map(c => String(c?._id || c))
   )
   const { data: categoriesData } = useQuery({
     queryKey: ['categories'],
     queryFn: () => getCategories().then(r => r.data),
-    enabled: selectedRole === 'Manager',
+    enabled: grants.products === 'inventory',
   })
   const categories = categoriesData?.categories || categoriesData || []
 
@@ -103,7 +115,10 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
     setAssigned(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]))
 
   return (
-    <form onSubmit={handleSubmit(data => onSubmit({ ...data, assigned_categories: assigned }))} className="p-5 space-y-4">
+    <form
+      onSubmit={handleSubmit(data => onSubmit({ ...data, assigned_categories: assigned, page_access: grants }))}
+      className="p-5 space-y-4"
+    >
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1">Username *</label>
         <input
@@ -141,15 +156,44 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
         </select>
         {errors.role && <p className="mt-1 text-xs text-red-500">{errors.role.message}</p>}
       </div>
-      {selectedRole === 'Manager' && (
+      {selectedRole && grantablePages.length > 0 && (
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1">
-            Product categories this manager handles
+            Extra screens this user can open
           </label>
           <p className="text-xs text-gray-500 mb-2">
-            They can add products to the categories you tick here. They will not see
-            cost prices, selling prices or any other category on the Products page.
-            Selling at the POS is unaffected.
+            Their role already opens the rest. A grant only adds access — it never
+            takes any away. Users, Audit Logs, Backup and Settings cannot be granted.
+          </p>
+          <div className="border border-gray-200 rounded-xl divide-y divide-gray-100">
+            {grantablePages.map(([page, def]) => (
+              <div key={page} className="flex items-center justify-between gap-3 px-3 py-2">
+                <span className="text-sm text-gray-700">{def.label}</span>
+                <select
+                  value={grants[page] || ''}
+                  onChange={e => setGrant(page, e.target.value)}
+                  className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  <option value="">No access</option>
+                  {def.modes.map(m => (
+                    <option key={m} value={m}>{def.modeLabels?.[m] || MODE_LABELS[m] || m}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {grants.products === 'inventory' && (
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">
+            Limit them to certain product categories <span className="text-gray-400 font-normal">(optional)</span>
+          </label>
+          <p className="text-xs text-gray-500 mb-2">
+            Tick categories to confine them to that section only. Leave all unticked
+            and they can add products anywhere. Either way they never see cost
+            prices, selling prices or margins, and selling at the POS is unaffected.
           </p>
           {categories.length === 0 ? (
             <p className="text-xs text-gray-400">No categories exist yet — create one first.</p>
@@ -169,8 +213,8 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
             </div>
           )}
           {assigned.length === 0 && (
-            <p className="mt-1 text-xs text-amber-600">
-              With none ticked this manager cannot add products at all.
+            <p className="mt-1 text-xs text-gray-500">
+              None ticked — they can add products in any category.
             </p>
           )}
         </div>
@@ -533,8 +577,8 @@ export default function Users() {
               username: formData.username,
               email: formData.email || undefined,
               role: formData.role,
-              // Only sent for a Manager — the server rejects it on any other role.
-              ...(formData.role === 'Manager' && { assigned_categories: formData.assigned_categories }),
+              assigned_categories: formData.assigned_categories,
+              page_access: formData.page_access,
               ...(!editUser && { password: formData.password }),
             }
             if (editUser) {

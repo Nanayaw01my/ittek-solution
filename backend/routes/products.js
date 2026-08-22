@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
-const { requireLevel } = require('../middleware/rbac');
+const { requireLevel, requirePage } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
@@ -20,12 +20,11 @@ router.get('/:id', authenticate, getProduct);
 // Super Admin (4) and CEO (3) for product management (create/update/delete)
 const adminOnly = [authenticate, requireLevel(3)];
 
-// Creating is open to Manager (2) as well: the controller then confirms the
-// category is one they were actually assigned. Editing and deleting stay with
-// CEO / Super Admin.
+// Open to anyone whose role reaches Products, plus anyone the CEO granted the
+// page to. The controller then confirms the category is one they may use.
 router.post(
   '/',
-  [authenticate, requireLevel(2)],
+  [authenticate, requirePage('products', 'inventory', 'full')],
   [
     body('name').notEmpty().withMessage('Product name is required.'),
     body('cost_price').isNumeric().withMessage('Cost price must be a number.'),
@@ -35,9 +34,11 @@ router.post(
   createProduct
 );
 
+// Inventory-only users may correct stock here; the controller limits which
+// fields they can actually change.
 router.put(
   '/:id',
-  adminOnly,
+  [authenticate, requirePage('products', 'inventory', 'full')],
   auditLog('UPDATE_PRODUCT', (req) => ({ product_id: req.params.id })),
   updateProduct
 );

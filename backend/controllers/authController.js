@@ -57,6 +57,8 @@ const login = async (req, res) => {
           // Products page uses it to limit the category picker; the server
           // enforces it again on every create.
           assigned_categories: (user.assigned_categories || []).map(String),
+          // Screens granted to this user on top of what their role opens.
+          page_access: user.page_access ? Object.fromEntries(user.page_access) : {},
         },
       },
     });

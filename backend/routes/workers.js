@@ -2,19 +2,19 @@ const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
-const { requireLevel } = require('../middleware/rbac');
+const { requireLevel, requirePage } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const { getWorkerPayments, createWorkerPayment, getWorkerSummary, deleteWorkerPayment } = require('../controllers/workersController');
 
-const adminOnly = [authenticate, requireLevel(3)];
-
-router.use(adminOnly);
+router.use(authenticate, requirePage('workers'));
+const canEdit = requirePage('workers', 'full');
 
 router.get('/summary', getWorkerSummary);
 router.get('/', getWorkerPayments);
 
 router.post(
   '/',
+  canEdit,
   [
     body('worker_name').notEmpty().withMessage('Worker name is required.'),
     body('amount_paid').isNumeric({ min: 0.01 }).withMessage('Amount must be positive.'),
@@ -25,6 +25,7 @@ router.post(
 
 router.delete(
   '/:id',
+  canEdit,
   auditLog('DELETE_WORKER_PAYMENT', (req) => ({ payment_id: req.params.id })),
   deleteWorkerPayment
 );

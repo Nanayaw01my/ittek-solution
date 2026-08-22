@@ -64,6 +64,19 @@ const UserSchema = new mongoose.Schema(
         ref: 'Category',
       },
     ],
+    /**
+     * Screens this user has been given access to beyond what their role
+     * already opens, as page id -> mode (see backend/config/pageAccess.js).
+     * e.g. { products: 'inventory' } lets a Sales user add products and fix
+     * stock counts without ever seeing a price.
+     *
+     * Only ever widens access — a grant cannot remove what the role allows.
+     */
+    page_access: {
+      type: Map,
+      of: String,
+      default: undefined,
+    },
   },
   {
     timestamps: true,

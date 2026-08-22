@@ -1,20 +1,27 @@
 const { validationResult } = require('express-validator');
 const Product = require('../models/Product');
 
-/**
- * Managers are put in charge of specific product categories by the CEO or
- * Super Admin. On the Products page they work inside those categories only,
- * and without seeing what anything costs or sells for — they are there to add
- * stock to their section, not to read the shop's margins.
- *
- * This restriction is deliberately scoped to the catalogue view. The POS asks
- * for products without it, so a Manager can still serve customers normally.
- */
-const isScopedManager = (user, view) => user?.role === 'Manager' && view === 'catalogue';
+const { effectiveMode } = require('../config/pageAccess');
 
+/**
+ * A user granted the Products page as 'inventory' is there to keep stock
+ * straight, not to read the shop's margins: they add products and correct
+ * quantities, and never see a cost price, a selling price or a supplier.
+ *
+ * The restriction is scoped to the catalogue view. The POS asks for products
+ * without `view=catalogue`, so selling is unaffected by any of this.
+ */
+const productsMode = (user) => effectiveMode(user, 'products');
+
+const isInventoryOnly = (user) => productsMode(user) === 'inventory';
+
+/**
+ * Categories an inventory user has been narrowed to. Optional: an empty list
+ * means they may work across the whole catalogue.
+ */
 const assignedCategoryIds = (user) => (user?.assigned_categories || []).map(String);
 
-/** Strip everything a scoped Manager is not meant to see off a product. */
+/** Strip everything an inventory-only user is not meant to see off a product. */
 const withoutPricing = (product) => {
   const p = typeof product.toObject === 'function' ? product.toObject() : { ...product };
   delete p.cost_price;
@@ -28,6 +35,20 @@ const withoutPricing = (product) => {
 };
 
 /**
+ * Confirm a category is one this user may put products in. Returns an error
+ * message, or null when it is allowed.
+ */
+const categoryRefusal = (user, categoryId) => {
+  if (!isInventoryOnly(user)) return null;
+  const allowed = assignedCategoryIds(user);
+  if (allowed.length === 0) return null; // not narrowed to particular categories
+  if (!categoryId || !allowed.includes(String(categoryId))) {
+    return 'You can only work with products in the categories assigned to you.';
+  }
+  return null;
+};
+
+/**
  * GET /api/products
  */
 const getProducts = async (req, res) => {
@@ -35,21 +56,14 @@ const getProducts = async (req, res) => {
     const { search, category, low_stock, view, page = 1, limit = 50 } = req.query;
     const filter = { is_active: true };
 
-    const scoped = isScopedManager(req.user, view);
+    const scoped = view === 'catalogue' && isInventoryOnly(req.user);
     if (scoped) {
       const allowed = assignedCategoryIds(req.user);
-      // No assignment means no product management — not the whole catalogue.
-      if (allowed.length === 0) {
-        return res.status(200).json({
-          success: true,
-          data: [],
-          pagination: { total: 0, page: Number(page), limit: Number(limit), pages: 0 },
-          message: 'No product categories have been assigned to you yet.',
-        });
+      if (allowed.length > 0) {
+        filter.category_id = category && allowed.includes(String(category))
+          ? category
+          : { $in: allowed };
       }
-      filter.category_id = category && allowed.includes(String(category))
-        ? category
-        : { $in: allowed };
     }
 
     if (search) {
@@ -95,25 +109,9 @@ const createProduct = async (req, res) => {
       return res.status(400).json({ success: false, message: errors.array()[0].msg });
     }
 
-    // A Manager may only create products inside the categories assigned to
-    // them. Checked here rather than in the route because it depends on the
-    // body, and it is the only thing standing between a Manager and the rest
-    // of the catalogue.
-    if (req.user.role === 'Manager') {
-      const allowed = assignedCategoryIds(req.user);
-      if (allowed.length === 0) {
-        return res.status(403).json({
-          success: false,
-          message: 'No product categories have been assigned to you. Ask the CEO to assign one.',
-        });
-      }
-      if (!req.body.category_id || !allowed.includes(String(req.body.category_id))) {
-        return res.status(403).json({
-          success: false,
-          message: 'You can only add products to the categories assigned to you.',
-        });
-      }
-    }
+    // Checked here rather than in the route because it depends on the body.
+    const refusal = categoryRefusal(req.user, req.body.category_id);
+    if (refusal) return res.status(403).json({ success: false, message: refusal });
 
     const product = await Product.create(req.body);
     const populated = await Product.findById(product._id)
@@ -229,7 +227,20 @@ const updateProduct = async (req, res) => {
       }
     }
 
-    Object.assign(product, req.body);
+    // Inventory-only users keep stock straight; they do not reprice, rename or
+    // move products between categories. Anything else in the body is ignored
+    // rather than refused, so a stale form cannot fail the whole save.
+    if (isInventoryOnly(req.user)) {
+      const refusal = categoryRefusal(req.user, product.category_id);
+      if (refusal) return res.status(403).json({ success: false, message: refusal });
+
+      const INVENTORY_FIELDS = ['quantity', 'low_stock_level', 'barcode', 'image_url'];
+      INVENTORY_FIELDS.forEach((field) => {
+        if (req.body[field] !== undefined) product[field] = req.body[field];
+      });
+    } else {
+      Object.assign(product, req.body);
+    }
     await product.save();
 
     const populated = await Product.findById(product._id)

@@ -2,6 +2,7 @@ import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import useAuthStore from './store/authStore'
 import useDocumentTitle from './hooks/useDocumentTitle'
+import { canAccessPage } from './config/pageAccess'
 import Layout from './components/Layout'
 import LoadingSpinner from './components/LoadingSpinner'
 
@@ -34,7 +35,12 @@ import FraudAlerts from './pages/FraudAlerts'
 
 const ROLE_LEVELS = { 'Sales': 1, 'Manager': 2, 'CEO': 3, 'Super Admin': 4 }
 
-function ProtectedRoute({ children, minLevel = 1, allowedRoles = null }) {
+/**
+ * `page` names a grantable screen (see config/pageAccess). When given, a user
+ * the CEO granted that page reaches the route even if their role level is
+ * below minLevel. The server checks again on every request.
+ */
+function ProtectedRoute({ children, minLevel = 1, allowedRoles = null, page = null }) {
   const { user, token } = useAuthStore()
   const isAuthenticated = !!token && !!user
 
@@ -48,7 +54,7 @@ function ProtectedRoute({ children, minLevel = 1, allowedRoles = null }) {
     return <Navigate to="/dashboard" replace />
   }
 
-  if (minLevel && userLevel < minLevel) {
+  if (minLevel && userLevel < minLevel && !(page && canAccessPage(user, page))) {
     return <Navigate to="/dashboard" replace />
   }
 
@@ -90,21 +96,21 @@ export default function App() {
         <Route path="notifications" element={<Notifications />} />
         <Route path="pos" element={<ProtectedRoute minLevel={1}><POS /></ProtectedRoute>} />
         <Route path="refunds" element={<ProtectedRoute minLevel={1}><Refunds /></ProtectedRoute>} />
-        <Route path="search" element={<ProtectedRoute minLevel={3}><Search /></ProtectedRoute>} />
+        <Route path="search" element={<ProtectedRoute minLevel={3} page="search"><Search /></ProtectedRoute>} />
 
         {/* CEO+ */}
-        <Route path="debts" element={<ProtectedRoute minLevel={2}><Debts /></ProtectedRoute>} />
-        <Route path="stock-requests" element={<ProtectedRoute minLevel={2}><StockRequests /></ProtectedRoute>} />
-        <Route path="credit-agreements" element={<ProtectedRoute minLevel={2}><CreditAgreements /></ProtectedRoute>} />
+        <Route path="debts" element={<ProtectedRoute minLevel={2} page="debts"><Debts /></ProtectedRoute>} />
+        <Route path="stock-requests" element={<ProtectedRoute minLevel={2} page="stock-requests"><StockRequests /></ProtectedRoute>} />
+        <Route path="credit-agreements" element={<ProtectedRoute minLevel={2} page="credit-agreements"><CreditAgreements /></ProtectedRoute>} />
         <Route path="layaways" element={<ProtectedRoute minLevel={1}><Layaways /></ProtectedRoute>} />
         {/* Staff conduct alerts — managers and above only */}
-        <Route path="fraud-alerts" element={<ProtectedRoute minLevel={2}><FraudAlerts /></ProtectedRoute>} />
+        <Route path="fraud-alerts" element={<ProtectedRoute minLevel={2} page="fraud-alerts"><FraudAlerts /></ProtectedRoute>} />
 
         {/* CEO+ */}
         <Route
           path="products"
           element={
-            <ProtectedRoute minLevel={3}>
+            <ProtectedRoute minLevel={3} page="products">
               <Products />
             </ProtectedRoute>
           }
@@ -112,7 +118,7 @@ export default function App() {
         <Route
           path="categories"
           element={
-            <ProtectedRoute minLevel={3}>
+            <ProtectedRoute minLevel={3} page="categories">
               <Categories />
             </ProtectedRoute>
           }
@@ -120,7 +126,7 @@ export default function App() {
         <Route
           path="suppliers"
           element={
-            <ProtectedRoute minLevel={3}>
+            <ProtectedRoute minLevel={3} page="suppliers">
               <Suppliers />
             </ProtectedRoute>
           }
@@ -128,7 +134,7 @@ export default function App() {
         <Route
           path="purchases"
           element={
-            <ProtectedRoute minLevel={3}>
+            <ProtectedRoute minLevel={3} page="purchases">
               <Purchases />
             </ProtectedRoute>
           }
@@ -136,7 +142,7 @@ export default function App() {
         <Route
           path="workers"
           element={
-            <ProtectedRoute minLevel={3}>
+            <ProtectedRoute minLevel={3} page="workers">
               <Workers />
             </ProtectedRoute>
           }
@@ -144,7 +150,7 @@ export default function App() {
         <Route
           path="financial"
           element={
-            <ProtectedRoute minLevel={3}>
+            <ProtectedRoute minLevel={3} page="financial">
               <Financial />
             </ProtectedRoute>
           }
@@ -152,7 +158,7 @@ export default function App() {
         <Route
           path="reports"
           element={
-            <ProtectedRoute minLevel={3}>
+            <ProtectedRoute minLevel={3} page="reports">
               <Reports />
             </ProtectedRoute>
           }
@@ -168,7 +174,7 @@ export default function App() {
         <Route
           path="sales-history"
           element={
-            <ProtectedRoute minLevel={3}>
+            <ProtectedRoute minLevel={3} page="sales-history">
               <SalesHistory />
             </ProtectedRoute>
           }

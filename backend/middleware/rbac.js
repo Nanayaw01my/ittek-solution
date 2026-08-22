@@ -62,4 +62,34 @@ const requireLevel = (minLevel) => {
   };
 };
 
-module.exports = { requireRoles, requireLevel, ROLE_LEVELS };
+/**
+ * requirePage(page, ...modes)
+ *
+ * Opens a route to anyone whose role already reaches the page, plus anyone the
+ * CEO granted it to at one of the listed modes. With no modes listed, any grant
+ * on that page will do.
+ *
+ * Usage: requirePage('products', 'inventory', 'full')
+ */
+const { canAccessPage, effectiveMode } = require('../config/pageAccess');
+
+const requirePage = (page, ...modes) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Not authenticated.' });
+    }
+
+    if (!canAccessPage(req.user, page, modes.length ? modes : null)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Ask the CEO to grant you this.',
+      });
+    }
+
+    // Handlers branch on this rather than re-deriving it from the role.
+    req.pageMode = effectiveMode(req.user, page);
+    next();
+  };
+};
+
+module.exports = { requireRoles, requireLevel, requirePage, ROLE_LEVELS };
