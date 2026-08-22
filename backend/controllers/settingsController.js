@@ -40,6 +40,7 @@ const updateSettings = async (req, res) => {
       tax_rate, low_stock_alert, receipt_header, receipt_footer,
       currency_symbol, notification_settings, logo_url,
       base_currency, currencies, loyalty_settings, fraud_settings, layaway_settings,
+      receipt_width_mm,
     } = req.body;
 
     let settings = await Settings.findOne();
@@ -77,6 +78,10 @@ const updateSettings = async (req, res) => {
     }
     if (fraud_settings !== undefined) {
       settings.fraud_settings = { ...(settings.fraud_settings || {}), ...fraud_settings };
+    }
+    if (receipt_width_mm !== undefined) {
+      // Clamp rather than reject: a bad value here would break every receipt.
+      settings.receipt_width_mm = Math.min(82, Math.max(20, Number(receipt_width_mm) || 80));
     }
     if (layaway_settings !== undefined) {
       settings.layaway_settings = { ...(settings.layaway_settings || {}), ...layaway_settings };

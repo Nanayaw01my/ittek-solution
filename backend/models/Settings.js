@@ -94,6 +94,11 @@ const SettingsSchema = new mongoose.Schema(
       max_redeem_percent: { type: Number, default: 50, min: 0, max: 100 },
     },
 
+    // ─── Receipt printing ──────────────────────────────────────────────────
+    // Roll width in millimetres. Thermal printers are commonly 58mm or 80mm;
+    // this one accepts 20–82mm. The printed receipt scales to whatever is set.
+    receipt_width_mm: { type: Number, default: 80, min: 20, max: 82 },
+
     // ─── Pay & Pick Later (layaway) terms ──────────────────────────────────
     // Printed on the agreement, so they are shop policy rather than a hardcoded
     // number buried in the PDF generator.

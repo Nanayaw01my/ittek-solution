@@ -15,6 +15,7 @@ import {
   cacheLogo, getCachedLogo, nextOfflineInvoiceNo,
 } from '../utils/offlineQueue'
 import { buildWhatsAppReceiptLink } from '../utils/phone'
+import { printReceipt } from '../utils/printReceipt'
 import Modal from '../components/Modal'
 import SplitPaymentModal from '../components/SplitPaymentModal'
 import HeldSalesModal from '../components/HeldSalesModal'
@@ -95,7 +96,7 @@ function CartItem({ item, onUpdateQty, onRemove }) {
   )
 }
 
-function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, companyAddress, companyPhone }) {
+function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, companyAddress, companyPhone, receiptWidthMm }) {
   const receiptRef = useRef(null)
 
   if (!saleData) return null
@@ -324,7 +325,7 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
 
         <div className="flex gap-3">
           <button
-            onClick={() => window.print()}
+            onClick={() => printReceipt(receiptWidthMm)}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
           >
             <FiPrinter size={16} /> Print
@@ -1145,6 +1146,7 @@ export default function POS() {
         onClose={() => setShowReceipt(false)}
         saleData={lastSale}
         logoUrl={receiptLogo}
+        receiptWidthMm={settings.receipt_width_mm}
         companyName={settings.company_name}
         companyAddress={settings.company_address}
         companyPhone={settings.company_phone}

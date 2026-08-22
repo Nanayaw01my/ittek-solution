@@ -70,6 +70,21 @@ function CompanyTab({ settings, onSave, loading }) {
           className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
           placeholder="e.g. Thank you for your business!" />
       </div>
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">Receipt Paper Width</label>
+        <select {...register('receipt_width_mm')}
+          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+          <option value={80}>80mm — standard thermal roll</option>
+          <option value={58}>58mm — narrow thermal roll</option>
+          <option value={76}>76mm</option>
+          <option value={82}>82mm — widest this printer takes</option>
+        </select>
+        <p className="text-xs text-gray-400 mt-1">
+          The printed receipt scales to this width. Measure your roll if you are unsure — printing at
+          the wrong width slices off the right-hand edge.
+        </p>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1">Low Stock Threshold</label>
