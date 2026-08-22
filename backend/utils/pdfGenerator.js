@@ -44,6 +44,66 @@ const fetchBuf = (url, hops = 5) =>
     req.setTimeout(10000, () => { req.destroy(); resolve(null); });
   });
 
+const WATERMARK_ORANGE = '#e86b00';
+
+/** Rotated company name, used when there is no logo image to fall back on. */
+const drawTextWatermark = (doc) => {
+  const pw = doc.page.width;
+  const ph = doc.page.height;
+  doc.opacity(0.10);
+  doc.rotate(-40, { origin: [pw / 2, ph / 2] });
+  doc.fontSize(52).font('Helvetica-Bold').fillColor(WATERMARK_ORANGE)
+    .text('DAN & DOR\nSOLAR', 0, ph / 2 - 60, { width: pw, align: 'center', lineGap: 4 });
+  doc.rotate(40, { origin: [pw / 2, ph / 2] });
+};
+
+/**
+ * Draw the company logo faintly behind the content of the current page.
+ *
+ * Kept very light on purpose: this sits *under* body text, so anything much
+ * stronger makes the text below it hard to read on a printed sheet.
+ */
+const drawWatermark = (doc, logoBuf, opts = {}) => {
+  // doc.text moves the text cursor, and the watermark must not disturb where
+  // the caller was about to write — save/restore only covers graphics state.
+  const cx = doc.x;
+  const cy = doc.y;
+  doc.save();
+  try {
+    if (logoBuf) {
+      const pw = doc.page.width;
+      const ph = doc.page.height;
+      const w = Math.min(opts.width || 330, pw * 0.62);
+      doc.opacity(opts.opacity ?? 0.13);
+      // Vertically a little above centre so the mark sits behind the body of
+      // the page rather than the signature block at the foot.
+      doc.image(logoBuf, (pw - w) / 2, ph * 0.34, { width: w });
+    } else {
+      drawTextWatermark(doc);
+    }
+  } catch {
+    // Unsupported or corrupt image — the text mark still identifies the sheet.
+    try { drawTextWatermark(doc); } catch {}
+  }
+  doc.restore();
+  doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+  doc.x = cx;
+  doc.y = cy;
+};
+
+/**
+ * Watermark the current page and every page added afterwards.
+ *
+ * These generators add pages mid-flow (`doc.addPage()` when a section will not
+ * fit), so a one-off call would only ever mark page 1. `pageAdded` fires before
+ * any content is written to the new page, which is exactly what a watermark
+ * needs — it has to be underneath.
+ */
+const attachWatermark = (doc, logoBuf, opts = {}) => {
+  if (doc.page) drawWatermark(doc, logoBuf, opts);
+  doc.on('pageAdded', () => drawWatermark(doc, logoBuf, opts));
+};
+
 /**
  * Generate a thermal receipt PDF for a sale.
  * @param {Object} saleData - Sale document with items populated
@@ -203,6 +263,12 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
       const ORANGE = '#e86b00';
       const LGRAY = '#777777';
 
+      // These were read from an outer scope that does not exist here, so every
+      // credit agreement threw a ReferenceError before a byte was written.
+      const company = options.company || {};
+      const companyAddress = company.address || 'Bogoso, Western Region';
+      const companyPhone = company.phone || '+233 595413632';
+
       const {
         customer_name = '', customer_phone = '', customer_address = '',
         document_type = '', id_number = '',
@@ -259,29 +325,8 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
         resetColors();
       };
 
-      // ── Watermark ─────────────────────────────────────────────────────────────
-      doc.save();
-      if (logoBuf) {
-        try {
-          doc.opacity(0.55);
-          doc.image(logoBuf, ML + (W - 320) / 2, 240, { width: 320 });
-        } catch {
-          // image failed — fall through to text watermark
-          doc.opacity(0.12);
-          doc.rotate(-40, { origin: [ML + W / 2, 420] });
-          doc.fontSize(52).font('Helvetica-Bold').fillColor('#e86b00')
-            .text('DAN & DOR\nSOLAR', ML - 20, 360, { width: W + 40, align: 'center', lineGap: 4 });
-          doc.rotate(40, { origin: [ML + W / 2, 420] });
-        }
-      } else {
-        // No image — always draw text watermark
-        doc.opacity(0.12);
-        doc.rotate(-40, { origin: [ML + W / 2, 420] });
-        doc.fontSize(52).font('Helvetica-Bold').fillColor('#e86b00')
-          .text('DAN & DOR\nSOLAR', ML - 20, 360, { width: W + 40, align: 'center', lineGap: 4 });
-        doc.rotate(40, { origin: [ML + W / 2, 420] });
-      }
-      doc.restore();
+      // Watermark on this page and on any continuation page.
+      attachWatermark(doc, logoBuf);
 
       // ── Header: passport photos + company info ─────────────────────────────
       const H_Y = 42;
@@ -526,6 +571,8 @@ const generateLayawayAgreement = async (layaway, options = {}) => {
       const LGRAY = '#777777';
       const A4_BOTTOM = 802 - 40;
 
+      attachWatermark(doc, logoBuf);
+
       const company = options.company || {};
       const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
       const companyAddress = company.address || 'Bogoso, Western Region';
@@ -766,6 +813,8 @@ const generatePriceList = async (groups, options = {}) => {
       const TOP = 40;
       const BOTTOM = 802 - 45;
 
+      attachWatermark(doc, logoBuf);
+
       const company = options.company || {};
       const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
       const showStock = options.showStock !== false;
@@ -881,7 +930,9 @@ const generatePriceList = async (groups, options = {}) => {
  * @param {string} title - Report title
  * @returns {Promise<Buffer>}
  */
-const generateReport = (reportData, title = 'Report') => {
+const generateReport = async (reportData, title = 'Report', options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 60, right: 60 } });
@@ -889,6 +940,8 @@ const generateReport = (reportData, title = 'Report') => {
       doc.on('data', (chunk) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
+
+      attachWatermark(doc, logoBuf);
 
       // Header
       doc.fontSize(16).font('Helvetica-Bold').text('DAN & DOR SOLAR COMPANY LIMITED', { align: 'center' });

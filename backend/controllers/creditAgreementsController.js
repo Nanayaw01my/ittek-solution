@@ -161,7 +161,13 @@ const generatePDF = async (req, res) => {
     if (!agreement) return res.status(404).json({ success: false, message: 'Credit agreement not found.' });
 
     const settings = await Settings.findOne().lean();
-    const pdfBuffer = await generateCreditAgreement(agreement.toObject(), { logoUrl: settings?.logo_url });
+    const pdfBuffer = await generateCreditAgreement(agreement.toObject(), {
+      logoUrl: settings?.logo_url,
+      company: {
+        address: settings?.company_address,
+        phone: settings?.company_phone,
+      },
+    });
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="credit-agreement-${agreement._id}.pdf"`);
