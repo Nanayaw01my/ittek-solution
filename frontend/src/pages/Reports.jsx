@@ -8,6 +8,8 @@ import {
 } from '../api/reports'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
+import { FiTag } from 'react-icons/fi'
+import { getPriceList } from '../api/reports'
 import DateRangePicker from '../components/DateRangePicker'
 import Table from '../components/Table'
 import { format, startOfMonth } from 'date-fns'
@@ -286,6 +288,23 @@ export default function Reports() {
   const [activeTab, setActiveTab] = useState(0)
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [priceListLoading, setPriceListLoading] = useState(false)
+
+  /** Open the price list in a new tab for printing or saving. */
+  const handlePriceList = async () => {
+    setPriceListLoading(true)
+    try {
+      const res = await getPriceList()
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      const win = window.open(url, '_blank')
+      if (!win) toast.error('Allow pop-ups to open the price list')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch {
+      toast.error('Could not generate the price list')
+    } finally {
+      setPriceListLoading(false)
+    }
+  }
 
   const tabComponents = [
     <DailySalesTab key="daily" startDate={startDate} endDate={endDate} />,
@@ -298,7 +317,20 @@ export default function Reports() {
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-      <PageHeader title="Reports" subtitle="Business performance analysis" />
+      <PageHeader
+        title="Reports"
+        subtitle="Business performance analysis"
+        action={
+          <button
+            onClick={handlePriceList}
+            disabled={priceListLoading}
+            title="Products and selling prices only — no cost or profit"
+            className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors"
+          >
+            <FiTag size={15} /> {priceListLoading ? 'Preparing…' : 'Print Price List'}
+          </button>
+        }
+      />
 
       {/* Date picker + tabs */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5">

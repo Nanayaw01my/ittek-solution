@@ -11,3 +11,7 @@ export const getSalesTrend = (params) => api.get('/reports/sales-trend', { param
 export const getFinancialOverview = (params) => api.get('/reports/financial-overview', { params })
 export const getCashFlow = (params) => api.get('/reports/cash-flow', { params })
 export const exportReport = (type, params) => api.get(`/reports/export/${type}`, { params, responseType: 'blob' })
+
+/** Printable price list — selling prices only, safe to hand to a customer. */
+export const getPriceList = (params) =>
+  api.get('/reports/price-list', { params, responseType: 'blob' })

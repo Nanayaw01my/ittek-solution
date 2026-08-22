@@ -725,6 +725,144 @@ const generateLayawayAgreement = async (layaway, options = {}) => {
   });
 };
 
+
+/**
+ * Generate a product price list — A4, two columns.
+ *
+ * Customer-facing: selling prices only. Cost price, profit margin and supplier
+ * are never included, so this can be handed across the counter or pinned up in
+ * the shop without leaking anything.
+ *
+ * @param {Array} groups - [{ category, products: [{ name, price, in_stock }] }]
+ * @param {Object} options - { logoUrl, company, showStock }
+ */
+const generatePriceList = async (groups, options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, bottom: 45, left: 45, right: 45 } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 45;
+      const W = 505;
+      const ORANGE = '#e86b00';
+      const LGRAY = '#777777';
+      const TOP = 40;
+      const BOTTOM = 802 - 45;
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+      const showStock = options.showStock !== false;
+
+      const COL_GAP = 20;
+      const COL_W = (W - COL_GAP) / 2;
+      let col = 0;                 // 0 = left, 1 = right
+      let y = 0;
+      let pageNo = 0;
+
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      const drawHeader = () => {
+        pageNo += 1;
+        let hy = TOP;
+        if (logoBuf) {
+          try { doc.image(logoBuf, ML, hy, { width: 40 }); } catch {}
+        }
+        doc.fontSize(13).font('Helvetica-Bold').fillColor('#111111')
+          .text(companyName, ML + 48, hy + 2, { width: W - 48 });
+        doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
+          .text([company.address, company.phone && 'Tel: ' + company.phone].filter(Boolean).join('  |  '),
+            ML + 48, hy + 19, { width: W - 48 });
+        doc.fontSize(11).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('PRICE LIST', ML + 48, hy + 32, { width: W - 48 });
+        doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+          .text(new Date().toLocaleDateString('en-GH', { day: '2-digit', month: 'long', year: 'numeric' }),
+            ML, hy + 32, { width: W, align: 'right' });
+        reset();
+
+        hy += 50;
+        doc.moveTo(ML, hy).lineTo(ML + W, hy).lineWidth(1.2).strokeColor(ORANGE).stroke();
+        reset();
+        return hy + 12;
+      };
+
+      const columnX = () => ML + col * (COL_W + COL_GAP);
+
+      /** Move to the next column, or the next page when both are full. */
+      const nextColumn = (startY) => {
+        if (col === 0) { col = 1; y = startY; return; }
+        col = 0;
+        doc.addPage();
+        y = drawHeader();
+      };
+
+      const ensureSpace = (needed, startY) => {
+        if (y + needed > BOTTOM) nextColumn(startY);
+      };
+
+      const headerY = drawHeader();
+      y = headerY;
+
+      groups.forEach((group) => {
+        // Keep a category heading with at least its first row.
+        ensureSpace(30, headerY);
+
+        doc.fontSize(9).font('Helvetica-Bold').fillColor(ORANGE)
+          .text(group.category || 'Uncategorised', columnX(), y, { width: COL_W });
+        const lineY = y + 12;
+        doc.moveTo(columnX(), lineY).lineTo(columnX() + COL_W, lineY).lineWidth(0.6).strokeColor('#e5c9b0').stroke();
+        reset();
+        y = lineY + 5;
+
+        group.products.forEach((p, i) => {
+          ensureSpace(15, headerY);
+
+          if (i % 2 === 0) {
+            doc.fillColor('#fbfbfb').rect(columnX(), y - 2, COL_W, 14).fill();
+            reset();
+          }
+
+          const priceStr = 'GHC ' + Number(p.price).toFixed(2);
+          const priceW = 62;
+          const nameW = COL_W - priceW - 6;
+
+          doc.fontSize(8).font('Helvetica').fillColor('#111111')
+            .text(p.name, columnX() + 2, y, { width: nameW, ellipsis: true, lineBreak: false });
+          doc.font('Helvetica-Bold').fillColor(p.in_stock === false ? LGRAY : '#111111')
+            .text(priceStr, columnX() + COL_W - priceW, y, { width: priceW - 2, align: 'right', lineBreak: false });
+          reset();
+
+          if (showStock && p.in_stock === false) {
+            doc.fontSize(6).fillColor('#b91c1c')
+              .text('out of stock', columnX() + 2, y + 8, { width: nameW, lineBreak: false });
+            reset();
+            y += 6;
+          }
+
+          y += 14;
+        });
+
+        y += 8;
+      });
+
+      // Footer note on the last page
+      doc.fontSize(7).font('Helvetica-Oblique').fillColor(LGRAY)
+        .text('Prices are in Ghana Cedis and may change without notice. Correct as at ' +
+          new Date().toLocaleDateString('en-GH') + '.',
+          ML, BOTTOM + 8, { width: W, align: 'center' });
+      reset();
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 /**
  * Generate a general report PDF (A4).
  * @param {Object} reportData - Data for the report
@@ -779,4 +917,4 @@ const generateReport = (reportData, title = 'Report') => {
   });
 };
 
-module.exports = { generateReceipt, generateCreditAgreement, generateLayawayAgreement, generateReport };
+module.exports = { generateReceipt, generateCreditAgreement, generateLayawayAgreement, generatePriceList, generateReport };

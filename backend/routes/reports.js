@@ -3,7 +3,8 @@ const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 const {
-  getDashboardStats, getSalesTrend,
+  getDashboardStats,
+  getPriceList, getSalesTrend,
   getDailySales, getSalesByUser, getTopProducts, getProfitLoss,
   getDebtors, getStockValuation, getExpenseBreakdown, exportData,
   getFinancialOverview, getCashFlow,
@@ -12,6 +13,10 @@ const {
 // All authenticated users can access dashboard stats
 router.get('/dashboard-stats', authenticate, getDashboardStats);
 router.get('/sales-trend', authenticate, getSalesTrend);
+
+// Price list carries selling prices only — no cost or margin — so any signed-in
+// staff member can print one for a customer without needing admin rights.
+router.get('/price-list', authenticate, getPriceList);
 
 // Super Admin (4) and CEO (3) only
 const adminOnly = [authenticate, requireLevel(3)];

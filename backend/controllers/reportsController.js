@@ -7,7 +7,8 @@ const StockRequest = require('../models/StockRequest');
 const WorkerPayment = require('../models/WorkerPayment');
 const Purchase = require('../models/Purchase');
 const Refund = require('../models/Refund');
-const { generateReport } = require('../utils/pdfGenerator');
+const { generateReport, generatePriceList } = require('../utils/pdfGenerator');
+const Settings = require('../models/Settings');
 
 /**
  * GET /api/reports/dashboard-stats
@@ -570,7 +571,76 @@ const getCashFlow = async (req, res) => {
   }
 };
 
+
+/**
+ * GET /api/reports/price-list
+ *
+ * A printable list of what the shop sells and what it costs the customer.
+ * Selling prices only — cost price, margin and supplier are deliberately never
+ * read here, so the sheet is safe to hand to a customer.
+ *
+ * Query: ?category=<id>&in_stock_only=true
+ */
+const getPriceList = async (req, res) => {
+  try {
+    const { category, in_stock_only } = req.query;
+
+    const filter = { is_active: true };
+    if (category) filter.category_id = category;
+    if (in_stock_only === 'true') filter.quantity = { $gt: 0 };
+
+    const products = await Product.find(filter)
+      .select('name selling_price quantity category_id has_variants variants')
+      .populate('category_id', 'name')
+      .sort({ name: 1 })
+      .lean();
+
+    // Group by category so the printed sheet is easy to scan.
+    const byCategory = new Map();
+    for (const p of products) {
+      const cat = p.category_id?.name || 'Uncategorised';
+      if (!byCategory.has(cat)) byCategory.set(cat, []);
+      const bucket = byCategory.get(cat);
+
+      if (p.has_variants && p.variants?.length) {
+        // A product with variants is sold as its variants, each with its own price.
+        p.variants
+          .filter((v) => v.is_active !== false)
+          .forEach((v) => bucket.push({
+            name: `${p.name} — ${v.name}`,
+            price: v.selling_price,
+            in_stock: v.quantity > 0,
+          }));
+      } else {
+        bucket.push({ name: p.name, price: p.selling_price, in_stock: p.quantity > 0 });
+      }
+    }
+
+    const groups = [...byCategory.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([cat, list]) => ({ category: cat, products: list.sort((a, b) => a.name.localeCompare(b.name)) }));
+
+    const settings = (await Settings.findOne().lean()) || {};
+    const pdf = await generatePriceList(groups, {
+      logoUrl: settings.logo_url,
+      company: {
+        name: settings.company_name,
+        address: settings.company_address,
+        phone: settings.company_phone,
+      },
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="price-list.pdf"');
+    return res.end(pdf);
+  } catch (err) {
+    console.error('Price list error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error generating the price list.' });
+  }
+};
+
 module.exports = {
+  getPriceList,
   getDashboardStats, getSalesTrend,
   getDailySales, getSalesByUser, getTopProducts, getProfitLoss,
   getDebtors, getStockValuation, getExpenseBreakdown, exportData,
