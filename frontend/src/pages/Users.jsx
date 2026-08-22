@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX, FiTrash2, FiEye, FiEyeOff } from 'react-icons/fi'
 import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword } from '../api/users'
+import { getCategories } from '../api/products'
 import { formatDate, getRoleLabel, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
 
@@ -78,14 +79,31 @@ function PasswordInput({ register: reg, name, rules, placeholder, label, error }
 function UserForm({ user: editUser, myRole, onSubmit, loading }) {
   const myLevel = getRoleLevel(myRole)
   const availableRoles = ROLES_FOR_LEVEL[myLevel] || []
-  const { register, handleSubmit, formState: { errors } } = useForm({
+  const { register, handleSubmit, watch, formState: { errors } } = useForm({
     defaultValues: editUser
       ? { username: editUser.username, email: editUser.email, role: editUser.role }
       : {},
   })
 
+  // A Manager is put in charge of specific product categories: they can add
+  // products to these and nothing else, and the Products page shows them
+  // nothing outside them. Only meaningful for the Manager role.
+  const selectedRole = watch('role')
+  const [assigned, setAssigned] = useState(
+    (editUser?.assigned_categories || []).map(c => String(c?._id || c))
+  )
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => getCategories().then(r => r.data),
+    enabled: selectedRole === 'Manager',
+  })
+  const categories = categoriesData?.categories || categoriesData || []
+
+  const toggleCategory = (id) =>
+    setAssigned(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]))
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
+    <form onSubmit={handleSubmit(data => onSubmit({ ...data, assigned_categories: assigned }))} className="p-5 space-y-4">
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1">Username *</label>
         <input
@@ -123,6 +141,41 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
         </select>
         {errors.role && <p className="mt-1 text-xs text-red-500">{errors.role.message}</p>}
       </div>
+      {selectedRole === 'Manager' && (
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">
+            Product categories this manager handles
+          </label>
+          <p className="text-xs text-gray-500 mb-2">
+            They can add products to the categories you tick here. They will not see
+            cost prices, selling prices or any other category on the Products page.
+            Selling at the POS is unaffected.
+          </p>
+          {categories.length === 0 ? (
+            <p className="text-xs text-gray-400">No categories exist yet — create one first.</p>
+          ) : (
+            <div className="max-h-44 overflow-y-auto border border-gray-200 rounded-xl divide-y divide-gray-100">
+              {categories.map(c => (
+                <label key={c._id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-orange-50">
+                  <input
+                    type="checkbox"
+                    checked={assigned.includes(String(c._id))}
+                    onChange={() => toggleCategory(String(c._id))}
+                    className="accent-orange-500"
+                  />
+                  <span>{c.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {assigned.length === 0 && (
+            <p className="mt-1 text-xs text-amber-600">
+              With none ticked this manager cannot add products at all.
+            </p>
+          )}
+        </div>
+      )}
+
       {!editUser && (
         <PasswordInput
           register={register}
@@ -469,6 +522,9 @@ export default function Users() {
         size="md"
       >
         <UserForm
+          /* Remount per user: the form reads its defaults once, and the
+             assigned-category ticks are component state. */
+          key={editUser?._id || 'new'}
           user={editUser}
           myRole={me?.role}
           loading={createMutation.isPending || updateMutation.isPending}
@@ -477,6 +533,8 @@ export default function Users() {
               username: formData.username,
               email: formData.email || undefined,
               role: formData.role,
+              // Only sent for a Manager — the server rejects it on any other role.
+              ...(formData.role === 'Manager' && { assigned_categories: formData.assigned_categories }),
               ...(!editUser && { password: formData.password }),
             }
             if (editUser) {

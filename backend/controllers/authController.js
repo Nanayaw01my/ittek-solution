@@ -53,6 +53,10 @@ const login = async (req, res) => {
           role: user.role,
           is_active: user.is_active,
           last_login: user.last_login,
+          // Which product categories a Manager may add products to. The
+          // Products page uses it to limit the category picker; the server
+          // enforces it again on every create.
+          assigned_categories: (user.assigned_categories || []).map(String),
         },
       },
     });

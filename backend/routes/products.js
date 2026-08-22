@@ -20,9 +20,12 @@ router.get('/:id', authenticate, getProduct);
 // Super Admin (4) and CEO (3) for product management (create/update/delete)
 const adminOnly = [authenticate, requireLevel(3)];
 
+// Creating is open to Manager (2) as well: the controller then confirms the
+// category is one they were actually assigned. Editing and deleting stay with
+// CEO / Super Admin.
 router.post(
   '/',
-  adminOnly,
+  [authenticate, requireLevel(2)],
   [
     body('name').notEmpty().withMessage('Product name is required.'),
     body('cost_price').isNumeric().withMessage('Cost price must be a number.'),

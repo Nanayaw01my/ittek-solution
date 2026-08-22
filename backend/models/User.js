@@ -49,6 +49,21 @@ const UserSchema = new mongoose.Schema(
     avatar_url: {
       type: String,
     },
+    /**
+     * Product categories a Manager has been put in charge of by the CEO or
+     * Super Admin. A Manager may add new products to these categories, and the
+     * Products page shows them nothing outside this list.
+     *
+     * Empty means no product-management rights at all — not "everything", so
+     * an unassigned Manager cannot quietly gain access to the whole catalogue.
+     * Ignored for Super Admin, CEO and Sales.
+     */
+    assigned_categories: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Category',
+      },
+    ],
   },
   {
     timestamps: true,

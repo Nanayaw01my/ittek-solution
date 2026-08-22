@@ -12,6 +12,8 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import Badge from '../components/Badge'
 import ImageUpload from '../components/ImageUpload'
 import VariantEditor from '../components/VariantEditor'
+import useAuthStore from '../store/authStore'
+import { getMe } from '../api/auth'
 
 /**
  * The form registers camelCase names but a product document is snake_case, so
@@ -38,7 +40,7 @@ const toFormValues = (product) => {
   }
 }
 
-function ProductForm({ product, categories = [], suppliers = [], onSubmit, loading }) {
+function ProductForm({ product, categories = [], suppliers = [], onSubmit, loading, restricted = false }) {
   const [imageUrl, setImageUrl] = useState(product?.image_url || null)
   const [variants, setVariants] = useState(product?.variants || [])
   const { register, handleSubmit, watch, formState: { errors } } = useForm({
@@ -77,14 +79,20 @@ function ProductForm({ product, categories = [], suppliers = [], onSubmit, loadi
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1">Category</label>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Category {restricted && '*'}</label>
           <select
-            {...register('category')}
+            {...register('category', restricted ? { required: 'Choose one of your categories' } : {})}
             className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
           >
             <option value="">Select Category</option>
             {categories.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
           </select>
+          {errors.category && <p className="mt-1 text-xs text-red-500">{errors.category.message}</p>}
+          {restricted && categories.length === 0 && (
+            <p className="mt-1 text-xs text-red-500">
+              No categories have been assigned to you yet. Ask the CEO to assign one.
+            </p>
+          )}
         </div>
 
         <div>
@@ -124,7 +132,7 @@ function ProductForm({ product, categories = [], suppliers = [], onSubmit, loadi
           {errors.sellingPrice && <p className="mt-1 text-xs text-red-500">{errors.sellingPrice.message}</p>}
         </div>
 
-        {sellingPrice > 0 && costPrice > 0 && (
+        {!restricted && sellingPrice > 0 && costPrice > 0 && (
           <div className="sm:col-span-2">
             <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold
               ${margin >= 20 ? 'bg-green-100 text-green-700' : margin >= 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
@@ -182,12 +190,34 @@ export default function Products() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [page, setPage] = useState(1)
 
+  const user = useAuthStore(s => s.user)
+  // A Manager works inside the categories the CEO assigned them, and without
+  // seeing what anything costs or sells for. The `view` flag tells the server
+  // to apply that scope — the POS asks for products without it, so selling is
+  // unaffected. The server strips the prices; this only hides the columns.
+  const isManager = user?.role === 'Manager'
+
+  // The stored user is only refreshed at login, so a manager assigned a
+  // category mid-shift would see an empty picker until they logged out. Re-read
+  // it here; the stored copy is the fallback when offline.
+  const { data: meData } = useQuery({
+    queryKey: ['me-assigned-categories'],
+    queryFn: () => getMe().then(r => r.data),
+    enabled: isManager,
+    staleTime: 60_000,
+    retry: false,
+  })
+  const assignedCategoryIds = (
+    meData?.assigned_categories || user?.assigned_categories || []
+  ).map(c => String(c?._id || c))
+
   const { data, isLoading } = useQuery({
-    queryKey: ['products', search, categoryFilter, stockFilter, page],
+    queryKey: ['products', search, categoryFilter, stockFilter, page, isManager],
     queryFn: () => getProducts({
       search,
       category: categoryFilter || undefined,
       stockFilter: stockFilter !== 'all' ? stockFilter : undefined,
+      ...(isManager ? { view: 'catalogue' } : {}),
       page,
       limit: 15,
     }).then(r => r.data),
@@ -235,7 +265,10 @@ export default function Products() {
   })
 
   const products = data?.products || data || []
-  const categories = categoriesData?.categories || categoriesData || []
+  const allCategories = categoriesData?.categories || categoriesData || []
+  const categories = isManager
+    ? allCategories.filter(c => assignedCategoryIds.includes(String(c._id)))
+    : allCategories
   const suppliers = suppliersData?.suppliers || suppliersData || []
 
   const columns = [
@@ -268,6 +301,8 @@ export default function Products() {
         </span>
       ),
     },
+    // Prices, margin and the edit/delete controls are for the owners only.
+    ...(isManager ? [] : [
     { header: 'Cost Price', key: 'cost_price', render: v => formatCurrency(v) },
     { header: 'Selling Price', key: 'selling_price', render: v => formatCurrency(v) },
     {
@@ -302,13 +337,14 @@ export default function Products() {
         </div>
       ),
     },
+    ]),
   ]
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       <PageHeader
         title="Products"
-        subtitle="Manage your product catalog"
+        subtitle={isManager ? 'Add products to the categories assigned to you' : 'Manage your product catalog'}
         action={
           <button
             onClick={() => { setEditProduct(null); setShowModal(true) }}
@@ -368,6 +404,7 @@ export default function Products() {
              this the form kept whatever the previously opened product left. */
           key={editProduct?._id || 'new'}
           product={editProduct}
+          restricted={isManager}
           categories={categories}
           suppliers={suppliers}
           loading={createMutation.isPending || updateMutation.isPending}

@@ -1,5 +1,7 @@
 const { validationResult } = require('express-validator');
+const mongoose = require('mongoose');
 const User = require('../models/User');
+const Category = require('../models/Category');
 
 const ROLE_LEVELS = { 'Super Admin': 4, CEO: 3, Manager: 2, Sales: 1 };
 
@@ -40,7 +42,7 @@ const createUser = async (req, res) => {
       return res.status(400).json({ success: false, message: errors.array()[0].msg });
     }
 
-    const { username, email, password, role } = req.body;
+    const { username, email, password, role, assigned_categories } = req.body;
     const normalUsername = username.trim().toLowerCase();
     const normalEmail = email ? email.trim().toLowerCase() : null;
 
@@ -56,6 +58,17 @@ const createUser = async (req, res) => {
       return res.status(409).json({ success: false, message: `${field} is already taken.` });
     }
 
+    // Product categories a new Manager is being put in charge of. Validated
+    // the same way as on update, and ignored for any other role.
+    let categoryIds = [];
+    if (role === 'Manager' && Array.isArray(assigned_categories)) {
+      categoryIds = assigned_categories.filter((id) => mongoose.isValidObjectId(id));
+      const found = await Category.countDocuments({ _id: { $in: categoryIds } });
+      if (found !== categoryIds.length) {
+        return res.status(400).json({ success: false, message: 'One of those categories no longer exists.' });
+      }
+    }
+
     const { avatar_url } = req.body;
     const user = await User.create({
       username: normalUsername,
@@ -64,6 +77,7 @@ const createUser = async (req, res) => {
       role,
       created_by: req.user._id,
       ...(avatar_url ? { avatar_url } : {}),
+      ...(categoryIds.length ? { assigned_categories: categoryIds } : {}),
     });
 
     return res.status(201).json({
@@ -111,7 +125,7 @@ const updateUser = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
-    const { username, email, role, avatar_url } = req.body;
+    const { username, email, role, avatar_url, assigned_categories } = req.body;
 
     if (role && !canManage(req.user.role, role)) {
       return res.status(403).json({ success: false, message: 'Cannot assign that role.' });
@@ -121,6 +135,24 @@ const updateUser = async (req, res) => {
     if (email) user.email = email;
     if (role) user.role = role;
     if (avatar_url !== undefined) user.avatar_url = avatar_url;
+
+    // Which product categories this Manager may add products to. Sent as an
+    // array of category ids; an empty array withdraws the assignment entirely.
+    if (Array.isArray(assigned_categories)) {
+      const finalRole = role || user.role;
+      if (finalRole !== 'Manager') {
+        return res.status(400).json({
+          success: false,
+          message: 'Product categories can only be assigned to a Manager.',
+        });
+      }
+      const ids = assigned_categories.filter((id) => mongoose.isValidObjectId(id));
+      const found = await Category.countDocuments({ _id: { $in: ids } });
+      if (found !== ids.length) {
+        return res.status(400).json({ success: false, message: 'One of those categories no longer exists.' });
+      }
+      user.assigned_categories = ids;
+    }
 
     await user.save();
     return res.status(200).json({ success: true, message: 'User updated.', data: user });
