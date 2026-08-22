@@ -82,8 +82,10 @@ const getDashboardStats = async (req, res) => {
       Expense.aggregate([{ $match: { expense_date: { $gte: startOfMonth } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
       Debt.find({ status: { $in: ['active', 'overdue'] } }, 'amount_owed amount_paid'),
       User.countDocuments({ is_active: true }),
-      Refund.aggregate([{ $match: { refund_date: { $gte: startOfToday } } }, { $group: { _id: null, total: { $sum: '$refund_amount' } } }]),
-      Refund.aggregate([{ $match: { refund_date: { $gte: startOfMonth } } }, { $group: { _id: null, total: { $sum: '$refund_amount' } } }]),
+      // Only an approved refund reduces the day's sales; a pending request has not
+      // given any money back yet.
+      Refund.aggregate([{ $match: { status: 'approved', refund_date: { $gte: startOfToday } } }, { $group: { _id: null, total: { $sum: '$refund_amount' } } }]),
+      Refund.aggregate([{ $match: { status: 'approved', refund_date: { $gte: startOfMonth } } }, { $group: { _id: null, total: { $sum: '$refund_amount' } } }]),
       // Pay & Pick Later instalments — cash in hand that no Sale records yet.
       Layaway.aggregate([
         { $unwind: '$payments' },

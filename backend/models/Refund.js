@@ -31,6 +31,24 @@ const RefundSchema = new mongoose.Schema(
       required: true,
     },
     refund_date: { type: Date, default: Date.now },
+
+    /**
+     * A refund raised by staff waits for a CEO or Super Admin before any money
+     * or stock moves. Only an approved refund restores stock and counts
+     * against the day's sales.
+     */
+    status: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'pending',
+      index: true,
+    },
+    requested_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    approved_at: { type: Date },
+    rejection_reason: { type: String, trim: true },
+    /** Guards against a double approval putting the goods back twice. */
+    stock_restored: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

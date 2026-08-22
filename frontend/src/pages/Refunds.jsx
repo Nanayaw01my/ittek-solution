@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { FiRotateCcw, FiSearch, FiTrash2, FiPlus, FiMinus, FiX } from 'react-icons/fi'
-import { getRefunds, lookupSaleByInvoice, createRefund, deleteRefund } from '../api/refunds'
+import { approveRefund, rejectRefund, getRefunds, lookupSaleByInvoice, createRefund, deleteRefund } from '../api/refunds'
 import useAuthStore from '../store/authStore'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import Modal from '../components/Modal'
@@ -77,8 +77,9 @@ function RefundForm({ onClose, onSuccess }) {
 
   const mutation = useMutation({
     mutationFn: createRefund,
-    onSuccess: () => {
-      toast.success('Refund processed successfully')
+    onSuccess: (res) => {
+      // Staff refunds are only a request until the CEO approves them.
+      toast.success(res?.data?.message || 'Refund processed successfully', { duration: 6000 })
       onSuccess()
       onClose()
     },
@@ -252,6 +253,54 @@ function RefundForm({ onClose, onSuccess }) {
   )
 }
 
+const STATUS_STYLES = {
+  pending: 'bg-amber-100 text-amber-700',
+  approved: 'bg-green-100 text-green-700',
+  rejected: 'bg-gray-200 text-gray-600',
+}
+
+/**
+ * A refund raised by staff is only a request until a CEO or Super Admin
+ * approves it — that is the moment stock goes back and the money counts.
+ */
+function StatusCell({ refund, canApprove, approving, onApprove, onReject }) {
+  const status = refund.status || 'approved'
+
+  if (status === 'pending' && canApprove) {
+    return (
+      <div className="flex gap-1.5">
+        <button
+          onClick={onApprove}
+          disabled={approving}
+          className="px-2.5 py-1 rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-bold transition-colors"
+        >
+          Approve
+        </button>
+        <button
+          onClick={onReject}
+          className="px-2.5 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 text-xs font-semibold transition-colors"
+        >
+          Reject
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[status]}`}>
+        {status === 'pending' ? 'Awaiting approval' : status === 'approved' ? 'Approved' : 'Rejected'}
+      </span>
+      {status === 'approved' && refund.approved_by?.username && (
+        <p className="text-[11px] text-gray-400 mt-0.5">by {refund.approved_by.username}</p>
+      )}
+      {status === 'rejected' && refund.rejection_reason && (
+        <p className="text-[11px] text-gray-400 mt-0.5 max-w-[160px] truncate">{refund.rejection_reason}</p>
+      )}
+    </div>
+  )
+}
+
 export default function Refunds() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
@@ -262,6 +311,8 @@ export default function Refunds() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [rejectTarget, setRejectTarget] = useState(null)
+  const [rejectReason, setRejectReason] = useState('')
 
   const { data, isLoading } = useQuery({
     queryKey: ['refunds', dateFrom, dateTo],
@@ -269,7 +320,37 @@ export default function Refunds() {
   })
 
   const refunds = Array.isArray(data) ? data : (data?.refunds || [])
-  const totalRefunded = refunds.reduce((s, r) => s + (r.refund_amount || 0), 0)
+  // Only approved refunds are money actually given back.
+  const totalRefunded = refunds
+    .filter(r => (r.status || 'approved') === 'approved')
+    .reduce((s, r) => s + (r.refund_amount || 0), 0)
+  const pendingCount = refunds.filter(r => r.status === 'pending').length
+  const canApprove = userLevel >= 3
+
+  const refreshRefunds = () => {
+    queryClient.invalidateQueries({ queryKey: ['refunds'] })
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+  }
+
+  const approveMutation = useMutation({
+    mutationFn: (id) => approveRefund(id),
+    onSuccess: (res) => {
+      toast.success(res.data?.message || 'Refund approved')
+      refreshRefunds()
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Approval failed'),
+  })
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, reason }) => rejectRefund(id, reason),
+    onSuccess: () => {
+      toast.success('Refund rejected')
+      refreshRefunds()
+      setRejectTarget(null)
+      setRejectReason('')
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not reject'),
+  })
 
   const deleteMutation = useMutation({
     mutationFn: (id) => deleteRefund(id),
@@ -297,6 +378,15 @@ export default function Refunds() {
           <FiRotateCcw size={15} /> Process Refund
         </button>
       </div>
+
+      {pendingCount > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 text-sm text-amber-800">
+          <span className="font-bold">{pendingCount}</span> refund{pendingCount !== 1 ? 's are' : ' is'} waiting for approval.
+          {canApprove
+            ? ' Approve one to return the stock and give the money back.'
+            : ' Do not give the money out until the CEO approves.'}
+        </div>
+      )}
 
       {/* Summary card */}
       <div className="bg-orange-50 border border-orange-200 rounded-xl px-5 py-4 flex items-center justify-between">
@@ -340,6 +430,7 @@ export default function Refunds() {
                 <th className="text-left px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wide">Method</th>
                 <th className="text-left px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wide">Reason</th>
                 <th className="text-left px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wide">Refunded By</th>
+                <th className="text-left px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wide">Status</th>
                 {canDelete && <th className="px-4 py-3" />}
               </tr>
             </thead>
@@ -347,7 +438,7 @@ export default function Refunds() {
               {isLoading ? (
                 Array(5).fill(0).map((_, i) => (
                   <tr key={i}>
-                    {Array(canDelete ? 8 : 7).fill(0).map((_, j) => (
+                    {Array(canDelete ? 9 : 8).fill(0).map((_, j) => (
                       <td key={j} className="px-4 py-3">
                         <div className="h-4 bg-gray-100 rounded animate-pulse" />
                       </td>
@@ -356,7 +447,7 @@ export default function Refunds() {
                 ))
               ) : refunds.length === 0 ? (
                 <tr>
-                  <td colSpan={canDelete ? 8 : 7} className="px-4 py-10 text-center text-gray-400 text-sm">
+                  <td colSpan={canDelete ? 9 : 8} className="px-4 py-10 text-center text-gray-400 text-sm">
                     No refunds recorded yet
                   </td>
                 </tr>
@@ -368,7 +459,9 @@ export default function Refunds() {
                     {r.customer_phone && <p className="text-xs text-gray-500">{r.customer_phone}</p>}
                   </td>
                   <td className="px-4 py-3 text-gray-600 font-mono text-xs">{r.invoice_ref || '—'}</td>
-                  <td className="px-4 py-3 font-bold text-red-600">{formatCurrency(r.refund_amount)}</td>
+                  <td className={`px-4 py-3 font-bold ${r.status === 'approved' || !r.status ? 'text-red-600' : 'text-gray-400'}`}>
+                    {formatCurrency(r.refund_amount)}
+                  </td>
                   <td className="px-4 py-3">
                     <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
                       {METHOD_LABELS[r.refund_method] || r.refund_method}
@@ -376,6 +469,15 @@ export default function Refunds() {
                   </td>
                   <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate">{r.reason}</td>
                   <td className="px-4 py-3 text-gray-600">{r.processed_by?.username || '—'}</td>
+                  <td className="px-4 py-3">
+                    <StatusCell
+                      refund={r}
+                      canApprove={canApprove}
+                      approving={approveMutation.isPending}
+                      onApprove={() => approveMutation.mutate(r._id)}
+                      onReject={() => setRejectTarget(r)}
+                    />
+                  </td>
                   {canDelete && (
                     <td className="px-4 py-3 text-right">
                       <button
@@ -392,6 +494,41 @@ export default function Refunds() {
           </table>
         </div>
       </div>
+
+      {/* Reject reason */}
+      <Modal
+        isOpen={!!rejectTarget}
+        onClose={() => { setRejectTarget(null); setRejectReason('') }}
+        title="Reject refund"
+        size="sm"
+      >
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-gray-700">
+            Rejecting {rejectTarget?.customer_name}'s refund of{' '}
+            <span className="font-bold">{formatCurrency(rejectTarget?.refund_amount || 0)}</span>.
+            Nothing was given back, so there is nothing to reverse.
+          </p>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              Reason <span className="text-gray-400 font-normal">(the staff member will see this)</span>
+            </label>
+            <textarea
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              placeholder="e.g. Goods were not returned"
+            />
+          </div>
+          <button
+            onClick={() => rejectMutation.mutate({ id: rejectTarget._id, reason: rejectReason })}
+            disabled={rejectMutation.isPending}
+            className="w-full py-3 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-colors"
+          >
+            {rejectMutation.isPending ? 'Rejecting…' : 'Reject refund'}
+          </button>
+        </div>
+      </Modal>
 
       {/* New Refund Modal */}
       <Modal isOpen={showForm} onClose={() => setShowForm(false)} title="Process Refund" size="lg">
