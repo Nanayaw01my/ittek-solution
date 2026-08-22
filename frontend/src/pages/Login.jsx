@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiEye, FiEyeOff, FiUser, FiLock, FiArrowRight, FiAlertCircle } from 'react-icons/fi'
+import { FiEye, FiEyeOff, FiUser, FiLock, FiArrowRight, FiAlertCircle, FiWifiOff } from 'react-icons/fi'
 import { login } from '../api/auth'
 import useAuthStore from '../store/authStore'
+import { describeApiError } from '../utils/apiError'
 
 const REMEMBER_KEY = 'ittek_remembered_user'
 
@@ -14,6 +15,8 @@ export default function Login() {
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [capsLock, setCapsLock] = useState(false)
+  // 'connection' | 'server' errors get a softer treatment than a wrong password
+  const [errorKind, setErrorKind] = useState('client')
   const usernameRef = useRef(null)
 
   // Only the username is remembered — never the password.
@@ -33,7 +36,12 @@ export default function Login() {
   const onSubmit = async (data) => {
     setLoading(true)
     try {
-      const res = await login({ username: data.username, password: data.password })
+      // The host can idle down, so a cold start needs longer than the 30s
+      // default before we give up and call it a network problem.
+      const res = await login(
+        { username: data.username, password: data.password },
+        { timeout: 60000 }
+      )
       const { token, user } = res.data
 
       if (remember) {
@@ -46,11 +54,11 @@ export default function Login() {
       toast.success(`Welcome back, ${user.username}!`)
       navigate('/dashboard')
     } catch (err) {
-      const msg = err.response?.data?.message
-        || (err.code === 'ERR_NETWORK'
-          ? 'Cannot reach the server. Check your connection and try again.'
-          : 'Invalid credentials. Please try again.')
-      setError('root', { message: msg })
+      // Never blame the password for a network or server fault — that sends
+      // staff off resetting a password that was never wrong.
+      const { message, kind } = describeApiError(err, 'Invalid credentials. Please try again.')
+      setErrorKind(kind)
+      setError('root', { message })
     } finally {
       setLoading(false)
     }
@@ -164,9 +172,24 @@ export default function Login() {
             </label>
 
             {errors.root && (
-              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
-                <FiAlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-red-700 font-medium">{errors.root.message}</p>
+              <div className={`flex items-start gap-2 rounded-xl px-3 py-2.5 border ${
+                errorKind === 'client'
+                  ? 'bg-red-50 border-red-200'
+                  : 'bg-amber-50 border-amber-200'
+              }`}>
+                {errorKind === 'client'
+                  ? <FiAlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
+                  : <FiWifiOff size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />}
+                <div>
+                  <p className={`text-xs font-medium ${errorKind === 'client' ? 'text-red-700' : 'text-amber-800'}`}>
+                    {errors.root.message}
+                  </p>
+                  {errorKind !== 'client' && (
+                    <p className="text-[11px] text-amber-600 mt-0.5">
+                      Your username and password are fine — this is a connection problem.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
@@ -181,7 +204,7 @@ export default function Login() {
                   Signing in…
                 </>
               ) : (
-                <>Sign In <FiArrowRight size={16} /></>
+                <>{errorKind !== 'client' && errors.root ? 'Try Again' : 'Sign In'} <FiArrowRight size={16} /></>
               )}
             </button>
           </form>
