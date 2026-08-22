@@ -13,10 +13,43 @@ import ImageUpload from '../components/ImageUpload'
 
 const TABS = ['Company', 'Notifications', 'Email Config']
 
+/**
+ * The API speaks snake_case; these forms were written in camelCase, so every
+ * field arrived as undefined and nothing but the logo (which was already
+ * snake_case) was ever saved. Map explicitly in both directions.
+ */
+const COMPANY_FIELDS = {
+  companyName: 'company_name',
+  companyAddress: 'company_address',
+  companyPhone: 'company_phone',
+  companyEmail: 'company_email',
+  receiptHeader: 'receipt_header',
+  receiptFooter: 'receipt_footer',
+  lowStockThreshold: 'low_stock_alert',
+  taxRate: 'tax_rate',
+}
+
+const toFormValues = (settings, map) =>
+  Object.entries(map).reduce((acc, [formKey, apiKey]) => {
+    acc[formKey] = settings?.[apiKey] ?? ''
+    return acc
+  }, {})
+
+const toApiPayload = (data, map) =>
+  Object.entries(map).reduce((acc, [formKey, apiKey]) => {
+    if (data[formKey] !== undefined && data[formKey] !== '') acc[apiKey] = data[formKey]
+    return acc
+  }, {})
+
 function CompanyTab({ settings, onSave, loading }) {
   const [logoUrl, setLogoUrl] = useState(settings?.logo_url || null)
   const [logoInput, setLogoInput] = useState(settings?.logo_url || '')
-  const { register, handleSubmit } = useForm({ defaultValues: settings })
+  const { register, handleSubmit } = useForm({
+    defaultValues: {
+      ...toFormValues(settings, COMPANY_FIELDS),
+      receipt_width_mm: settings?.receipt_width_mm ?? 80,
+    },
+  })
 
   const handleLogoChange = (url) => {
     setLogoUrl(url || null)
@@ -24,7 +57,17 @@ function CompanyTab({ settings, onSave, loading }) {
   }
 
   return (
-    <form onSubmit={handleSubmit(data => onSave({ ...data, logo_url: logoUrl }))} className="space-y-4 max-w-lg">
+    <form
+      onSubmit={handleSubmit((data) => onSave({
+        ...toApiPayload(data, COMPANY_FIELDS),
+        // Numbers come back from the form as strings.
+        tax_rate: data.taxRate === '' ? undefined : Number(data.taxRate),
+        low_stock_alert: data.lowStockThreshold === '' ? undefined : Number(data.lowStockThreshold),
+        receipt_width_mm: Number(data.receipt_width_mm) || 80,
+        logo_url: logoUrl,
+      }))}
+      className="space-y-4 max-w-lg"
+    >
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">Company Logo</label>
         <ImageUpload
@@ -108,9 +151,22 @@ function CompanyTab({ settings, onSave, loading }) {
 }
 
 function NotificationsTab({ settings, onSave, loading }) {
-  const { register, handleSubmit } = useForm({ defaultValues: settings })
+  const { register, handleSubmit } = useForm({
+    defaultValues: {
+      largeSaleThreshold: settings?.notification_settings?.large_sale_threshold ?? '',
+      expenseThreshold: settings?.notification_settings?.expense_threshold ?? '',
+    },
+  })
   return (
-    <form onSubmit={handleSubmit(onSave)} className="space-y-5 max-w-lg">
+    <form
+      onSubmit={handleSubmit((data) => onSave({
+        notification_settings: {
+          large_sale_threshold: Number(data.largeSaleThreshold) || 0,
+          expense_threshold: Number(data.expenseThreshold) || 0,
+        },
+      }))}
+      className="space-y-5 max-w-lg"
+    >
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1">Large Sale Alert Threshold (GH₵)</label>
         <input type="number" min="0" step="0.01" {...register('largeSaleThreshold')}

@@ -288,6 +288,21 @@ const ensureSuperAdmin = async () => {
         await Settings.updateOne({ _id: settingsExists._id }, { $set: missing });
         console.log(`Seeded missing company settings: ${Object.keys(missing).join(', ')}`);
       }
+
+      // One-time correction of the old seeded phone number.
+      //
+      // The Settings form was sending camelCase keys to an API that reads
+      // snake_case, so nothing an admin typed was ever saved and this value
+      // could only have come from the old seeder. Matching on that exact
+      // string means a number the shop actually chose is never touched.
+      const STALE_SEEDED_PHONE = '+233 598565277';
+      if (String(settingsExists.company_phone || '').trim() === STALE_SEEDED_PHONE) {
+        await Settings.updateOne(
+          { _id: settingsExists._id },
+          { $set: { company_phone: COMPANY_DEFAULTS.company_phone } }
+        );
+        console.log(`Corrected seeded company phone to ${COMPANY_DEFAULTS.company_phone}`);
+      }
     }
   } catch (error) {
     console.error('Super admin init error:', error.message);
