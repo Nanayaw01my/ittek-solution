@@ -33,7 +33,7 @@ async function seed() {
       await Settings.create({
         company_name: 'DAN & DOR SOLAR COMPANY LIMITED',
         company_address: 'Bogoso, Western Region',
-        company_phone: '+233 598565277',
+        company_phone: '+233 595413632',
         company_email: 'Dananddorsolarcompanyltd@gmail.com',
         currency_symbol: 'GH₵',
         tax_rate: 0,

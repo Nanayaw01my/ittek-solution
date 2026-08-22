@@ -264,7 +264,7 @@ const ensureSuperAdmin = async () => {
     const COMPANY_DEFAULTS = {
       company_name: 'DAN & DOR SOLAR COMPANY LIMITED',
       company_address: 'Bogoso, Western Region',
-      company_phone: '+233 598565277',
+      company_phone: '+233 595413632',
       company_email: 'Dananddorsolarcompanyltd@gmail.com',
       currency_symbol: 'GHC',
       logo_url: LOGO_URL,

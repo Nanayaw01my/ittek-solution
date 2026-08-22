@@ -20,18 +20,28 @@ const BASELINE_MM = 80
  * head is around 203dpi and burns a slightly blurred dot, so small type comes
  * out muddy — the first real print at 9px was hard to read.
  */
+/**
+ * A thermal printer's head is narrower than its roll: an "80mm" printer
+ * typically images about 72mm, centred, with the rest as dead margin. Laying
+ * content out across the full roll width pushes the left column under that
+ * margin, which is why the first letter of every label came out faint or
+ * clipped. Reserve a side margin and centre what is left.
+ */
+const SIDE_MARGIN_MM = 4
+
 const metricsFor = (widthMm) => {
   const scale = widthMm / BASELINE_MM
+  const contentMm = Math.max(30, widthMm - SIDE_MARGIN_MM * 2)
   return {
+    contentMm,
     fontSize: Math.max(8, +(11 * scale).toFixed(2)),
     moneyCol: Math.max(42, Math.round(74 * scale)),
     qtyCol: Math.max(14, Math.round(22 * scale)),
-    padX: Math.max(1.5, +(3 * scale).toFixed(1)),
     padY: Math.max(2, +(4 * scale).toFixed(1)),
     headline: Math.max(11, +(15 * scale).toFixed(2)),
     small: Math.max(8, +(10 * scale).toFixed(2)),
     // The logo printed nearly the full width of the roll. A third is plenty.
-    logoWidth: Math.round((widthMm / 25.4) * 96 * 0.34),
+    logoWidth: Math.round((contentMm / 25.4) * 96 * 0.34),
   }
 }
 
@@ -53,9 +63,17 @@ export function printReceipt(widthMm = BASELINE_MM) {
     @page { size: ${width}mm auto; margin: 0; }
     @media print {
       .receipt-print-area {
-        width: ${width}mm !important;
-        max-width: ${width}mm !important;
-        padding: ${m.padY}mm ${m.padX}mm !important;
+        /* Narrower than the roll and inset by the side margin, so nothing sits
+           under the printer's unimaged edge.
+           Stays absolutely positioned: the receipt lives inside a modal, and
+           everything else is hidden with visibility:hidden, which still
+           occupies layout space — in normal flow the receipt would print far
+           down the page after a stack of blank space. So it is lifted out and
+           offset, rather than centred with auto margins. */
+        left: ${SIDE_MARGIN_MM}mm !important;
+        width: ${m.contentMm}mm !important;
+        max-width: ${m.contentMm}mm !important;
+        padding: ${m.padY}mm 0 !important;
         font-size: ${m.fontSize}px !important;
         /* A sturdy sans, not the default monospace. Generic monospace resolves
            to Courier on most systems — thin strokes that a thermal head blurs

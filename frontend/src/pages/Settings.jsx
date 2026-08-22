@@ -48,7 +48,7 @@ function CompanyTab({ settings, onSave, loading }) {
       {[
         { name: 'companyName', label: 'Company Name', placeholder: 'DAN & DOR SOLAR COMPANY LIMITED' },
         { name: 'companyAddress', label: 'Address', placeholder: 'Bogoso, Western Region' },
-        { name: 'companyPhone', label: 'Phone', placeholder: '+233 598565277' },
+        { name: 'companyPhone', label: 'Phone', placeholder: '+233 595413632' },
         { name: 'companyEmail', label: 'Email', placeholder: 'info@company.com' },
       ].map(f => (
         <div key={f.name}>

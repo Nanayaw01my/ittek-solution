@@ -258,18 +258,7 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
                 <span>{cur}{balanceDue.toFixed(2)}</span>
               </div>
             )}
-            {saleData.points_redeemed > 0 && (
-              <div className="flex justify-between text-amber-700">
-                <span>Points redeemed:</span>
-                <span>{saleData.points_redeemed}</span>
-              </div>
-            )}
-            {saleData.points_earned > 0 && (
-              <div className="flex justify-between text-amber-700 font-semibold">
-                <span>Points earned:</span>
-                <span>+{saleData.points_earned}</span>
-              </div>
-            )}
+
           </div>
 
           {/* Offline there is no QR: the token and the public page both come
@@ -292,7 +281,11 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
 
           <div className="text-center text-xs text-gray-500">
             <p className="font-semibold">Thank you for your business!</p>
-            <p>Powered by ITTEK Solution</p>
+            <p className="mt-1">
+              Returns are accepted subject to our terms and conditions.
+              Please keep this receipt as proof of purchase.
+            </p>
+            <p className="mt-1">Powered by ITTEK Solution</p>
           </div>
         </div>
 

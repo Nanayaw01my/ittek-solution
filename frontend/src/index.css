@@ -72,15 +72,18 @@ body {
 
   .receipt-print-area {
     position: absolute !important;
-    left: 0 !important;
+    /* Inset by the printer's unimaged side margin: an "80mm" thermal head
+       images about 72mm, so content laid out across the full roll had its left
+       column clipped. */
+    left: 4mm !important;
     top: 0 !important;
-    width: 80mm !important;
-    max-width: 80mm !important;
+    width: 72mm !important;
+    max-width: 72mm !important;
     max-height: none !important;
     overflow: visible !important;
     margin: 0 !important;
-    /* Own padding, since @page has none */
-    padding: 4mm 3mm !important;
+    /* Vertical padding only — the side inset above provides the margins. */
+    padding: 4mm 0 !important;
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
@@ -141,7 +144,8 @@ body {
   .receipt-print-area,
   .receipt-print-area * { color: #000 !important; }
 
-  /* The logo printed nearly the full width of the roll and off-centre. */
+  /* The logo printed nearly the full width of the roll and off-centre.
+     Centred with automatic side margins; the QR keeps its own size below. */
   .receipt-print-area img {
     width: 34% !important;
     max-width: 34% !important;
@@ -149,6 +153,11 @@ body {
     display: block !important;
     margin-left: auto !important;
     margin-right: auto !important;
+  }
+  /* The QR must stay large enough for a phone camera to read it. */
+  .receipt-print-area img[alt="Receipt QR code"] {
+    width: 45% !important;
+    max-width: 45% !important;
   }
 
   /* Ancestors must not clip or scroll, or the absolute receipt is cut off. */
@@ -163,10 +172,6 @@ body {
   .receipt-print-area * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-  }
-  .receipt-print-area img {
-    max-width: 100% !important;
-    display: block;
   }
 
   /* Don't split a line item across two pages. */

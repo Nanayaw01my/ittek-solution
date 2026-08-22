@@ -73,7 +73,7 @@ const generateReceipt = async (saleData, options = {}) => {
       const servedBy = options.servedBy || options.cashierName || user_id?.username || 'Staff';
       const companyName = options.companyName || 'DAN & DOR SOLAR COMPANY LIMITED';
       const companyAddress = options.companyAddress || 'Bogoso, Western Region';
-      const companyPhone = options.companyPhone || '+233 598565277';
+      const companyPhone = options.companyPhone || '+233 595413632';
       const grandTotal = cart_total || total_amount || 0;
       const discountAmount = Math.max(0, (subtotal || 0) - grandTotal);
 
@@ -296,7 +296,7 @@ const generateCreditAgreement = async (agreementData, options = {}) => {
       doc.fontSize(12).font('Helvetica-Bold').fillColor('#111111')
         .text('DAN & DOR SOLAR COMPANY LIMITED', cX, H_Y + 8, { width: cW, align: 'center' });
       doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
-        .text('Bogoso, Western Region  |  Tel: +233 598565277', cX, H_Y + 28, { width: cW, align: 'center' });
+        .text(`${companyAddress}  |  Tel: ${companyPhone}`, cX, H_Y + 28, { width: cW, align: 'center' });
       doc.fontSize(9.5).font('Helvetica-Bold').fillColor(ORANGE)
         .text('CREDIT SALE AGREEMENT', cX, H_Y + 46, { width: cW, align: 'center' });
       resetColors();
@@ -529,7 +529,7 @@ const generateLayawayAgreement = async (layaway, options = {}) => {
       const company = options.company || {};
       const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
       const companyAddress = company.address || 'Bogoso, Western Region';
-      const companyPhone = company.phone || '+233 598565277';
+      const companyPhone = company.phone || '+233 595413632';
 
       const terms = options.terms || {};
       const cancelFee = Number(terms.cancellation_fee_percent ?? 10);
