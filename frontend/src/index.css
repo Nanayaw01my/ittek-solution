@@ -87,7 +87,7 @@ body {
     font-family: monospace;
     /* 80mm is only ~302px. At 12px the fixed item columns overflowed the sheet
        and the right-hand edge was sliced off mid-word. */
-    font-size: 9px;
+    font-size: 11px;
     line-height: 1.35;
   }
 
@@ -104,19 +104,32 @@ body {
      that the product name still gets usable space. */
   /* Pixels, not rem: the print block sets html{font-size:12px}, so 1rem is
      12px here and a rem-based width silently came out a third too narrow. */
-  .receipt-print-area .w-20 { width: 58px !important; flex: none !important; }
-  .receipt-print-area .w-8  { width: 20px !important; flex: none !important; }
+  .receipt-print-area .w-20 { width: 74px !important; flex: none !important; padding-left: 4px !important; }
+  .receipt-print-area .w-8  { width: 22px !important; flex: none !important; }
   /* Without flex:none these are flex items with flex-shrink:1, so the row
      squeezed them below their set width and "GHC3500.00" wrapped onto a second
      line. The name column absorbs the difference instead. */
   .receipt-print-area .flex-1 { min-width: 0 !important; }
 
   /* Keep headline sizes in proportion with the smaller base. */
-  .receipt-print-area .text-base { font-size: 11px !important; }
-  .receipt-print-area .text-sm   { font-size: 9.5px !important; }
-  .receipt-print-area .text-xs   { font-size: 8.5px !important; }
+  .receipt-print-area .text-base { font-size: 15px !important; }
+  .receipt-print-area .text-sm   { font-size: 10px !important; }
+  .receipt-print-area .text-xs   { font-size: 10px !important; }
 
-  .receipt-print-area img { max-width: 42% !important; height: auto !important; }
+  /* Thermal heads cannot print grey — they dither it into scattered dots,
+     which reads as faint and mottled. Force pure black. */
+  .receipt-print-area,
+  .receipt-print-area * { color: #000 !important; }
+
+  /* The logo printed nearly the full width of the roll and off-centre. */
+  .receipt-print-area img {
+    width: 34% !important;
+    max-width: 34% !important;
+    height: auto !important;
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
 
   /* Ancestors must not clip or scroll, or the absolute receipt is cut off. */
   .print-container,

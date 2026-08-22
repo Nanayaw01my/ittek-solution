@@ -13,18 +13,25 @@
 const STYLE_ID = 'ittek-receipt-print-size'
 const BASELINE_MM = 80
 
-/** Design metrics at 80mm, scaled proportionally for narrower rolls. */
+/**
+ * Design metrics at 80mm, scaled proportionally for narrower rolls.
+ *
+ * Sizes are deliberately larger than they need to be on a screen. A thermal
+ * head is around 203dpi and burns a slightly blurred dot, so small type comes
+ * out muddy — the first real print at 9px was hard to read.
+ */
 const metricsFor = (widthMm) => {
   const scale = widthMm / BASELINE_MM
   return {
-    // Never below 6px: smaller than that and thermal output stops being legible.
-    fontSize: Math.max(6, +(9 * scale).toFixed(2)),
-    moneyCol: Math.max(30, Math.round(58 * scale)),
-    qtyCol: Math.max(12, Math.round(20 * scale)),
+    fontSize: Math.max(8, +(11 * scale).toFixed(2)),
+    moneyCol: Math.max(42, Math.round(74 * scale)),
+    qtyCol: Math.max(14, Math.round(22 * scale)),
     padX: Math.max(1.5, +(3 * scale).toFixed(1)),
     padY: Math.max(2, +(4 * scale).toFixed(1)),
-    headline: Math.max(7, +(11 * scale).toFixed(2)),
-    small: Math.max(5.5, +(8.5 * scale).toFixed(2)),
+    headline: Math.max(11, +(15 * scale).toFixed(2)),
+    small: Math.max(8, +(10 * scale).toFixed(2)),
+    // The logo printed nearly the full width of the roll. A third is plenty.
+    logoWidth: Math.round((widthMm / 25.4) * 96 * 0.34),
   }
 }
 
@@ -51,11 +58,28 @@ export function printReceipt(widthMm = BASELINE_MM) {
         padding: ${m.padY}mm ${m.padX}mm !important;
         font-size: ${m.fontSize}px !important;
       }
-      .receipt-print-area .w-20 { width: ${m.moneyCol}px !important; }
+      /* padding-left keeps the price and total columns from touching */
+      .receipt-print-area .w-20 { width: ${m.moneyCol}px !important; padding-left: 4px !important; }
       .receipt-print-area .w-8  { width: ${m.qtyCol}px !important; }
       .receipt-print-area .text-base { font-size: ${m.headline}px !important; }
       .receipt-print-area .text-sm   { font-size: ${m.small}px !important; }
       .receipt-print-area .text-xs   { font-size: ${m.small}px !important; }
+      .receipt-print-area .text-\\[10px\\] { font-size: ${m.small}px !important; }
+
+      /* A thermal printer has no grey — it dithers it into scattered dots,
+         which is what made the address and item lines look faint and mottled.
+         Everything prints pure black. */
+      .receipt-print-area,
+      .receipt-print-area * { color: #000 !important; }
+
+      .receipt-print-area img {
+        width: ${m.logoWidth}px !important;
+        max-width: ${m.logoWidth}px !important;
+        height: auto !important;
+        display: block !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+      }
     }
   `
   document.head.appendChild(style)
