@@ -84,12 +84,32 @@ body {
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
-    font-family: monospace;
+    /* A sturdy sans, not monospace. Generic monospace resolves to Courier,
+       whose thin strokes a 203dpi thermal head blurs into grey mush. The item
+       columns are fixed-width flex boxes, so nothing depends on character
+       alignment. !important because the element also carries Tailwind's
+       font-mono utility, which has equal specificity and would otherwise win. */
+    font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif !important;
+    font-weight: 600 !important;
+    /* Digits stay in column despite the proportional face. */
+    font-variant-numeric: tabular-nums !important;
+    /* A hair of tracking stops letters merging as the thermal dot spreads. */
+    letter-spacing: 0.2px !important;
     /* 80mm is only ~302px. At 12px the fixed item columns overflowed the sheet
        and the right-hand edge was sliced off mid-word. */
     font-size: 11px;
     line-height: 1.35;
   }
+
+  .receipt-print-area * {
+    font-family: inherit !important;
+    font-weight: 600 !important;
+    font-variant-numeric: tabular-nums !important;
+  }
+  .receipt-print-area .font-bold,
+  .receipt-print-area .font-semibold,
+  .receipt-print-area .font-medium { font-weight: 700 !important; }
+  .receipt-print-area .font-black  { font-weight: 800 !important; }
 
   /* Nothing inside may exceed the roll width, and long words must wrap rather
      than push the layout wider than the page. */

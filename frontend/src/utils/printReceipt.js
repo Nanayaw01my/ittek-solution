@@ -57,7 +57,26 @@ export function printReceipt(widthMm = BASELINE_MM) {
         max-width: ${width}mm !important;
         padding: ${m.padY}mm ${m.padX}mm !important;
         font-size: ${m.fontSize}px !important;
+        /* A sturdy sans, not the default monospace. Generic monospace resolves
+           to Courier on most systems — thin strokes that a thermal head blurs
+           into grey mush. The columns are fixed-width flex boxes, so nothing
+           here depends on character alignment. */
+        font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif !important;
+        /* Thermal output is stronger with weight behind it. */
+        font-weight: 600 !important;
+        /* Digits stay in column despite the proportional face. */
+        font-variant-numeric: tabular-nums !important;
+        /* A hair of tracking stops adjacent letters merging as the dot spreads. */
+        letter-spacing: 0.2px !important;
       }
+      .receipt-print-area * {
+        font-family: inherit !important;
+        font-variant-numeric: tabular-nums !important;
+      }
+      .receipt-print-area .font-bold,
+      .receipt-print-area .font-semibold,
+      .receipt-print-area .font-medium { font-weight: 700 !important; }
+      .receipt-print-area .font-black  { font-weight: 800 !important; }
       /* padding-left keeps the price and total columns from touching */
       .receipt-print-area .w-20 { width: ${m.moneyCol}px !important; padding-left: 4px !important; }
       .receipt-print-area .w-8  { width: ${m.qtyCol}px !important; }
