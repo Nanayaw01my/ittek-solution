@@ -734,10 +734,9 @@ const generateLayawayAgreement = async (layaway, options = {}) => {
         '1. The goods listed above are reserved for the customer and remain in the custody and ownership of the ' +
         'Company until the agreed price has been paid in full. They will not be sold to any other person while ' +
         'this agreement is in force.\n' +
-        '2. The agreed price holds only while payment is being completed as scheduled. If the agreement is not ' +
-        'paid up in full and the cost of the goods rises in the meantime, the Company reserves the right to add ' +
-        'the increase to the outstanding balance. The customer will be informed of any such adjustment, and the ' +
-        'revised balance will apply from that date.\n' +
+        '2. If the price of the goods increases before this agreement is paid off, the increase will be added to ' +
+        'the balance the customer still has to pay. The customer will be told of the new balance when this ' +
+        'happens.\n' +
         '3. The customer undertakes to pay each instalment on or before the due date shown above. Payments may be ' +
         'made in person at the shop, and a receipt will be issued for every payment.\n' +
         '4. The goods will be released to the customer only when the balance reaches zero. Proof of identity may ' +
