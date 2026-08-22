@@ -34,6 +34,7 @@ const createLayaway = async (req, res) => {
     const {
       customer_name, customer_phone, cart, down_payment = 0,
       installments = 4, frequency = 'weekly', payment_method = 'cash',
+      customer_address, customer_id_type, customer_id_number, notes,
     } = req.body;
 
     if (!customer_name || !customer_phone) {
@@ -59,6 +60,10 @@ const createLayaway = async (req, res) => {
       reference: makeReference(),
       customer_name,
       customer_phone,
+      customer_address,
+      customer_id_type,
+      customer_id_number,
+      notes,
       items,
       total_amount: total,
       down_payment: down,

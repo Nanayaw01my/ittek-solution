@@ -45,6 +45,11 @@ const LayawaySchema = new mongoose.Schema(
     reference: { type: String, required: true, unique: true, index: true },
     customer_name: { type: String, required: true, trim: true },
     customer_phone: { type: String, required: true, trim: true },
+    // Taken when the agreement is made, before any goods are chosen.
+    customer_address: { type: String, trim: true },
+    customer_id_type: { type: String, trim: true },   // Ghana Card, Voter ID, …
+    customer_id_number: { type: String, trim: true },
+    notes: { type: String, trim: true },
     items: { type: [LayawayItemSchema], required: true },
 
     total_amount: { type: Number, required: true },

@@ -2,10 +2,11 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
-import { FiPackage, FiDollarSign, FiCheckCircle, FiXCircle, FiAlertTriangle } from 'react-icons/fi'
+import { FiPackage, FiDollarSign, FiCheckCircle, FiXCircle, FiAlertTriangle, FiPlus } from 'react-icons/fi'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
 import LoadingSpinner from '../components/LoadingSpinner'
+import LayawayWizard from '../components/LayawayWizard'
 import { useTranslation } from '../i18n'
 import { formatCurrency } from '../utils/helpers'
 import { getLayaways, addLayawayPayment, collectLayaway, cancelLayaway } from '../api/layaways'
@@ -243,6 +244,7 @@ export default function Layaways() {
   const [search, setSearch] = useState('')
   const [payingFor, setPayingFor] = useState(null)
   const [viewing, setViewing] = useState(null)
+  const [creating, setCreating] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['layaways', statusFilter, search],
@@ -255,7 +257,19 @@ export default function Layaways() {
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
-      <PageHeader title={t('layaway.plans')} subtitle="Goods reserved and paid off over time" icon={FiPackage} />
+      <PageHeader
+        title={t('layaway.plans')}
+        subtitle="Goods reserved and paid off over time"
+        icon={FiPackage}
+        action={
+          <button
+            onClick={() => setCreating(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold text-sm transition-colors"
+          >
+            <FiPlus size={15} /> New Agreement
+          </button>
+        }
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white border border-gray-200 rounded-2xl p-4">
@@ -353,6 +367,8 @@ export default function Layaways() {
           </table>
         </div>
       )}
+
+      <LayawayWizard isOpen={creating} onClose={() => setCreating(false)} />
 
       {payingFor && <PaymentModal layaway={payingFor} onClose={() => setPayingFor(null)} />}
       {viewing && <DetailModal layaway={viewing} onClose={() => setViewing(null)} />}
