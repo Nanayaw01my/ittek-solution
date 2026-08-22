@@ -2,7 +2,7 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { FiShoppingCart, FiDollarSign, FiPackage, FiAlertTriangle, FiUsers, FiTrendingUp, FiActivity, FiCreditCard } from 'react-icons/fi'
+import { FiShoppingCart, FiDollarSign, FiPackage, FiAlertTriangle, FiUsers, FiTrendingUp, FiActivity, FiCreditCard, FiClock } from 'react-icons/fi'
 import StatCard from '../components/StatCard'
 import { getDashboardStats, getSalesTrend, getTopProductsReport } from '../api/reports'
 import { getSales } from '../api/pos'
@@ -79,6 +79,13 @@ export default function Dashboard() {
             value={formatCurrency(stats.myTodayExpenses || 0)}
             label="My Today's Expenses"
             color="red"
+            loading={statsLoading}
+          />
+          <StatCard
+            icon={FiClock}
+            value={formatCurrency(stats.myTodayLayawayCollections || 0)}
+            label="My Pay & Pick Later Today"
+            color="blue"
             loading={statsLoading}
           />
           <StatCard
@@ -182,7 +189,7 @@ export default function Dashboard() {
       </div>
 
       {/* Row 2 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         <StatCard
           icon={FiDollarSign}
           value={formatCurrency(stats.todayExpenses || 0)}
@@ -195,6 +202,13 @@ export default function Dashboard() {
           value={formatCurrency(stats.netProfit || 0)}
           label="Net Profit (Month)"
           color={!statsLoading && (stats.netProfit || 0) < 0 ? 'red' : 'green'}
+          loading={statsLoading}
+        />
+        <StatCard
+          icon={FiClock}
+          value={formatCurrency(stats.todayLayawayCollections || 0)}
+          label="Pay & Pick Later Today"
+          color="blue"
           loading={statsLoading}
         />
         <StatCard

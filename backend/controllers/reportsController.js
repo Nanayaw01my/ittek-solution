@@ -7,6 +7,7 @@ const StockRequest = require('../models/StockRequest');
 const WorkerPayment = require('../models/WorkerPayment');
 const Purchase = require('../models/Purchase');
 const Refund = require('../models/Refund');
+const Layaway = require('../models/Layaway');
 const { generateReport, generatePriceList } = require('../utils/pdfGenerator');
 const Settings = require('../models/Settings');
 
@@ -23,7 +24,7 @@ const getDashboardStats = async (req, res) => {
     const userId = req.user._id;
 
     if (isLimitedRole) {
-      const [myTodaySalesAgg, myTodayExpensesAgg, outstandingDebtsCount, pendingStockCount, totalProducts, lowStockCount] = await Promise.all([
+      const [myTodaySalesAgg, myTodayExpensesAgg, myTodayLayawayAgg, outstandingDebtsCount, pendingStockCount, totalProducts, lowStockCount] = await Promise.all([
         Sale.aggregate([
           { $match: { user_id: userId, sale_date: { $gte: startOfToday } } },
           { $group: { _id: null, total: { $sum: '$total_amount' } } },
@@ -31,6 +32,14 @@ const getDashboardStats = async (req, res) => {
         Expense.aggregate([
           { $match: { user_id: userId, expense_date: { $gte: startOfToday } } },
           { $group: { _id: null, total: { $sum: '$amount' } } },
+        ]),
+        // Pay & Pick Later instalments taken by this user today. No Sale is
+        // written until the goods are released, so these would otherwise be
+        // missing from the day's takings entirely.
+        Layaway.aggregate([
+          { $unwind: '$payments' },
+          { $match: { 'payments.received_by': userId, 'payments.paid_at': { $gte: startOfToday } } },
+          { $group: { _id: null, total: { $sum: '$payments.amount' } } },
         ]),
         Debt.countDocuments({ status: { $in: ['active', 'overdue'] } }),
         StockRequest.countDocuments({ status: 'pending' }),
@@ -42,6 +51,7 @@ const getDashboardStats = async (req, res) => {
         data: {
           myTodaySales: myTodaySalesAgg[0]?.total || 0,
           myTodayExpenses: myTodayExpensesAgg[0]?.total || 0,
+          myTodayLayawayCollections: myTodayLayawayAgg[0]?.total || 0,
           outstandingDebts: outstandingDebtsCount,
           pendingStockRequests: pendingStockCount,
           totalProducts,
@@ -57,6 +67,7 @@ const getDashboardStats = async (req, res) => {
       todayExpensesAgg, monthlyExpensesAgg,
       outstandingDebts, activeUsers,
       todayRefundsAgg, monthlyRefundsAgg,
+      todayLayawayAgg, monthlyLayawayAgg,
     ] = await Promise.all([
       Sale.aggregate([{ $match: { sale_date: { $gte: startOfToday } } }, { $group: { _id: null, total: { $sum: '$total_amount' } } }]),
       Sale.aggregate([{ $match: { sale_date: { $gte: startOfMonth } } }, { $group: { _id: null, total: { $sum: '$total_amount' } } }]),
@@ -73,6 +84,17 @@ const getDashboardStats = async (req, res) => {
       User.countDocuments({ is_active: true }),
       Refund.aggregate([{ $match: { refund_date: { $gte: startOfToday } } }, { $group: { _id: null, total: { $sum: '$refund_amount' } } }]),
       Refund.aggregate([{ $match: { refund_date: { $gte: startOfMonth } } }, { $group: { _id: null, total: { $sum: '$refund_amount' } } }]),
+      // Pay & Pick Later instalments — cash in hand that no Sale records yet.
+      Layaway.aggregate([
+        { $unwind: '$payments' },
+        { $match: { 'payments.paid_at': { $gte: startOfToday } } },
+        { $group: { _id: null, total: { $sum: '$payments.amount' } } },
+      ]),
+      Layaway.aggregate([
+        { $unwind: '$payments' },
+        { $match: { 'payments.paid_at': { $gte: startOfMonth } } },
+        { $group: { _id: null, total: { $sum: '$payments.amount' } } },
+      ]),
     ]);
 
     const todayRefunds = todayRefundsAgg[0]?.total || 0;
@@ -94,6 +116,8 @@ const getDashboardStats = async (req, res) => {
         lowStockCount: lowStockProducts.length,
         todayExpenses,
         netProfit,
+        todayLayawayCollections: todayLayawayAgg[0]?.total || 0,
+        monthlyLayawayCollections: monthlyLayawayAgg[0]?.total || 0,
         outstandingDebtAmount,
         activeUsers,
         lowStockProducts: lowStockProducts.map(p => ({
@@ -441,7 +465,9 @@ const getFinancialOverview = async (req, res) => {
       workerMatch.payment_date = dateFilter;
     }
 
-    const [salesAgg, expensesAgg, expensesByCategory, purchasesAgg, workerAgg] = await Promise.all([
+    const layawayMatch = dateFilter ? [{ $match: { 'payments.paid_at': dateFilter } }] : [];
+
+    const [salesAgg, expensesAgg, expensesByCategory, purchasesAgg, workerAgg, layawayAgg] = await Promise.all([
       Sale.aggregate([
         { $match: saleMatch },
         {
@@ -471,6 +497,11 @@ const getFinancialOverview = async (req, res) => {
         { $match: workerMatch },
         { $group: { _id: null, total: { $sum: '$amount_paid' } } },
       ]),
+      Layaway.aggregate([
+        { $unwind: '$payments' },
+        ...layawayMatch,
+        { $group: { _id: null, total: { $sum: '$payments.amount' } } },
+      ]),
     ]);
 
     const totalRevenue = salesAgg[0]?.total_revenue || 0;
@@ -481,6 +512,12 @@ const getFinancialOverview = async (req, res) => {
     const totalExpenses = expensesAgg[0]?.total || 0;
     const purchases = purchasesAgg[0]?.total || 0;
     const workerPayments = workerAgg[0]?.total || 0;
+    // Money received against Pay & Pick Later agreements. Reported separately
+    // rather than folded into revenue: the goods have not been released, so
+    // there is no matching cost of sale and adding it to revenue would
+    // overstate both turnover and profit. It becomes revenue as a normal sale
+    // when the goods are collected.
+    const layawayCollections = layawayAgg[0]?.total || 0;
     const netProfit = grossProfit - totalExpenses;
     const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
@@ -497,6 +534,7 @@ const getFinancialOverview = async (req, res) => {
         profitMargin,
         purchases,
         workerPayments,
+        layawayCollections,
         expensesByCategory,
       },
     });
@@ -521,7 +559,12 @@ const getCashFlow = async (req, res) => {
       expenseMatch.expense_date = dateFilter;
     }
 
-    const [salesAgg, expensesAgg, debtPayments, dailySales, dailyExpenses] = await Promise.all([
+    // Pay & Pick Later money is taken over the counter like any other cash, but
+    // no Sale is written until the goods are released — so without this the
+    // day's takings were understated by every instalment collected.
+    const layawayPaymentStage = dateFilter ? [{ $match: { 'payments.paid_at': dateFilter } }] : [];
+
+    const [salesAgg, expensesAgg, debtPayments, layawayPayments, dailySales, dailyExpenses, dailyLayaway] = await Promise.all([
       Sale.aggregate([
         { $match: { ...saleMatch, payment_status: { $in: ['paid', 'partial'] } } },
         { $group: { _id: null, total: { $sum: '$total_amount' } } },
@@ -535,6 +578,11 @@ const getCashFlow = async (req, res) => {
         ...(dateFilter ? [{ $match: { 'payments.payment_date': dateFilter } }] : []),
         { $group: { _id: null, total: { $sum: '$payments.amount' } } },
       ]),
+      Layaway.aggregate([
+        { $unwind: '$payments' },
+        ...layawayPaymentStage,
+        { $group: { _id: null, total: { $sum: '$payments.amount' } } },
+      ]),
       Sale.aggregate([
         { $match: saleMatch },
         { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$sale_date' } }, inflow: { $sum: '$total_amount' } } },
@@ -545,25 +593,31 @@ const getCashFlow = async (req, res) => {
         { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$expense_date' } }, outflow: { $sum: '$amount' } } },
         { $sort: { _id: 1 } },
       ]),
+      Layaway.aggregate([
+        { $unwind: '$payments' },
+        ...layawayPaymentStage,
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$payments.paid_at' } }, inflow: { $sum: '$payments.amount' } } },
+        { $sort: { _id: 1 } },
+      ]),
     ]);
 
     const salesInflow = salesAgg[0]?.total || 0;
     const expenseOutflow = expensesAgg[0]?.total || 0;
     const debtCollections = debtPayments[0]?.total || 0;
-    const netCashFlow = salesInflow + debtCollections - expenseOutflow;
+    const layawayCollections = layawayPayments[0]?.total || 0;
+    const netCashFlow = salesInflow + debtCollections + layawayCollections - expenseOutflow;
 
     // Merge daily inflow/outflow
     const dateMap = {};
-    dailySales.forEach(d => { dateMap[d._id] = { date: d._id, inflow: d.inflow, outflow: 0 }; });
-    dailyExpenses.forEach(d => {
-      if (dateMap[d._id]) dateMap[d._id].outflow = d.outflow;
-      else dateMap[d._id] = { date: d._id, inflow: 0, outflow: d.outflow };
-    });
+    const bucket = (d) => (dateMap[d] ||= { date: d, inflow: 0, outflow: 0 });
+    dailySales.forEach(d => { bucket(d._id).inflow += d.inflow; });
+    dailyLayaway.forEach(d => { bucket(d._id).inflow += d.inflow; });
+    dailyExpenses.forEach(d => { bucket(d._id).outflow += d.outflow; });
     const trend = Object.values(dateMap).sort((a, b) => a.date.localeCompare(b.date));
 
     return res.status(200).json({
       success: true,
-      data: { salesInflow, debtCollections, expenseOutflow, netCashFlow, trend },
+      data: { salesInflow, debtCollections, layawayCollections, expenseOutflow, netCashFlow, trend },
     });
   } catch (err) {
     console.error('Cash flow error:', err.message);

@@ -56,6 +56,12 @@ function PLTab({ data, loading }) {
     { label: 'WORKER PAYMENTS', value: d.workerPayments || 0, positive: false },
     { label: '', divider: true },
     { label: 'NET PROFIT / (LOSS)', value: d.netProfit || 0, positive: (d.netProfit || 0) >= 0, bold: true, highlight: true },
+    { label: '', divider: true },
+    // Money held against goods not yet released. Deliberately below the net
+    // profit line: it is cash received, but it is not turnover until the
+    // customer collects, and there is no cost of sale against it yet.
+    { label: 'MEMORANDUM', isHeader: true },
+    { label: 'Pay & Pick Later collections (not yet revenue)', value: d.layawayCollections || 0, positive: true },
   ]
 
   return (
@@ -96,7 +102,7 @@ function CashFlowTab({ startDate, endDate }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-green-50 border border-green-200 rounded-xl p-4">
           <p className="text-sm text-green-700">Sales Inflow</p>
           <p className="text-xl font-black text-green-800">{formatCurrency(d.salesInflow || 0)}</p>
@@ -104,6 +110,10 @@ function CashFlowTab({ startDate, endDate }) {
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
           <p className="text-sm text-blue-700">Debt Collections</p>
           <p className="text-xl font-black text-blue-800">{formatCurrency(d.debtCollections || 0)}</p>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <p className="text-sm text-amber-700">Pay &amp; Pick Later</p>
+          <p className="text-xl font-black text-amber-800">{formatCurrency(d.layawayCollections || 0)}</p>
         </div>
         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
           <p className="text-sm text-red-700">Expenses Outflow</p>

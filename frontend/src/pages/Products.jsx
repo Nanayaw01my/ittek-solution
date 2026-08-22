@@ -13,11 +13,36 @@ import Badge from '../components/Badge'
 import ImageUpload from '../components/ImageUpload'
 import VariantEditor from '../components/VariantEditor'
 
+/**
+ * The form registers camelCase names but a product document is snake_case, so
+ * handing the document straight to defaultValues left Cost Price, Selling
+ * Price, Quantity, Low Stock, Category and Supplier blank on every edit — the
+ * whole product had to be retyped, and anything missed was sent as NaN.
+ *
+ * category_id / supplier_id arrive either populated (an object) or as a bare
+ * id, so both shapes are reduced to an id string for the <select>.
+ */
+const idOf = (v) => (v && typeof v === 'object' ? v._id : v) || ''
+
+const toFormValues = (product) => {
+  if (!product) return {}
+  return {
+    name: product.name ?? '',
+    barcode: product.barcode ?? '',
+    category: idOf(product.category_id),
+    supplier: idOf(product.supplier_id),
+    costPrice: product.cost_price ?? '',
+    sellingPrice: product.selling_price ?? '',
+    quantity: product.quantity ?? '',
+    lowStockLevel: product.low_stock_level ?? '',
+  }
+}
+
 function ProductForm({ product, categories = [], suppliers = [], onSubmit, loading }) {
   const [imageUrl, setImageUrl] = useState(product?.image_url || null)
   const [variants, setVariants] = useState(product?.variants || [])
   const { register, handleSubmit, watch, formState: { errors } } = useForm({
-    defaultValues: product || {}
+    defaultValues: toFormValues(product)
   })
   const costPrice = parseFloat(watch('costPrice') || 0)
   const sellingPrice = parseFloat(watch('sellingPrice') || 0)
@@ -339,20 +364,34 @@ export default function Products() {
         size="lg"
       >
         <ProductForm
+          /* Remount per product: useForm reads defaultValues once, so without
+             this the form kept whatever the previously opened product left. */
+          key={editProduct?._id || 'new'}
           product={editProduct}
           categories={categories}
           suppliers={suppliers}
           loading={createMutation.isPending || updateMutation.isPending}
           onSubmit={(formData) => {
+            // A blank or unparseable field must never be sent as NaN — on an
+            // edit that would wipe a price the user never touched, so fall
+            // back to what the product already has.
+            const num = (v, fallback) => {
+              const n = parseFloat(v)
+              return Number.isFinite(n) ? n : fallback
+            }
+            const int = (v, fallback) => {
+              const n = parseInt(v, 10)
+              return Number.isFinite(n) ? n : fallback
+            }
             const payload = {
               name: formData.name,
               barcode: formData.barcode || undefined,
               category_id: formData.category || undefined,
               supplier_id: formData.supplier || undefined,
-              cost_price: parseFloat(formData.costPrice),
-              selling_price: parseFloat(formData.sellingPrice),
-              quantity: parseInt(formData.quantity) || 0,
-              low_stock_level: parseInt(formData.lowStockLevel) || 5,
+              cost_price: num(formData.costPrice, editProduct?.cost_price ?? 0),
+              selling_price: num(formData.sellingPrice, editProduct?.selling_price ?? 0),
+              quantity: int(formData.quantity, editProduct?.quantity ?? 0),
+              low_stock_level: int(formData.lowStockLevel, editProduct?.low_stock_level ?? 5),
               image_url: formData.image_url || undefined,
               // Empty rows are dropped; a product with no variants stays a
               // plain single-SKU product.
