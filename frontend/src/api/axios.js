@@ -13,6 +13,16 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+
+    // A file upload must not carry the instance's default JSON content type.
+    // Multipart bodies are identified by a boundary the browser generates, and
+    // overwriting the header strips it — the server then sees no file at all
+    // and reports that none was chosen.
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      delete config.headers['Content-Type']
+      delete config.headers['content-type']
+    }
+
     return config
   },
   (error) => Promise.reject(error)

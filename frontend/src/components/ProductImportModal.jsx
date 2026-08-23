@@ -21,7 +21,10 @@ export default function ProductImportModal({ onClose, onImported }) {
   const preview = useMutation({
     mutationFn: previewProductImport,
     onSuccess: (res) => {
-      const data = res.data?.data || {}
+      // The axios response interceptor already unwraps { success, data }, so
+      // the payload is res.data. The nested read is kept as a fallback in case
+      // an error envelope comes through unwrapped.
+      const data = res.data?.rows ? res.data : (res.data?.data || {})
       setRows((data.rows || []).map((r, i) => ({ ...r, key: `${i}-${r.name}` })))
       setWarnings(data.warnings || [])
       if (!data.rows?.length) toast.error('No product rows were found in that file.')
@@ -32,8 +35,12 @@ export default function ProductImportModal({ onClose, onImported }) {
   const commit = useMutation({
     mutationFn: commitProductImport,
     onSuccess: (res) => {
-      const d = res.data?.data || {}
-      toast.success(res.data?.message || 'Imported.')
+      const d = res.data?.created !== undefined ? res.data : (res.data?.data || {})
+      toast.success(
+        `${d.created || 0} product(s) imported.`
+        + (d.skipped ? ` ${d.skipped} skipped.` : '')
+        + (d.failed ? ` ${d.failed} failed.` : '')
+      )
       if (d.categoriesCreated?.length) {
         toast.success(`New categories created: ${d.categoriesCreated.join(', ')}`, { duration: 6000 })
       }
