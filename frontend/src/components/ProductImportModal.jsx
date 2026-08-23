@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { FiUploadCloud, FiAlertTriangle, FiFile } from 'react-icons/fi'
 import { previewProductImport, commitProductImport } from '../api/products'
+import { formatCurrency } from '../utils/helpers'
 
 /**
  * Import products from a file.
@@ -65,6 +66,22 @@ export default function ProductImportModal({ onClose, onImported }) {
     setRows(prev => prev.map(r => (r.key === key ? { ...r, include: !r.include } : r)))
 
   const selected = (rows || []).filter(r => r.include && String(r.name).trim())
+
+  /**
+   * What the ticked rows add up to. Recomputed as rows are edited or unticked,
+   * so the figures always describe what is actually about to be imported —
+   * and a mistyped price shows up here as a total that looks wrong.
+   */
+  const totals = selected.reduce((acc, r) => {
+    const qty = Number(r.quantity) || 0
+    const cost = Number(r.cost_price) || 0
+    const sell = Number(r.selling_price) || 0
+    acc.units += qty
+    acc.costValue += qty * cost
+    acc.sellValue += qty * sell
+    return acc
+  }, { units: 0, costValue: 0, sellValue: 0 })
+  totals.profit = totals.sellValue - totals.costValue
 
   const doImport = () => {
     if (selected.length === 0) return toast.error('Tick at least one row to import.')
@@ -152,9 +169,39 @@ export default function ProductImportModal({ onClose, onImported }) {
             </div>
           )}
 
+          {/* Totals for the ticked rows — a mistyped price usually shows up
+              here as a figure that looks wrong before it reaches the books. */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="bg-gray-50 rounded-xl px-3 py-2">
+              <p className="text-[11px] text-gray-500">Products</p>
+              <p className="text-base font-black text-gray-800">{selected.length}</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl px-3 py-2">
+              <p className="text-[11px] text-gray-500">Total units</p>
+              <p className="text-base font-black text-gray-800">{totals.units}</p>
+            </div>
+            <div className="bg-blue-50 rounded-xl px-3 py-2">
+              <p className="text-[11px] text-blue-700">Stock at cost</p>
+              <p className="text-base font-black text-blue-800">{formatCurrency(totals.costValue)}</p>
+            </div>
+            <div className="bg-orange-50 rounded-xl px-3 py-2">
+              <p className="text-[11px] text-orange-700">Stock at selling</p>
+              <p className="text-base font-black text-orange-800">{formatCurrency(totals.sellValue)}</p>
+            </div>
+            <div className={`rounded-xl px-3 py-2 ${totals.profit >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+              <p className={`text-[11px] ${totals.profit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                Profit if all sold
+              </p>
+              <p className={`text-base font-black ${totals.profit >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+                {formatCurrency(totals.profit)}
+              </p>
+            </div>
+          </div>
+
           <p className="text-xs text-gray-500">
             Check every row before importing — anything you correct here is what gets saved.
-            Rows already in the catalogue are unticked.
+            Rows already in the catalogue are unticked. Products with no quantity add nothing
+            to the stock values.
           </p>
 
           <div className="border border-gray-200 rounded-xl overflow-x-auto max-h-[45vh] overflow-y-auto">
