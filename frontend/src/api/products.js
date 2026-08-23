@@ -18,3 +18,11 @@ export const getSuppliers = () => api.get('/suppliers')
 export const createSupplier = (data) => api.post('/suppliers', data)
 export const updateSupplier = (id, data) => api.put(`/suppliers/${id}`, data)
 export const deleteSupplier = (id) => api.delete(`/suppliers/${id}`)
+
+export const previewProductImport = (file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post('/products/import/preview', form)
+}
+
+export const commitProductImport = (rows) => api.post('/products/import/commit', { rows })

@@ -4,16 +4,35 @@ const { body } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
 const { requireLevel, requirePage } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
+const multer = require('multer');
 const {
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
   getLowStock, getByBarcode, searchProducts, bulkImport,
 } = require('../controllers/productsController');
+const { previewImport, commitImport } = require('../controllers/productImportController');
+
+// Kept in memory: the file is parsed and thrown away, so there is nothing to
+// write to disk (and nothing to clean up on a read-only serverless filesystem).
+const uploadSheet = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 // All authenticated users can list/view products (needed for POS)
 router.get('/low-stock', authenticate, requireLevel(3), getLowStock);
 router.get('/barcode/:barcode', authenticate, getByBarcode);
 router.post('/search', authenticate, searchProducts);
 router.post('/bulk-import', authenticate, requireLevel(3), auditLog('BULK_IMPORT_PRODUCTS'), bulkImport);
+
+// Reading a file writes nothing, so it is separated from the commit that does.
+router.post('/import/preview', authenticate, requireLevel(3), uploadSheet.single('file'), previewImport);
+router.post(
+  '/import/commit',
+  authenticate,
+  requireLevel(3),
+  auditLog('IMPORT_PRODUCTS', (req) => ({ count: (req.body.rows || []).length })),
+  commitImport
+);
 router.get('/', authenticate, getProducts);
 router.get('/:id', authenticate, getProduct);
 

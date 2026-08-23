@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiTrash2, FiPackage } from 'react-icons/fi'
+import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload } from 'react-icons/fi'
 import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers } from '../api/products'
 import { formatCurrency } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
@@ -13,6 +13,7 @@ import Badge from '../components/Badge'
 import ImageUpload from '../components/ImageUpload'
 import VariantEditor from '../components/VariantEditor'
 import useAuthStore from '../store/authStore'
+import ProductImportModal from '../components/ProductImportModal'
 import { getMe } from '../api/auth'
 import { effectiveMode } from '../config/pageAccess'
 
@@ -240,6 +241,7 @@ export default function Products() {
   const [editProduct, setEditProduct] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [stockTarget, setStockTarget] = useState(null)
+  const [showImport, setShowImport] = useState(false)
   const [page, setPage] = useState(1)
 
   const user = useAuthStore(s => s.user)
@@ -412,12 +414,24 @@ export default function Products() {
         title="Products"
         subtitle={inventoryOnly ? 'Add products to the categories assigned to you' : 'Manage your product catalog'}
         action={
-          <button
-            onClick={() => { setEditProduct(null); setShowModal(true) }}
-            className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
-          >
-            <FiPlus size={16} /> Add Product
-          </button>
+          <div className="flex gap-2">
+            {/* Importing creates products, so it follows the same rights as
+                adding one — an inventory-only user gets it too. */}
+            {!inventoryOnly && (
+              <button
+                onClick={() => setShowImport(true)}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-semibold text-sm transition-colors"
+              >
+                <FiUpload size={16} /> Import
+              </button>
+            )}
+            <button
+              onClick={() => { setEditProduct(null); setShowModal(true) }}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
+            >
+              <FiPlus size={16} /> Add Product
+            </button>
+          </div>
         }
       />
 
@@ -518,6 +532,19 @@ export default function Products() {
               createMutation.mutate(payload)
             }
           }}
+        />
+      </Modal>
+
+      {/* Import from a file */}
+      <Modal
+        isOpen={showImport}
+        onClose={() => setShowImport(false)}
+        title="Import products from a file"
+        size="4xl"
+      >
+        <ProductImportModal
+          onClose={() => setShowImport(false)}
+          onImported={() => queryClient.invalidateQueries(['products'])}
         />
       </Modal>
 
