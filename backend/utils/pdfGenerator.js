@@ -995,7 +995,12 @@ const generateReport = async (reportData, title = 'Report', options = {}) => {
  * the signature block, so any sensible number of rows still fits on one sheet
  * rather than pushing the signatures under the footer.
  *
- * @param {Object} options - { logoUrl, company, rows, copies }
+ * Products can optionally be filled in ahead of printing: any lines supplied
+ * are printed into the top rows with their totals, and the rest stay blank for
+ * the pen. Filling a form in never records a sale and never moves stock — it
+ * is a sheet of paper, not a transaction.
+ *
+ * @param {Object} options - { logoUrl, company, rows, copies, items, customer, receiptNo, date }
  * @returns {Promise<Buffer>}
  */
 const generateBlankReceiptForm = async (options = {}) => {
@@ -1024,12 +1029,37 @@ const generateBlankReceiptForm = async (options = {}) => {
       const rows = Math.min(30, Math.max(5, Number(options.rows) || 17));
       const copies = Math.min(50, Math.max(1, Number(options.copies) || 1));
 
+      // Pre-filled lines, if any. Everything below is written to work equally
+      // well with none of them.
+      const filled = (options.items || [])
+        .filter((i) => i && i.name)
+        .slice(0, rows)
+        .map((i) => {
+          const qty = Number(i.quantity) || 0;
+          const price = Number(i.unit_price) || 0;
+          return { name: String(i.name), qty, price, total: +(qty * price).toFixed(2) };
+        });
+      const customer = options.customer || {};
+      const subtotal = filled.reduce((sum, i) => sum + i.total, 0);
+      const discount = Math.max(0, Number(options.discount) || 0);
+      const grandTotal = Math.max(0, subtotal - discount);
+      const hasItems = filled.length > 0;
+      const gh = (n) => 'GHC' + Number(n).toFixed(2);
+
       const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
 
       /**
        * A label with an empty ruled line beside it. `rightX` is the absolute
        * right-hand edge of the rule, not a width.
        */
+      /** Write a supplied value onto one of the ruled lines, if there is one. */
+      const writeOnRule = (value, x, y, rightX) => {
+        if (!value) return;
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#111111')
+          .text(String(value), x, y, { width: rightX - x - 4, lineBreak: false });
+        reset();
+      };
+
       const blankField = (label, x, y, rightX, labelW = 62) => {
         doc.fontSize(8).font('Helvetica-Bold').fillColor(LGRAY)
           .text(label, x, y + 2, { width: labelW, lineBreak: false });
@@ -1060,14 +1090,19 @@ const generateBlankReceiptForm = async (options = {}) => {
           .text('OFFICIAL RECEIPT', ML, y, { width: 260 });
         blankField('Receipt No.', ML + 275, y - 2, ML + W, 62);
         blankField('Date', ML + 275, y + 18, ML + W, 62);
+        writeOnRule(options.receiptNo, ML + 275 + 62 + 4, y - 1, ML + W);
+        writeOnRule(options.date, ML + 275 + 62 + 4, y + 19, ML + W);
         reset();
 
         // ── Who it was received from ────────────────────────────────────────
         y += 46;
         blankField('Received from', ML, y, ML + W, 78);
+        writeOnRule(customer.name, ML + 82, y + 1, ML + W);
         y += 22;
         blankField('Telephone', ML, y, ML + 235, 78);
+        writeOnRule(customer.phone, ML + 82, y + 1, ML + 235);
         blankField('Address', ML + 255, y, ML + W, 50);
+        writeOnRule(customer.address, ML + 309, y + 1, ML + W);
 
         // ── Items table ─────────────────────────────────────────────────────
         y += 30;
@@ -1100,8 +1135,19 @@ const generateBlankReceiptForm = async (options = {}) => {
           const ry = tableTop + i * rowH;
           if (i % 2 === 1) { doc.rect(ML, ry, W, rowH).fill('#faf6f2'); reset(); }
           // Pre-printed row numbers make it read as a form rather than a box.
-          doc.fontSize(8.5).font('Helvetica').fillColor('#bbbbbb')
+          doc.fontSize(8.5).font('Helvetica').fillColor(filled[i] ? '#666666' : '#bbbbbb')
             .text(String(i + 1), COLS[0].x, ry + (rowH - 9) / 2, { width: COLS[0].w, align: 'center' });
+
+          const line = filled[i];
+          if (line) {
+            const ty = ry + (rowH - 9) / 2;
+            doc.fontSize(9).font('Helvetica').fillColor('#111111')
+              .text(line.name, COLS[1].x + 6, ty, { width: COLS[1].w - 12, lineBreak: false });
+            doc.text(String(line.qty), COLS[2].x, ty, { width: COLS[2].w, align: 'center' });
+            doc.text(gh(line.price), COLS[3].x, ty, { width: COLS[3].w - 8, align: 'right' });
+            doc.font('Helvetica-Bold')
+              .text(gh(line.total), COLS[4].x, ty, { width: COLS[4].w - 8, align: 'right' });
+          }
           doc.moveTo(ML, ry + rowH).lineTo(ML + W, ry + rowH).lineWidth(0.4).strokeColor(RULE).stroke();
           reset();
         }
@@ -1123,12 +1169,16 @@ const generateBlankReceiptForm = async (options = {}) => {
           doc.moveTo(COLS[4].x, y).lineTo(COLS[4].x, y + h).lineWidth(0.5).strokeColor('#b5b5b5').stroke();
           doc.fontSize(opts.big ? 10 : 8.5).font('Helvetica-Bold').fillColor(opts.color || '#333333')
             .text(label, totalsX, y + (h - (opts.big ? 10 : 9)) / 2, { width: labelW, align: 'center' });
+          if (opts.value) {
+            doc.fontSize(opts.big ? 11 : 9).font('Helvetica-Bold').fillColor(opts.color || '#111111')
+              .text(opts.value, COLS[4].x, y + (h - (opts.big ? 11 : 9)) / 2, { width: valueW - 8, align: 'right' });
+          }
           reset();
           y += h;
         };
-        totalsRow('SUBTOTAL', 22);
-        totalsRow('DISCOUNT', 22);
-        totalsRow('GRAND TOTAL', 26, { big: true, color: ORANGE });
+        totalsRow('SUBTOTAL', 22, { value: hasItems ? gh(subtotal) : null });
+        totalsRow('DISCOUNT', 22, { value: discount > 0 ? '-' + gh(discount) : null });
+        totalsRow('GRAND TOTAL', 26, { big: true, color: ORANGE, value: hasItems ? gh(grandTotal) : null });
 
         // Amount in words and payment method sit beside the totals.
         let leftY = tableBottom + 4;
