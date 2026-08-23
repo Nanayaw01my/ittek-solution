@@ -34,12 +34,14 @@ const metricsFor = (widthMm) => {
   const contentMm = Math.max(30, widthMm - SIDE_MARGIN_MM * 2)
   return {
     contentMm,
-    fontSize: Math.max(8, +(11 * scale).toFixed(2)),
-    moneyCol: Math.max(42, Math.round(74 * scale)),
-    qtyCol: Math.max(14, Math.round(22 * scale)),
+    fontSize: Math.max(9, +(13 * scale).toFixed(2)),
+    // Widened with the type: a money column a shade too narrow for
+    // "GHC3500.00" wraps the price onto a second line.
+    moneyCol: Math.max(50, Math.round(86 * scale)),
+    qtyCol: Math.max(16, Math.round(26 * scale)),
     padY: Math.max(2, +(4 * scale).toFixed(1)),
-    headline: Math.max(11, +(15 * scale).toFixed(2)),
-    small: Math.max(8, +(10 * scale).toFixed(2)),
+    headline: Math.max(13, +(17 * scale).toFixed(2)),
+    small: Math.max(9, +(12 * scale).toFixed(2)),
     // The logo printed nearly the full width of the roll. A third is plenty.
     logoWidth: Math.round((contentMm / 25.4) * 96 * 0.34),
   }
