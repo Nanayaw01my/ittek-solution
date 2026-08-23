@@ -113,6 +113,28 @@ const createProduct = async (req, res) => {
     const refusal = categoryRefusal(req.user, req.body.category_id);
     if (refusal) return res.status(403).json({ success: false, message: refusal });
 
+    // Refuse a product the shop already sells. Only the barcode was unique
+    // before, so the same item could be added again under the same name with a
+    // blank barcode — leaving its stock split across two records, with the POS
+    // showing both and neither count right.
+    const name = String(req.body.name || '').trim();
+    if (name) {
+      const existing = await Product.findOne({
+        is_active: true,
+        // Anchored and escaped: a name like "6mm (per roll)" is a valid regex
+        // that would otherwise match the wrong things — or nothing at all.
+        name: new RegExp('^' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i'),
+      }).select('name quantity');
+
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          message: `"${existing.name}" is already in the catalogue with ${existing.quantity} in stock. Update that product instead of adding it again.`,
+          data: { existing_id: existing._id },
+        });
+      }
+    }
+
     const product = await Product.create(req.body);
     const populated = await Product.findById(product._id)
       .populate('category_id', 'name')

@@ -37,12 +37,27 @@ export default function ReceiptForms() {
   const results = productData?.products || productData?.data || productData || []
 
   const addProduct = (p) => {
-    setLines(prev => [...prev, {
-      key: `${p._id}-${Date.now()}`,
-      name: p.name,
-      quantity: 1,
-      unit_price: p.selling_price ?? '',
-    }])
+    setLines(prev => {
+      // Adding the same product again bumps its quantity rather than putting a
+      // second line on the sheet — two lines for one item is how a written
+      // total ends up disagreeing with what was actually handed over.
+      const existing = prev.find(
+        l => l.product_id === p._id || l.name.trim().toLowerCase() === p.name.trim().toLowerCase()
+      )
+      if (existing) {
+        toast.success(`${p.name} is already on the receipt — quantity increased`)
+        return prev.map(l => (l.key === existing.key
+          ? { ...l, quantity: (parseFloat(l.quantity) || 0) + 1 }
+          : l))
+      }
+      return [...prev, {
+        key: `${p._id}-${Date.now()}`,
+        product_id: p._id,
+        name: p.name,
+        quantity: 1,
+        unit_price: p.selling_price ?? '',
+      }]
+    })
     setSearch('')
   }
 
@@ -50,7 +65,21 @@ export default function ReceiptForms() {
     setLines(prev => [...prev, { key: `manual-${Date.now()}`, name: '', quantity: 1, unit_price: '' }])
 
   const updateLine = (key, field, value) =>
-    setLines(prev => prev.map(l => (l.key === key ? { ...l, [field]: value } : l)))
+    setLines(prev => prev.map(l => (
+      l.key === key
+        // A hand-typed line stops tracking a catalogue product once its name is
+        // edited, or the duplicate check above would match the wrong thing.
+        ? { ...l, [field]: value, ...(field === 'name' ? { product_id: undefined } : {}) }
+        : l
+    )))
+
+  /** Names appearing on more than one line, flagged in the list below. */
+  const duplicateNames = lines.reduce((acc, l) => {
+    const key = l.name.trim().toLowerCase()
+    if (!key) return acc
+    acc[key] = (acc[key] || 0) + 1
+    return acc
+  }, {})
 
   const removeLine = (key) => setLines(prev => prev.filter(l => l.key !== key))
 
@@ -136,18 +165,30 @@ export default function ReceiptForms() {
                   <p className="px-3 py-3 text-xs text-gray-400">Searching…</p>
                 ) : results.length === 0 ? (
                   <p className="px-3 py-3 text-xs text-gray-400">No products found</p>
-                ) : results.map(p => (
-                  <button
-                    key={p._id}
-                    onClick={() => addProduct(p)}
-                    className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-orange-50"
-                  >
-                    <span className="text-sm text-gray-800 truncate">{p.name}</span>
-                    <span className="text-xs font-bold text-gray-500 flex-shrink-0">
-                      {p.selling_price != null ? formatCurrency(p.selling_price) : ''}
-                    </span>
-                  </button>
-                ))}
+                ) : results.map(p => {
+                  const added = lines.some(
+                    l => l.product_id === p._id || l.name.trim().toLowerCase() === p.name.trim().toLowerCase()
+                  )
+                  return (
+                    <button
+                      key={p._id}
+                      onClick={() => addProduct(p)}
+                      className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-orange-50"
+                    >
+                      <span className="text-sm text-gray-800 truncate">
+                        {p.name}
+                        {added && (
+                          <span className="ml-2 text-[10px] font-bold text-amber-600 uppercase">
+                            already added
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-xs font-bold text-gray-500 flex-shrink-0">
+                        {p.selling_price != null ? formatCurrency(p.selling_price) : ''}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -160,7 +201,14 @@ export default function ReceiptForms() {
                     value={l.name}
                     onChange={e => updateLine(l.key, 'name', e.target.value)}
                     placeholder="Description"
-                    className="flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    title={duplicateNames[l.name.trim().toLowerCase()] > 1
+                      ? 'This item is on the receipt more than once'
+                      : undefined}
+                    className={`flex-1 min-w-0 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 ${
+                      duplicateNames[l.name.trim().toLowerCase()] > 1
+                        ? 'border-amber-400 bg-amber-50'
+                        : 'border-gray-200'
+                    }`}
                   />
                   <input
                     type="number"
@@ -188,6 +236,13 @@ export default function ReceiptForms() {
                 </div>
               ))}
             </div>
+          )}
+
+          {Object.values(duplicateNames).some(n => n > 1) && (
+            <p className="mt-2 text-xs text-amber-700">
+              An item appears on more than one line. Merge them so the printed total
+              matches what the customer takes home.
+            </p>
           )}
 
           <button
