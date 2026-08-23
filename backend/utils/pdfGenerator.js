@@ -983,4 +983,209 @@ const generateReport = async (reportData, title = 'Report', options = {}) => {
   });
 };
 
-module.exports = { generateReceipt, generateCreditAgreement, generateLayawayAgreement, generatePriceList, generateReport };
+
+/**
+ * A blank A4 receipt form to be filled in by hand.
+ *
+ * Stationery, not a record of anything: there is no sale behind it. The shop
+ * prints a stack and writes on them when the counter printer is down, the power
+ * is out, or a receipt has to be written away from the system.
+ *
+ * The row height is derived from the space actually left between the header and
+ * the signature block, so any sensible number of rows still fits on one sheet
+ * rather than pushing the signatures under the footer.
+ *
+ * @param {Object} options - { logoUrl, company, rows, copies }
+ * @returns {Promise<Buffer>}
+ */
+const generateBlankReceiptForm = async (options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, bottom: 40, left: 50, right: 50 } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 50;
+      const W = 495;
+      const ORANGE = '#e86b00';
+      const LGRAY = '#777777';
+      const RULE = '#c9c9c9';
+      const PAGE_BOTTOM = 802;
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+      const companyAddress = company.address || 'Bogoso, Western Region';
+      const companyPhone = company.phone || '+233 595413632';
+
+      const rows = Math.min(30, Math.max(5, Number(options.rows) || 17));
+      const copies = Math.min(50, Math.max(1, Number(options.copies) || 1));
+
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      /**
+       * A label with an empty ruled line beside it. `rightX` is the absolute
+       * right-hand edge of the rule, not a width.
+       */
+      const blankField = (label, x, y, rightX, labelW = 62) => {
+        doc.fontSize(8).font('Helvetica-Bold').fillColor(LGRAY)
+          .text(label, x, y + 2, { width: labelW, lineBreak: false });
+        doc.moveTo(x + labelW, y + 11).lineTo(rightX, y + 11).lineWidth(0.6).strokeColor(RULE).stroke();
+        reset();
+      };
+
+      const drawForm = () => {
+        // ── Header ──────────────────────────────────────────────────────────
+        let y = 42;
+        if (logoBuf) {
+          try { doc.image(logoBuf, ML, y, { width: 52 }); } catch { /* keep the gap */ }
+        }
+        doc.fontSize(14.5).font('Helvetica-Bold').fillColor('#111111')
+          .text(companyName, ML + 62, y + 4, { width: W - 62 });
+        doc.fontSize(8.5).font('Helvetica').fillColor(LGRAY)
+          .text([companyAddress, companyPhone && 'Tel: ' + companyPhone].filter(Boolean).join('  |  '),
+            ML + 62, y + 23, { width: W - 62 });
+        reset();
+
+        y += 58;
+        doc.moveTo(ML, y).lineTo(ML + W, y).lineWidth(1.5).strokeColor(ORANGE).stroke();
+        reset();
+
+        // ── Title, receipt number and date ──────────────────────────────────
+        y += 12;
+        doc.fontSize(16).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('OFFICIAL RECEIPT', ML, y, { width: 260 });
+        blankField('Receipt No.', ML + 275, y - 2, ML + W, 62);
+        blankField('Date', ML + 275, y + 18, ML + W, 62);
+        reset();
+
+        // ── Who it was received from ────────────────────────────────────────
+        y += 46;
+        blankField('Received from', ML, y, ML + W, 78);
+        y += 22;
+        blankField('Telephone', ML, y, ML + 235, 78);
+        blankField('Address', ML + 255, y, ML + W, 50);
+
+        // ── Items table ─────────────────────────────────────────────────────
+        y += 30;
+        const COLS = [
+          { key: '#', x: ML, w: 26 },
+          { key: 'DESCRIPTION', x: ML + 26, w: 249 },
+          { key: 'QTY', x: ML + 275, w: 46 },
+          { key: 'UNIT PRICE', x: ML + 321, w: 87 },
+          { key: 'TOTAL', x: ML + 408, w: 87 },
+        ];
+
+        doc.rect(ML, y, W, 20).fill(ORANGE);
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#ffffff');
+        COLS.forEach((c) => doc.text(c.key, c.x, y + 6.5, { width: c.w, align: 'center' }));
+        reset();
+        y += 20;
+
+        const tableTop = y;
+
+        // Everything below the table has a known height, so the rows take
+        // whatever is left. Without this a larger row count simply ran the
+        // signatures off the bottom of the sheet.
+        const FOOTER_TOP = PAGE_BOTTOM - 40 - 42;
+        const SIG_BLOCK_H = 96;
+        const TOTALS_H = 22 + 22 + 26;
+        const available = FOOTER_TOP - SIG_BLOCK_H - 12 - tableTop;
+        const rowH = Math.min(26, Math.max(14, Math.floor((available - TOTALS_H) / rows)));
+
+        for (let i = 0; i < rows; i += 1) {
+          const ry = tableTop + i * rowH;
+          if (i % 2 === 1) { doc.rect(ML, ry, W, rowH).fill('#faf6f2'); reset(); }
+          // Pre-printed row numbers make it read as a form rather than a box.
+          doc.fontSize(8.5).font('Helvetica').fillColor('#bbbbbb')
+            .text(String(i + 1), COLS[0].x, ry + (rowH - 9) / 2, { width: COLS[0].w, align: 'center' });
+          doc.moveTo(ML, ry + rowH).lineTo(ML + W, ry + rowH).lineWidth(0.4).strokeColor(RULE).stroke();
+          reset();
+        }
+
+        const tableBottom = tableTop + rows * rowH;
+        doc.rect(ML, tableTop, W, rows * rowH).lineWidth(0.7).strokeColor('#b5b5b5').stroke();
+        COLS.slice(1).forEach((c) => {
+          doc.moveTo(c.x, tableTop).lineTo(c.x, tableBottom).lineWidth(0.5).strokeColor('#b5b5b5').stroke();
+        });
+        reset();
+        y = tableBottom;
+
+        // ── Totals, under the last two columns ──────────────────────────────
+        const totalsX = COLS[3].x;
+        const labelW = COLS[3].w;
+        const valueW = COLS[4].w;
+        const totalsRow = (label, h, opts = {}) => {
+          doc.rect(totalsX, y, labelW + valueW, h).lineWidth(0.7).strokeColor('#b5b5b5').stroke();
+          doc.moveTo(COLS[4].x, y).lineTo(COLS[4].x, y + h).lineWidth(0.5).strokeColor('#b5b5b5').stroke();
+          doc.fontSize(opts.big ? 10 : 8.5).font('Helvetica-Bold').fillColor(opts.color || '#333333')
+            .text(label, totalsX, y + (h - (opts.big ? 10 : 9)) / 2, { width: labelW, align: 'center' });
+          reset();
+          y += h;
+        };
+        totalsRow('SUBTOTAL', 22);
+        totalsRow('DISCOUNT', 22);
+        totalsRow('GRAND TOTAL', 26, { big: true, color: ORANGE });
+
+        // Amount in words and payment method sit beside the totals.
+        let leftY = tableBottom + 4;
+        blankField('Amount in words', ML, leftY, totalsX - 10, 84);
+        leftY += 22;
+        doc.moveTo(ML, leftY + 11).lineTo(totalsX - 10, leftY + 11).lineWidth(0.6).strokeColor(RULE).stroke();
+        reset();
+        leftY += 22;
+        blankField('Payment method', ML, leftY, totalsX - 10, 84);
+        leftY += 22;
+
+        // ── Signatories ─────────────────────────────────────────────────────
+        y = Math.max(y, leftY) + 34;
+        const sigW = (W - 40) / 2;
+        [['CUSTOMER / RECEIVED BY', 'Name & Signature'], ['FOR THE COMPANY', 'Name & Signature']]
+          .forEach(([lbl, sub], i) => {
+            const sx = ML + i * (sigW + 40);
+            doc.moveTo(sx, y).lineTo(sx + sigW, y).lineWidth(0.8).strokeColor('#888888').stroke();
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#333333')
+              .text(lbl, sx, y + 6, { width: sigW, align: 'center' });
+            doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
+              .text(sub, sx, y + 17, { width: sigW, align: 'center' });
+            reset();
+          });
+        y += 36;
+        [0, 1].forEach((i) => {
+          const sx = ML + i * (sigW + 40);
+          blankField('Date', sx + 20, y, sx + sigW - 20, 30);
+        });
+
+        // ── Footer ──────────────────────────────────────────────────────────
+        const fy = FOOTER_TOP;
+        doc.moveTo(ML, fy).lineTo(ML + W, fy).lineWidth(0.6).strokeColor('#dddddd').stroke();
+        reset();
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#111111')
+          .text('Thank you for your business!', ML, fy + 8, { width: W, align: 'center' });
+        doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+          .text('Goods returned are accepted subject to our terms and conditions. Please keep this receipt as proof of purchase.',
+            ML, fy + 20, { width: W, align: 'center' });
+        reset();
+      };
+
+      attachWatermark(doc, logoBuf);
+      drawForm();
+      for (let c = 1; c < copies; c += 1) {
+        doc.addPage();   // pageAdded redraws the watermark
+        drawForm();
+      }
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
+module.exports = {
+  generateReceipt, generateCreditAgreement, generateLayawayAgreement,
+  generatePriceList, generateReport, generateBlankReceiptForm,
+};

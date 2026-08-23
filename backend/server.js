@@ -196,6 +196,7 @@ app.use('/api/layaways', require('./routes/layaways'));
 app.use('/api/fraud', require('./routes/fraud'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/data-admin', require('./routes/dataAdmin'));
+app.use('/api/forms', require('./routes/forms'));
 
 // ─── STEP 9: REACT ROUTER CATCH-ALL ──────────────────────────────────────────
 

@@ -33,6 +33,7 @@ import PublicReceipt from './pages/PublicReceipt'
 import Layaways from './pages/Layaways'
 import FraudAlerts from './pages/FraudAlerts'
 import DeleteRecords from './pages/DeleteRecords'
+import ReceiptForms from './pages/ReceiptForms'
 
 const ROLE_LEVELS = { 'Sales': 1, 'Manager': 2, 'CEO': 3, 'Super Admin': 4 }
 
@@ -196,6 +197,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="receipt-forms" element={<ProtectedRoute minLevel={1}><ReceiptForms /></ProtectedRoute>} />
         <Route
           path="delete-records"
           element={

@@ -10,7 +10,7 @@ import {
   FiAlertCircle, FiUsers, FiShoppingBag, FiInbox, FiFileText,
   FiBarChart2, FiSettings, FiDatabase, FiBell, FiSearch, FiLogOut,
   FiMenu, FiX, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
-  FiArchive, FiShield, FiGlobe, FiTrash2
+  FiArchive, FiShield, FiGlobe, FiTrash2, FiClipboard
 } from 'react-icons/fi'
 import { logout as apiLogout } from '../api/auth'
 import toast from 'react-hot-toast'
@@ -31,6 +31,7 @@ const NAV_ITEMS = [
   { to: '/stock-requests', label: 'Stock Requests', icon: FiInbox, minLevel: 2 },
   { to: '/credit-agreements', label: 'Credit Agreements', icon: FiCreditCard, minLevel: 2 },
   { to: '/layaways', label: 'Layaways', icon: FiArchive, minLevel: 1 },
+  { to: '/receipt-forms', label: 'Receipt Forms', icon: FiClipboard, minLevel: 1 },
   { to: '/fraud-alerts', label: 'Fraud Alerts', icon: FiShield, minLevel: 2 },
   { to: '/products', label: 'Products', icon: FiPackage, minLevel: 3 },
   { to: '/categories', label: 'Categories', icon: FiTag, minLevel: 3 },
