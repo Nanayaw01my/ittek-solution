@@ -4,6 +4,7 @@ import { FiChevronDown, FiChevronUp, FiX } from 'react-icons/fi'
 import { getSales } from '../api/pos'
 import { formatDateTime, formatCurrency } from '../utils/helpers'
 import { format, startOfMonth } from 'date-fns'
+import RefreshButton from '../components/RefreshButton'
 
 const STATUS_COLORS = {
   completed: 'bg-green-100 text-green-700',

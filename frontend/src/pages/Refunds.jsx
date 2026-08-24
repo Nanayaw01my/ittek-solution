@@ -6,6 +6,7 @@ import { approveRefund, rejectRefund, getRefunds, lookupSaleByInvoice, createRef
 import useAuthStore from '../store/authStore'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import Modal from '../components/Modal'
+import RefreshButton from '../components/RefreshButton'
 
 const METHODS = ['cash', 'card', 'mobile_money']
 const METHOD_LABELS = { cash: 'Cash', card: 'Card', mobile_money: 'Mobile Money' }

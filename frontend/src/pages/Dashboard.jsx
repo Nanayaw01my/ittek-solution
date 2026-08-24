@@ -9,6 +9,7 @@ import { getSales } from '../api/pos'
 import useAuthStore from '../store/authStore'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import Badge from '../components/Badge'
+import RefreshButton from '../components/RefreshButton'
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {

@@ -10,6 +10,7 @@ import Modal from '../components/Modal'
 import StatCard from '../components/StatCard'
 import Badge from '../components/Badge'
 import { isPast, parseISO } from 'date-fns'
+import RefreshButton from '../components/RefreshButton'
 
 function PaymentModal({ debt, onClose, isOpen }) {
   const queryClient = useQueryClient()
