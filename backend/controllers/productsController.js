@@ -51,31 +51,42 @@ const categoryRefusal = (user, categoryId) => {
 /**
  * GET /api/products
  */
+/**
+ * The filter behind both the product list and its totals, so the figures on
+ * screen always describe exactly the rows being shown — search a term and the
+ * totals follow it.
+ */
+const buildProductFilter = (req) => {
+  const { search, category, low_stock, view } = req.query;
+  const filter = { is_active: true };
+
+  if (view === 'catalogue' && isInventoryOnly(req.user)) {
+    const allowed = assignedCategoryIds(req.user);
+    if (allowed.length > 0) {
+      filter.category_id = category && allowed.includes(String(category))
+        ? category
+        : { $in: allowed };
+    }
+  }
+
+  if (search) {
+    filter.$or = [
+      { name: { $regex: search, $options: 'i' } },
+      { barcode: { $regex: search, $options: 'i' } },
+    ];
+  }
+  if (category) filter.category_id = category;
+  if (low_stock === 'true') {
+    filter.$expr = { $lte: ['$quantity', '$low_stock_level'] };
+  }
+  return filter;
+};
+
 const getProducts = async (req, res) => {
   try {
-    const { search, category, low_stock, view, page = 1, limit = 50 } = req.query;
-    const filter = { is_active: true };
-
+    const { category, view, page = 1, limit = 50 } = req.query;
+    const filter = buildProductFilter(req);
     const scoped = view === 'catalogue' && isInventoryOnly(req.user);
-    if (scoped) {
-      const allowed = assignedCategoryIds(req.user);
-      if (allowed.length > 0) {
-        filter.category_id = category && allowed.includes(String(category))
-          ? category
-          : { $in: allowed };
-      }
-    }
-
-    if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { barcode: { $regex: search, $options: 'i' } },
-      ];
-    }
-    if (category) filter.category_id = category;
-    if (low_stock === 'true') {
-      filter.$expr = { $lte: ['$quantity', '$low_stock_level'] };
-    }
 
     const skip = (Number(page) - 1) * Number(limit);
     const [products, total] = await Promise.all([
@@ -293,6 +304,61 @@ const deleteProduct = async (req, res) => {
 /**
  * POST /api/products/bulk-import
  */
+/**
+ * GET /api/products/summary
+ *
+ * What the catalogue adds up to: how many products, how many units on the
+ * shelf, and what that stock is worth at cost and at selling price. Takes the
+ * same search/category/low-stock filters as the list, so the figures always
+ * match what is on screen rather than the whole catalogue.
+ *
+ * Cost and the profit it implies are money figures, so they are left out for a
+ * user granted the page as inventory-only.
+ */
+const getProductSummary = async (req, res) => {
+  try {
+    const filter = buildProductFilter(req);
+    const hideMoney = isInventoryOnly(req.user);
+
+    const [agg] = await Product.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          products: { $sum: 1 },
+          units: { $sum: { $ifNull: ['$quantity', 0] } },
+          costValue: {
+            $sum: { $multiply: [{ $ifNull: ['$quantity', 0] }, { $ifNull: ['$cost_price', 0] }] },
+          },
+          sellingValue: {
+            $sum: { $multiply: [{ $ifNull: ['$quantity', 0] }, { $ifNull: ['$selling_price', 0] }] },
+          },
+          outOfStock: { $sum: { $cond: [{ $lte: [{ $ifNull: ['$quantity', 0] }, 0] }, 1, 0] } },
+        },
+      },
+    ]);
+
+    const totals = agg || { products: 0, units: 0, costValue: 0, sellingValue: 0, outOfStock: 0 };
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        products: totals.products,
+        units: totals.units,
+        outOfStock: totals.outOfStock,
+        sellingValue: totals.sellingValue,
+        ...(hideMoney ? {} : {
+          costValue: totals.costValue,
+          potentialProfit: totals.sellingValue - totals.costValue,
+        }),
+      },
+    });
+  } catch (err) {
+    console.error('Product summary error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 const bulkImport = async (req, res) => {
   try {
     const items = req.body;
@@ -320,5 +386,5 @@ const bulkImport = async (req, res) => {
 
 module.exports = {
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
-  getLowStock, getByBarcode, searchProducts, bulkImport,
+  getLowStock, getByBarcode, searchProducts, bulkImport, getProductSummary,
 };

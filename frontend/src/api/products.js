@@ -26,3 +26,5 @@ export const previewProductImport = (file) => {
 }
 
 export const commitProductImport = (rows) => api.post('/products/import/commit', { rows })
+
+export const getProductSummary = (params) => api.get('/products/summary', { params })

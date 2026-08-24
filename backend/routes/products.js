@@ -7,7 +7,7 @@ const { auditLog } = require('../middleware/auditLogger');
 const multer = require('multer');
 const {
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
-  getLowStock, getByBarcode, searchProducts, bulkImport,
+  getLowStock, getByBarcode, searchProducts, bulkImport, getProductSummary,
 } = require('../controllers/productsController');
 const { previewImport, commitImport } = require('../controllers/productImportController');
 
@@ -33,6 +33,8 @@ router.post(
   auditLog('IMPORT_PRODUCTS', (req) => ({ count: (req.body.rows || []).length })),
   commitImport
 );
+// Before '/:id', or the summary path would be read as a product id.
+router.get('/summary', authenticate, getProductSummary);
 router.get('/', authenticate, getProducts);
 router.get('/:id', authenticate, getProduct);
 

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload } from 'react-icons/fi'
-import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers } from '../api/products'
+import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary } from '../api/products'
 import { formatCurrency } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -279,6 +279,18 @@ export default function Products() {
     }).then(r => r.data),
   })
 
+  // What the catalogue adds up to, under the same filters as the list — search
+  // or pick a category and these follow it, rather than always describing the
+  // whole shop.
+  const { data: summary } = useQuery({
+    queryKey: ['product-summary', search, categoryFilter, stockFilter, inventoryOnly],
+    queryFn: () => getProductSummary({
+      search,
+      category: categoryFilter || undefined,
+      ...(inventoryOnly ? { view: 'catalogue' } : {}),
+    }).then(r => r.data),
+  })
+
   const { data: categoriesData } = useQuery({
     queryKey: ['categories'],
     queryFn: () => getCategories().then(r => r.data),
@@ -294,6 +306,7 @@ export default function Products() {
     onSuccess: () => {
       toast.success('Product added!')
       queryClient.invalidateQueries(['products'])
+      queryClient.invalidateQueries(['product-summary'])
       setShowModal(false)
     },
     onError: err => toast.error(err.response?.data?.message || 'Failed to add product'),
@@ -304,6 +317,7 @@ export default function Products() {
     onSuccess: () => {
       toast.success('Product updated!')
       queryClient.invalidateQueries(['products'])
+      queryClient.invalidateQueries(['product-summary'])
       setShowModal(false)
       setEditProduct(null)
       setStockTarget(null)
@@ -316,6 +330,7 @@ export default function Products() {
     onSuccess: () => {
       toast.success('Product deleted')
       queryClient.invalidateQueries(['products'])
+      queryClient.invalidateQueries(['product-summary'])
       setDeleteTarget(null)
     },
     onError: err => toast.error(err.response?.data?.message || 'Delete failed'),
@@ -434,6 +449,40 @@ export default function Products() {
           </div>
         }
       />
+
+      {/* What the list adds up to */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <div className="bg-white border border-gray-200 rounded-xl px-4 py-3">
+          <p className="text-xs text-gray-500">Total products</p>
+          <p className="text-xl font-black text-gray-800">{summary?.products ?? '—'}</p>
+          {summary?.outOfStock > 0 && (
+            <p className="text-[11px] text-red-500 mt-0.5">{summary.outOfStock} out of stock</p>
+          )}
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl px-4 py-3">
+          <p className="text-xs text-gray-500">Total units in stock</p>
+          <p className="text-xl font-black text-gray-800">{summary?.units ?? '—'}</p>
+        </div>
+        {/* Cost and the profit it implies are money figures — an inventory-only
+            user is not shown them, and the server does not send them either. */}
+        {summary?.costValue !== undefined && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+            <p className="text-xs text-blue-700">Stock value at cost</p>
+            <p className="text-xl font-black text-blue-800">{formatCurrency(summary.costValue)}</p>
+          </div>
+        )}
+        <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+          <p className="text-xs text-orange-700">Stock value at selling</p>
+          <p className="text-xl font-black text-orange-800">
+            {formatCurrency(summary?.sellingValue || 0)}
+          </p>
+          {summary?.potentialProfit !== undefined && (
+            <p className="text-[11px] text-green-700 mt-0.5">
+              {formatCurrency(summary.potentialProfit)} profit if all sold
+            </p>
+          )}
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-4">
