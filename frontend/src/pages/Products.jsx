@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload } from 'react-icons/fi'
+import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload, FiRefreshCw } from 'react-icons/fi'
 import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary } from '../api/products'
 import { formatCurrency } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
@@ -267,7 +267,7 @@ export default function Products() {
     meData?.assigned_categories || user?.assigned_categories || []
   ).map(c => String(c?._id || c))
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['products', search, categoryFilter, stockFilter, page, inventoryOnly],
     queryFn: () => getProducts({
       search,
@@ -335,6 +335,14 @@ export default function Products() {
     },
     onError: err => toast.error(err.response?.data?.message || 'Delete failed'),
   })
+
+  /** Pull the list and its totals again — stock moves as other people sell. */
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['products'] })
+    queryClient.invalidateQueries({ queryKey: ['product-summary'] })
+    queryClient.invalidateQueries({ queryKey: ['categories'] })
+    queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+  }
 
   const products = data?.products || data || []
   const allCategories = categoriesData?.categories || categoriesData || []
@@ -430,6 +438,15 @@ export default function Products() {
         subtitle={inventoryOnly ? 'Add products to the categories assigned to you' : 'Manage your product catalog'}
         action={
           <div className="flex gap-2">
+            <button
+              onClick={refresh}
+              disabled={isFetching}
+              title="Refresh"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-200 hover:bg-gray-50 disabled:opacity-60 text-gray-700 rounded-xl font-semibold text-sm transition-colors"
+            >
+              <FiRefreshCw size={16} className={isFetching ? 'animate-spin' : ''} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
             {/* Importing creates products, so it follows the same rights as
                 adding one — an inventory-only user gets it too. */}
             {!inventoryOnly && (
