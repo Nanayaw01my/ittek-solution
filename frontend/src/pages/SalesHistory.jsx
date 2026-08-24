@@ -69,9 +69,12 @@ export default function SalesHistory() {
 
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-xl font-black text-gray-900">Sales History</h1>
-        <p className="text-sm text-gray-500">Complete record of all transactions</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-black text-gray-900">Sales History</h1>
+          <p className="text-sm text-gray-500">Complete record of all transactions</p>
+        </div>
+        <RefreshButton keys={['sales-history']} />
       </div>
 
       {/* Summary card */}

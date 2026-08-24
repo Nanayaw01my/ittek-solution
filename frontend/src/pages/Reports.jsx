@@ -13,6 +13,7 @@ import { getPriceList } from '../api/reports'
 import { openPdfInNewTab } from '../utils/openPdf'
 import DateRangePicker from '../components/DateRangePicker'
 import Table from '../components/Table'
+import RefreshButton from '../components/RefreshButton'
 import { format, startOfMonth } from 'date-fns'
 import toast from 'react-hot-toast'
 import { saveAs } from 'file-saver'
@@ -322,6 +323,8 @@ export default function Reports() {
         title="Reports"
         subtitle="Business performance analysis"
         action={
+          <div className="flex gap-2">
+          <RefreshButton keys={['daily-sales-report', 'sales-by-user-report', 'top-products-report', 'profit-loss-report']} />
           <button
             onClick={handlePriceList}
             disabled={priceListLoading}
@@ -330,6 +333,7 @@ export default function Reports() {
           >
             <FiTag size={15} /> {priceListLoading ? 'Preparing…' : 'Print Price List'}
           </button>
+          </div>
         }
       />
 

@@ -371,12 +371,15 @@ export default function Refunds() {
           <h1 className="text-xl font-black text-gray-900">Refunds</h1>
           <p className="text-sm text-gray-500">Track all refunds and returned stock</p>
         </div>
+        <div className="flex gap-2">
+        <RefreshButton keys={['refunds']} />
         <button
           onClick={() => setShowForm(true)}
           className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
         >
           <FiRotateCcw size={15} /> Process Refund
         </button>
+        </div>
       </div>
 
       {pendingCount > 0 && (

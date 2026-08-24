@@ -203,7 +203,11 @@ export default function Debts() {
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-      <PageHeader title="Debts" subtitle="Track customer outstanding balances" />
+      <PageHeader
+        title="Debts"
+        subtitle="Track customer outstanding balances"
+        action={<RefreshButton keys={['debts', 'debt-summary']} />}
+      />
 
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">

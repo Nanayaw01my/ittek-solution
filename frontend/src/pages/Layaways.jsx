@@ -287,12 +287,15 @@ export default function Layaways() {
         subtitle="Goods reserved and paid off over time"
         icon={FiPackage}
         action={
+          <div className="flex gap-2">
+          <RefreshButton keys={['layaways']} />
           <button
             onClick={() => setCreating(true)}
             className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold text-sm transition-colors"
           >
             <FiPlus size={15} /> New Agreement
           </button>
+          </div>
         }
       />
 

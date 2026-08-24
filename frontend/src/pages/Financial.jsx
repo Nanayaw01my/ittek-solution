@@ -165,7 +165,11 @@ export default function Financial() {
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-      <PageHeader title="Financial Management" subtitle="Complete financial overview" />
+      <PageHeader
+        title="Financial Management"
+        subtitle="Complete financial overview"
+        action={<RefreshButton keys={['cash-flow', 'financial-overview']} />}
+      />
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <DateRangePicker startDate={startDate} endDate={endDate} onStartChange={setStartDate} onEndChange={setEndDate} />

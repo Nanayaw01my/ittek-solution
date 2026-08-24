@@ -62,9 +62,12 @@ export default function Dashboard() {
   if (userLevel <= 2) {
     return (
       <div className="p-4 sm:p-6 max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-xl font-black text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 text-sm">Hello, {user?.username}! Here's your summary.</p>
+        <div className="mb-6 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-black text-gray-900">Dashboard</h1>
+            <p className="text-gray-500 text-sm">Hello, {user?.username}! Here's your summary.</p>
+          </div>
+          <RefreshButton keys={['dashboard-stats']} />
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
           <StatCard
@@ -140,9 +143,12 @@ export default function Dashboard() {
   // CEO / Super Admin full dashboard
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-xl font-black text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 text-sm">Welcome back, {user?.username}! Here's the business overview.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-black text-gray-900">Dashboard</h1>
+          <p className="text-gray-500 text-sm">Welcome back, {user?.username}! Here's the business overview.</p>
+        </div>
+        <RefreshButton keys={['dashboard-stats', 'sales-trend', 'top-products', 'recent-sales']} />
       </div>
 
       {/* Row 1 - Key metrics */}

@@ -189,12 +189,15 @@ export default function Expenses() {
         title="Expenses"
         subtitle="Track and manage business expenses"
         action={
+          <div className="flex gap-2">
+          <RefreshButton keys={['expenses', 'expense-summary']} />
           <button
             onClick={() => { setEditExpense(null); setShowModal(true) }}
             className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
           >
             <FiPlus size={16} /> Add Expense
           </button>
+          </div>
         }
       />
 
