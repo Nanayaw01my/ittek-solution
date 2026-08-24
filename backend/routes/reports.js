@@ -12,7 +12,9 @@ const {
 
 // All authenticated users can access dashboard stats
 router.get('/dashboard-stats', authenticate, getDashboardStats);
-router.get('/sales-trend', authenticate, getSalesTrend);
+// Whole-shop takings over time — owners only. The dashboard already asks for
+// it only at CEO level; this is the matching check on the server.
+router.get('/sales-trend', authenticate, requireLevel(3), getSalesTrend);
 
 // Price list carries selling prices only — no cost or margin — so any signed-in
 // staff member can print one for a customer without needing admin rights.

@@ -24,7 +24,11 @@ const getDashboardStats = async (req, res) => {
     const userId = req.user._id;
 
     if (isLimitedRole) {
-      const [myTodaySalesAgg, myTodayExpensesAgg, myTodayLayawayAgg, outstandingDebtsCount, pendingStockCount, totalProducts, lowStockCount] = await Promise.all([
+      // Anyone below CEO sees only the day they had: their own sales, their
+      // own expenses, their own Pay & Pick Later collections. How much stock
+      // the shop holds and what is running low is the owners' business, so it
+      // is not computed here at all rather than sent and hidden in the browser.
+      const [myTodaySalesAgg, myTodayExpensesAgg, myTodayLayawayAgg, outstandingDebtsCount, pendingStockCount] = await Promise.all([
         Sale.aggregate([
           { $match: { user_id: userId, sale_date: { $gte: startOfToday } } },
           { $group: { _id: null, total: { $sum: '$total_amount' } } },
@@ -43,8 +47,6 @@ const getDashboardStats = async (req, res) => {
         ]),
         Debt.countDocuments({ status: { $in: ['active', 'overdue'] } }),
         StockRequest.countDocuments({ status: 'pending' }),
-        Product.countDocuments({ is_active: true }),
-        Product.countDocuments({ is_active: true, $expr: { $lte: ['$quantity', '$low_stock_level'] } }),
       ]);
       return res.status(200).json({
         success: true,
@@ -54,8 +56,6 @@ const getDashboardStats = async (req, res) => {
           myTodayLayawayCollections: myTodayLayawayAgg[0]?.total || 0,
           outstandingDebts: outstandingDebtsCount,
           pendingStockRequests: pendingStockCount,
-          totalProducts,
-          lowStockCount,
         },
       });
     }

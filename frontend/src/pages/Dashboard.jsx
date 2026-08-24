@@ -88,20 +88,9 @@ export default function Dashboard() {
             color="blue"
             loading={statsLoading}
           />
-          <StatCard
-            icon={FiPackage}
-            value={stats.totalProducts || 0}
-            label="Total Products"
-            color="green"
-            loading={statsLoading}
-          />
-          <StatCard
-            icon={FiAlertTriangle}
-            value={stats.lowStockCount || 0}
-            label="Low Stock Alerts"
-            color="yellow"
-            loading={statsLoading}
-          />
+          {/* How much stock the shop holds and what is running low is the
+              owners' business — the server does not send those figures to
+              anyone below CEO, so there is nothing to show here. */}
           {userLevel === 2 && (
             <>
               <StatCard
