@@ -42,7 +42,6 @@ const GRANTABLE_PAGES = {
   debts: { label: 'Debts', defaultLevel: 2, modes: ['view', 'full'] },
   'stock-requests': { label: 'Stock Requests', defaultLevel: 2, modes: ['view', 'full'] },
   'credit-agreements': { label: 'Credit Agreements', defaultLevel: 2, modes: ['view', 'full'] },
-  'fraud-alerts': { label: 'Fraud Alerts', defaultLevel: 2, modes: ['view', 'full'] },
 };
 
 const ROLE_LEVELS = { 'Super Admin': 4, CEO: 3, Manager: 2, Sales: 1 };

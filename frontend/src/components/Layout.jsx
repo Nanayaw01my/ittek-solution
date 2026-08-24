@@ -32,7 +32,7 @@ const NAV_ITEMS = [
   { to: '/credit-agreements', label: 'Credit Agreements', icon: FiCreditCard, minLevel: 2 },
   { to: '/layaways', label: 'Layaways', icon: FiArchive, minLevel: 1 },
   { to: '/receipt-forms', label: 'Receipt Forms', icon: FiClipboard, minLevel: 1 },
-  { to: '/fraud-alerts', label: 'Fraud Alerts', icon: FiShield, minLevel: 2 },
+  { to: '/fraud-alerts', label: 'Fraud Alerts', icon: FiShield, minLevel: 3 },
   { to: '/products', label: 'Products', icon: FiPackage, minLevel: 3 },
   { to: '/categories', label: 'Categories', icon: FiTag, minLevel: 3 },
   { to: '/suppliers', label: 'Suppliers', icon: FiTruck, minLevel: 3 },

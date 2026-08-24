@@ -105,8 +105,8 @@ export default function App() {
         <Route path="stock-requests" element={<ProtectedRoute minLevel={2} page="stock-requests"><StockRequests /></ProtectedRoute>} />
         <Route path="credit-agreements" element={<ProtectedRoute minLevel={2} page="credit-agreements"><CreditAgreements /></ProtectedRoute>} />
         <Route path="layaways" element={<ProtectedRoute minLevel={1}><Layaways /></ProtectedRoute>} />
-        {/* Staff conduct alerts — managers and above only */}
-        <Route path="fraud-alerts" element={<ProtectedRoute minLevel={2} page="fraud-alerts"><FraudAlerts /></ProtectedRoute>} />
+        {/* Staff conduct alerts — owners only; they name individual staff */}
+        <Route path="fraud-alerts" element={<ProtectedRoute minLevel={3}><FraudAlerts /></ProtectedRoute>} />
 
         {/* CEO+ */}
         <Route

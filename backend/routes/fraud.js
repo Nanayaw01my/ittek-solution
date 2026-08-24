@@ -6,11 +6,13 @@ const { getAlerts, reviewAlert, runScan } = require('../controllers/fraudControl
 
 router.use(authenticate);
 
-// Alerts are about staff conduct — never visible to the Sales role.
+// Alerts accuse named members of staff of misconduct. That is the owners'
+// business alone — a Manager who is themselves the subject of an alert must
+// not be able to read it, so the line is drawn above them.
 router.use((req, res, next) => {
-  const allowed = ['Manager', 'CEO', 'Super Admin'];
+  const allowed = ['CEO', 'Super Admin'];
   if (!allowed.includes(req.user.role)) {
-    return res.status(403).json({ success: false, message: 'Manager access required.' });
+    return res.status(403).json({ success: false, message: 'Access denied.' });
   }
   next();
 });
