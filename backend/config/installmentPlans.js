@@ -114,7 +114,7 @@ const POWER_STATION_PACKAGES = [
 
 const LITHIUM_PACKAGES = [
   {
-    name: '2.56KW Power Station',
+    name: '2.56KW Solar Power',
     total: 45000,
     deposit: 22500,
     months: 4,
