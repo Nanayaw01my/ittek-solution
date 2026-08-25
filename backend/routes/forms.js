@@ -2,8 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const Settings = require('../models/Settings');
-const { generateBlankReceiptForm, generateFreezerOfferSheet } = require('../utils/pdfGenerator');
-const { FREEZER_PACKAGES } = require('../config/freezerPackages');
+const { generateBlankReceiptForm, generateInstallmentPlanSheet } = require('../utils/pdfGenerator');
+const { PLAN_SETS } = require('../config/installmentPlans');
 
 /** Shared by both routes below. */
 const buildForm = async (opts) => {
@@ -82,47 +82,67 @@ router.post('/receipt', authenticate, async (req, res) => {
 });
 
 /**
- * GET /api/forms/freezer-plan
+ * GET /api/forms/installment-plan?set=freezer|power-station
  *
- * The DC freezer installment offer sheet — every package with its installment
- * terms, its ready cash price and what is in the box. One page per plan by
- * default. The same sheet for everyone, so any signed-in staff member can
- * print one at the counter.
+ * The installment offer sheets: every package with its terms, its ready cash
+ * price where there is one, and what is in the box. A comparison page followed
+ * by a page per plan. The same sheet for everyone, so any signed-in staff
+ * member can print one at the counter.
+ *
+ * ?layout=combined  just the comparison page
+ * ?layout=separate  just the page-per-plan sheets
+ * ?package=218      one plan only
  */
-router.get('/freezer-plan', authenticate, async (req, res) => {
+const printPlanSheet = async (req, res) => {
   try {
-    const settings = (await Settings.findOne().lean()) || {};
+    // The route keeps its old freezer-only path, so fall back to that set.
+    const setKey = String(req.query.set || req.params.set || 'freezer').toLowerCase();
+    const planSet = PLAN_SETS[setKey];
+    if (!planSet) {
+      return res.status(404).json({
+        success: false,
+        message: `Unknown plan set. Try one of: ${Object.keys(PLAN_SETS).join(', ')}.`,
+      });
+    }
 
-    // ?package=118 prints just that plan; ?layout=combined puts them all on
-    // one sheet for comparing.
     const wanted = String(req.query.package || '').trim().toLowerCase();
     const packages = wanted
-      ? FREEZER_PACKAGES.filter((p) => p.name.toLowerCase().includes(wanted))
-      : FREEZER_PACKAGES;
+      ? planSet.packages.filter((p) => p.name.toLowerCase().includes(wanted))
+      : planSet.packages;
 
     if (packages.length === 0) {
-      return res.status(404).json({ success: false, message: 'No matching freezer package.' });
+      return res.status(404).json({ success: false, message: 'No matching package.' });
     }
-    const pdf = await generateFreezerOfferSheet({
+
+    const settings = (await Settings.findOne().lean()) || {};
+    const pdf = await generateInstallmentPlanSheet({
       logoUrl: settings.logo_url,
       company: {
         name: settings.company_name,
         address: settings.company_address,
         phone: settings.company_phone,
       },
+      title: planSet.title,
       packages,
-      // Everything unless asked for one part: the comparison page, then a
-      // page per plan.
+      // Everything unless asked for one part: the comparison page, then a page
+      // per plan.
       layout: ['combined', 'separate'].includes(req.query.layout) ? req.query.layout : 'all',
     });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'inline; filename="dc-freezer-plan.pdf"');
+    res.setHeader('Content-Disposition', `inline; filename="${planSet.filename}"`);
     return res.end(pdf);
   } catch (err) {
-    console.error('Freezer plan error:', err.message);
+    console.error('Installment plan sheet error:', err.message);
     return res.status(500).json({ success: false, message: 'Could not generate the sheet.' });
   }
+};
+
+router.get('/installment-plan', authenticate, printPlanSheet);
+// The original path, from before there was more than one kind of plan.
+router.get('/freezer-plan', authenticate, (req, res) => {
+  req.query.set = req.query.set || 'freezer';
+  return printPlanSheet(req, res);
 });
 
 module.exports = router;

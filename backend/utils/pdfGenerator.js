@@ -1237,7 +1237,8 @@ const generateBlankReceiptForm = async (options = {}) => {
 
 
 /**
- * The DC freezer installment offer sheet (A4).
+ * An installment offer sheet (A4) — freezers, power stations, anything sold on
+ * a deposit and a schedule.
  *
  * Each package gets its own page by default — that is the sheet handed to a
  * customer who has already chosen a size. Pass layout:'combined' to put all
@@ -1252,10 +1253,10 @@ const generateBlankReceiptForm = async (options = {}) => {
  * out, not a document raised for one person. It is signed off by the manager
  * and the company rather than by a buyer.
  *
- * @param {Object} options - { logoUrl, company, packages, layout, latePercent, lateAfterMonths }
+ * @param {Object} options - { logoUrl, company, title, packages, layout, latePercent, lateAfterMonths }
  * @returns {Promise<Buffer>}
  */
-const generateFreezerOfferSheet = async (options = {}) => {
+const generateInstallmentPlanSheet = async (options = {}) => {
   const logoBuf = await fetchBuf(options.logoUrl || null);
   const packages = options.packages || [];
 
@@ -1282,6 +1283,7 @@ const generateFreezerOfferSheet = async (options = {}) => {
 
       // Late-payment terms, taken from the first package so the sheet and the
       // plans it prints cannot drift apart.
+      const title = options.title || 'INSTALLMENT PLAN';
       const latePercent = options.latePercent ?? 3;
       const lateAfterMonths = options.lateAfterMonths ?? (packages[0]?.months ?? 3);
       const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
@@ -1307,7 +1309,7 @@ const generateFreezerOfferSheet = async (options = {}) => {
 
         hy += 10;
         doc.fontSize(15).font('Helvetica-Bold').fillColor(ORANGE)
-          .text('DC FREEZER INSTALLMENT PLAN', ML, hy, { width: W });
+          .text(title, ML, hy, { width: W });
         if (subtitle) {
           doc.fontSize(10).font('Helvetica').fillColor('#555555')
             .text(subtitle, ML, hy + 19, { width: W });
@@ -1394,16 +1396,18 @@ const generateFreezerOfferSheet = async (options = {}) => {
         sched('Every month', p.monthly, p.months, p.monthly * p.months);
         sched('Every week', p.weekly, p.weeks, p.weekly * p.weeks);
 
-        const c3 = ML + 10 + (colW + 5) * 2;
-        cy = bodyY;
-        doc.roundedRect(c3 - 6, cy - 4, colW + 6, 52, 4).fill('#f4f9f4');
-        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#2f7d32')
-          .text('READY CASH PRICE', c3, cy, { width: colW });
-        doc.fontSize(14).font('Helvetica-Bold').fillColor('#2f7d32')
-          .text(gh(p.cashPrice), c3, cy + 12, { width: colW });
-        doc.fontSize(7.5).font('Helvetica').fillColor('#2f7d32')
-          .text('You save ' + gh(saving), c3, cy + 31, { width: colW });
-        reset();
+        if (p.cashPrice) {
+          const c3 = ML + 10 + (colW + 5) * 2;
+          cy = bodyY;
+          doc.roundedRect(c3 - 6, cy - 4, colW + 6, 52, 4).fill('#f4f9f4');
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#2f7d32')
+            .text('READY CASH PRICE', c3, cy, { width: colW });
+          doc.fontSize(14).font('Helvetica-Bold').fillColor('#2f7d32')
+            .text(gh(p.cashPrice), c3, cy + 12, { width: colW });
+          doc.fontSize(7.5).font('Helvetica').fillColor('#2f7d32')
+            .text('You save ' + gh(saving), c3, cy + 31, { width: colW });
+          reset();
+        }
 
         const listY = top + BLOCK_H - 34;
         doc.moveTo(ML + 10, listY - 6).lineTo(ML + W - 10, listY - 6)
@@ -1455,16 +1459,20 @@ const generateFreezerOfferSheet = async (options = {}) => {
         row('Balance to pay', gh(balance), true);
         row('Period', p.months + ' months');
 
-        const cardX = ML + leftW + 30;
-        const cardW = W - leftW - 44;
-        doc.roundedRect(cardX, secY - 8, cardW, 92, 5).fill('#f1f8f1');
-        doc.fontSize(9).font('Helvetica-Bold').fillColor('#2f7d32')
-          .text('READY CASH PRICE', cardX + 12, secY + 2, { width: cardW - 24 });
-        doc.fontSize(22).font('Helvetica-Bold').fillColor('#2f7d32')
-          .text(gh(p.cashPrice), cardX + 12, secY + 20, { width: cardW - 24 });
-        doc.fontSize(9).font('Helvetica').fillColor('#2f7d32')
-          .text('Pay cash and save ' + gh(saving), cardX + 12, secY + 52, { width: cardW - 24 });
-        reset();
+        // Not every package has a ready-cash alternative; where there is none
+        // the panel is left out rather than printed empty.
+        if (p.cashPrice) {
+          const cardX = ML + leftW + 30;
+          const cardW = W - leftW - 44;
+          doc.roundedRect(cardX, secY - 8, cardW, 92, 5).fill('#f1f8f1');
+          doc.fontSize(9).font('Helvetica-Bold').fillColor('#2f7d32')
+            .text('READY CASH PRICE', cardX + 12, secY + 2, { width: cardW - 24 });
+          doc.fontSize(22).font('Helvetica-Bold').fillColor('#2f7d32')
+            .text(gh(p.cashPrice), cardX + 12, secY + 20, { width: cardW - 24 });
+          doc.fontSize(9).font('Helvetica').fillColor('#2f7d32')
+            .text('Pay cash and save ' + gh(saving), cardX + 12, secY + 52, { width: cardW - 24 });
+          reset();
+        }
 
         // ── The two ways of clearing the balance ────────────────────────────
         const payY = top + TITLE_H + 122;
@@ -1519,9 +1527,21 @@ const generateFreezerOfferSheet = async (options = {}) => {
       const nextPage = () => { if (page > 0) doc.addPage(); page += 1; };
 
       if (wantsCombined) {
+        // Three blocks fit a page; a fourth ran under the footer. Each page of
+        // the comparison gets its own header and footer rather than one long
+        // list broken mid-block.
+        const COMPACT_H = 132;
+        const FOOTER_TOP = 802 - 40 - 88;
         nextPage();
         let y = drawHeader('All plans at a glance');
-        packages.forEach((p) => { y = drawPackageCompact(p, y) + 12; });
+        packages.forEach((p) => {
+          if (y + COMPACT_H > FOOTER_TOP - 8) {
+            drawFooter();
+            nextPage();
+            y = drawHeader('All plans at a glance (continued)');
+          }
+          y = drawPackageCompact(p, y) + 12;
+        });
         drawFooter();
       }
 
@@ -1544,5 +1564,7 @@ const generateFreezerOfferSheet = async (options = {}) => {
 module.exports = {
   generateReceipt, generateCreditAgreement, generateLayawayAgreement,
   generatePriceList, generateReport, generateBlankReceiptForm,
-  generateFreezerOfferSheet,
+  generateInstallmentPlanSheet,
+  // The original name, kept so nothing that imports it breaks.
+  generateFreezerOfferSheet: generateInstallmentPlanSheet,
 };

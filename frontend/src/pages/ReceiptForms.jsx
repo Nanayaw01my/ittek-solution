@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer } from 'react-icons/fi'
-import { getBlankReceiptForm, getFilledReceiptForm, getFreezerPlanSheet } from '../api/forms'
+import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer, FiBatteryCharging } from 'react-icons/fi'
+import { getBlankReceiptForm, getFilledReceiptForm, getInstallmentPlanSheet } from '../api/forms'
 import { getProducts } from '../api/products'
 import { openPdfInNewTab } from '../utils/openPdf'
 import { formatCurrency } from '../utils/helpers'
@@ -22,7 +22,7 @@ export default function ReceiptForms() {
   const [rows, setRows] = useState(17)
   const [copies, setCopies] = useState(5)
   const [busy, setBusy] = useState(false)
-  const [freezerBusy, setFreezerBusy] = useState(false)
+  const [planBusy, setPlanBusy] = useState('')
 
   const [lines, setLines] = useState([])
   const [search, setSearch] = useState('')
@@ -128,14 +128,17 @@ export default function ReceiptForms() {
     }
   }
 
-  const printFreezerPlan = async (layout) => {
-    setFreezerBusy(true)
+  const printPlan = async (set, layout) => {
+    setPlanBusy(set + (layout || ''))
     try {
-      await openPdfInNewTab(() => getFreezerPlanSheet(layout ? { layout } : undefined), 'dc-freezer-plan.pdf')
+      await openPdfInNewTab(
+        () => getInstallmentPlanSheet({ set, ...(layout ? { layout } : {}) }),
+        `${set}-plan.pdf`
+      )
     } catch (err) {
       toast.error(err.message || 'Could not generate the sheet.')
     } finally {
-      setFreezerBusy(false)
+      setPlanBusy('')
     }
   }
 
@@ -370,35 +373,49 @@ export default function ReceiptForms() {
         </p>
       </div>
 
-      {/* A fixed offer sheet rather than a form: the freezer packages, their
-          installment terms and their cash prices, for handing to a customer. */}
-      <div className="mt-4 bg-white rounded-xl border border-gray-200 p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="font-bold text-gray-800 text-sm">DC Freezer Installment Plan</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              A comparison page with all three plans, then one A4 sheet for each —
-              installment terms, ready cash price and what is in the box. Signed off by the
-              manager and the company.
-              <button
-                onClick={() => printFreezerPlan('combined')}
-                disabled={freezerBusy}
-                className="ml-1 underline font-semibold text-orange-600 hover:text-orange-700 disabled:opacity-60"
-              >
-                Print only the comparison page
-              </button>
-            </p>
+      {/* Fixed offer sheets rather than forms: the installment packages, their
+          terms and their cash prices, for handing to a customer. */}
+      {[
+        {
+          set: 'freezer',
+          icon: FiThermometer,
+          title: 'DC Freezer Installment Plan',
+          blurb: 'Three freezer packages — installment terms, ready cash price and what is in the box.',
+        },
+        {
+          set: 'power-station',
+          icon: FiBatteryCharging,
+          title: 'Power Station Installment Plan',
+          blurb: 'Four power station packages — installment terms and what is in the box.',
+        },
+      ].map(({ set, icon: Icon, title, blurb }) => (
+        <div key={set} className="mt-4 bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-gray-800 text-sm">{title}</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {blurb} A comparison page first, then one A4 sheet per plan. Signed off by
+                the manager and the company.
+                <button
+                  onClick={() => printPlan(set, 'combined')}
+                  disabled={!!planBusy}
+                  className="ml-1 underline font-semibold text-orange-600 hover:text-orange-700 disabled:opacity-60"
+                >
+                  Print only the comparison page
+                </button>
+              </p>
+            </div>
+            <button
+              onClick={() => printPlan(set)}
+              disabled={!!planBusy}
+              className="flex items-center gap-2 px-4 py-2.5 border border-orange-300 hover:bg-orange-50 disabled:opacity-60 text-orange-700 rounded-xl font-bold text-sm transition-colors flex-shrink-0"
+            >
+              <Icon size={16} />
+              {planBusy === set ? 'Preparing…' : 'Print'}
+            </button>
           </div>
-          <button
-            onClick={() => printFreezerPlan()}
-            disabled={freezerBusy}
-            className="flex items-center gap-2 px-4 py-2.5 border border-orange-300 hover:bg-orange-50 disabled:opacity-60 text-orange-700 rounded-xl font-bold text-sm transition-colors flex-shrink-0"
-          >
-            <FiThermometer size={16} />
-            {freezerBusy ? 'Preparing…' : 'Print'}
-          </button>
         </div>
-      </div>
+      ))}
     </div>
   )
 }

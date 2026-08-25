@@ -6,5 +6,5 @@ export const getBlankReceiptForm = (params) =>
 export const getFilledReceiptForm = (data) =>
   api.post('/forms/receipt', data, { responseType: 'blob' })
 
-export const getFreezerPlanSheet = (params) =>
-  api.get('/forms/freezer-plan', { params, responseType: 'blob' })
+export const getInstallmentPlanSheet = (params) =>
+  api.get('/forms/installment-plan', { params, responseType: 'blob' })

@@ -1,0 +1,128 @@
+/**
+ * Packages sold on installment, grouped by the kind of product.
+ *
+ * Kept here rather than in the database because these are a handful of fixed
+ * offers the shop advertises, not catalogue stock — editing this file is the
+ * whole job of changing a price.
+ *
+ * `cashPrice` is optional. Where there is no ready-cash alternative the sheet
+ * simply leaves that panel out rather than printing an empty box.
+ *
+ * The instalment figures print exactly as given, with `monthly * months` and
+ * `weekly * weeks` shown beside the balance they clear. That is deliberate: if
+ * a schedule does not land on the balance, the sheet says so rather than
+ * rounding the difference away where nobody sees it.
+ */
+
+const FREEZER_PACKAGES = [
+  {
+    name: '118L DC Freezer',
+    total: 23000,
+    deposit: 15000,
+    months: 3,
+    monthly: 2700,
+    weeks: 12,
+    weekly: 667,
+    cashPrice: 20000,
+    contents: [
+      '118L Bona Freezer',
+      '2 × 100AH gel batteries',
+      '100AH MPPT controller',
+      '2 × 570W panels',
+      '3 DC bulbs',
+    ],
+  },
+  {
+    name: '218L DC Freezer',
+    total: 28500,
+    deposit: 18000,
+    months: 3,
+    monthly: 3500,
+    weeks: 12,
+    weekly: 875,
+    cashPrice: 25000,
+    contents: [
+      '218L Bona Freezer',
+      '2 × 100AH gel batteries',
+      '100AH MPPT controller',
+      '2 × 570W panels',
+      '3 DC bulbs',
+    ],
+  },
+  {
+    name: '318L DC Freezer Solar',
+    total: 39000,
+    deposit: 23000,
+    months: 3,
+    monthly: 5334,
+    weeks: 12,
+    weekly: 1334,
+    cashPrice: 35000,
+    contents: [
+      '318L Bona Freezer',
+      '3 × 100AH gel batteries',
+      '2.2KW hybrid inverter',
+      '3 × 570W panels',
+      '3 DC bulbs',
+    ],
+  },
+];
+
+const POWER_STATION_PACKAGES = [
+  {
+    name: '3KW Power Station',
+    total: 40000,
+    deposit: 20000,
+    months: 3,
+    monthly: 6667,
+    weeks: 12,
+    weekly: 1667,
+    contents: ['3KW Power Station', '400W panel', 'Adapter'],
+  },
+  {
+    name: '1.2KW Power Station',
+    total: 20000,
+    deposit: 10000,
+    months: 3,
+    monthly: 3334,
+    weeks: 12,
+    weekly: 834,
+    contents: ['1.2KW Power Station', 'Panel', '2 bulbs', 'Adapter'],
+  },
+  {
+    name: '550W Power Station',
+    total: 10000,
+    deposit: 5000,
+    months: 3,
+    monthly: 1667,
+    weeks: 12,
+    weekly: 417,
+    contents: ['550W Power Station', 'Panel', '3 bulbs', 'Adapter', 'USB charger'],
+  },
+  {
+    name: '500W Power Station',
+    total: 8000,
+    deposit: 4000,
+    months: 3,
+    monthly: 1334,
+    weeks: 12,
+    weekly: 334,
+    contents: ['500W Power Station', 'Panel', '3 bulbs', 'Adapter', 'USB charger'],
+  },
+];
+
+/** What the printable-sheet route can be asked for. */
+const PLAN_SETS = {
+  freezer: {
+    title: 'DC FREEZER INSTALLMENT PLAN',
+    filename: 'dc-freezer-plan.pdf',
+    packages: FREEZER_PACKAGES,
+  },
+  'power-station': {
+    title: 'POWER STATION INSTALLMENT PLAN',
+    filename: 'power-station-plan.pdf',
+    packages: POWER_STATION_PACKAGES,
+  },
+};
+
+module.exports = { FREEZER_PACKAGES, POWER_STATION_PACKAGES, PLAN_SETS };
