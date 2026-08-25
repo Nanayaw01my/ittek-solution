@@ -377,14 +377,15 @@ export default function ReceiptForms() {
           <div>
             <h3 className="font-bold text-gray-800 text-sm">DC Freezer Installment Plan</h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              One A4 sheet per plan — installment terms, ready cash price and what is in the
-              box. Signed off by the manager and the company.
+              A comparison page with all three plans, then one A4 sheet for each —
+              installment terms, ready cash price and what is in the box. Signed off by the
+              manager and the company.
               <button
                 onClick={() => printFreezerPlan('combined')}
                 disabled={freezerBusy}
                 className="ml-1 underline font-semibold text-orange-600 hover:text-orange-700 disabled:opacity-60"
               >
-                Print all three on one sheet instead
+                Print only the comparison page
               </button>
             </p>
           </div>

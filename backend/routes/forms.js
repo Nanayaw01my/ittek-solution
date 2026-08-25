@@ -111,7 +111,9 @@ router.get('/freezer-plan', authenticate, async (req, res) => {
         phone: settings.company_phone,
       },
       packages,
-      layout: req.query.layout === 'combined' ? 'combined' : 'separate',
+      // Everything unless asked for one part: the comparison page, then a
+      // page per plan.
+      layout: ['combined', 'separate'].includes(req.query.layout) ? req.query.layout : 'all',
     });
 
     res.setHeader('Content-Type', 'application/pdf');

@@ -1506,16 +1506,28 @@ const generateFreezerOfferSheet = async (options = {}) => {
       };
 
       // ── Lay the sheets out ────────────────────────────────────────────────
-      // 'separate' gives each plan its own page, which is what gets handed to a
-      // customer who has already chosen a size. 'combined' puts all three on
-      // one sheet for comparing.
-      if (options.layout === 'combined') {
-        let y = drawHeader();
+      // Default is the lot: a comparison page with every plan on it, then a
+      // page each. That way one print run covers both jobs — the customer
+      // choosing a size and the customer who has chosen one.
+      //   'combined' — only the comparison page
+      //   'separate' — only the page-per-plan sheets
+      const layout = options.layout || 'all';
+      const wantsCombined = layout === 'all' || layout === 'combined';
+      const wantsSeparate = layout === 'all' || layout === 'separate';
+
+      let page = 0;
+      const nextPage = () => { if (page > 0) doc.addPage(); page += 1; };
+
+      if (wantsCombined) {
+        nextPage();
+        let y = drawHeader('All plans at a glance');
         packages.forEach((p) => { y = drawPackageCompact(p, y) + 12; });
         drawFooter();
-      } else {
-        packages.forEach((p, i) => {
-          if (i > 0) doc.addPage();   // pageAdded redraws the watermark
+      }
+
+      if (wantsSeparate) {
+        packages.forEach((p) => {
+          nextPage();   // pageAdded redraws the watermark
           const y = drawHeader();
           drawPackageFull(p, y);
           drawFooter();
