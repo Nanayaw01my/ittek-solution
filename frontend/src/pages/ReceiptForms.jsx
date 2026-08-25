@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer, FiBatteryCharging } from 'react-icons/fi'
+import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer, FiBatteryCharging, FiZap } from 'react-icons/fi'
 import { getBlankReceiptForm, getFilledReceiptForm, getInstallmentPlanSheet } from '../api/forms'
 import { getProducts } from '../api/products'
 import { openPdfInNewTab } from '../utils/openPdf'
@@ -387,6 +387,12 @@ export default function ReceiptForms() {
           icon: FiBatteryCharging,
           title: 'Power Station Installment Plan',
           blurb: 'Four power station packages — installment terms and what is in the box.',
+        },
+        {
+          set: 'lithium',
+          icon: FiZap,
+          title: 'Lithium Battery Installment Plan',
+          blurb: 'The 2.56KW and 2KW packages — installment terms, ready cash price and what is in the box.',
         },
       ].map(({ set, icon: Icon, title, blurb }) => (
         <div key={set} className="mt-4 bg-white rounded-xl border border-gray-200 p-5">

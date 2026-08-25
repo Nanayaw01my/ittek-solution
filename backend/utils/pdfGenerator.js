@@ -1279,13 +1279,22 @@ const generateInstallmentPlanSheet = async (options = {}) => {
       const companyAddress = company.address || 'Bogoso, Western Region';
       const companyPhone = company.phone || '+233 595413632';
 
-      const gh = (n) => 'GHC' + Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 0 });
+      // Weekly figures can carry pesewas (1,406.25), so decimals are kept when
+      // there are any and dropped when there are none.
+      const gh = (n) => 'GHC' + Number(n || 0).toLocaleString('en-GB', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      });
 
       // Late-payment terms, taken from the first package so the sheet and the
       // plans it prints cannot drift apart.
       const title = options.title || 'INSTALLMENT PLAN';
       const latePercent = options.latePercent ?? 3;
-      const lateAfterMonths = options.lateAfterMonths ?? (packages[0]?.months ?? 3);
+      // A number only when every plan agrees on it.
+      const sharedMonths = packages.length && packages.every((p) => p.months === packages[0].months)
+        ? packages[0].months
+        : null;
+      const lateAfterMonths = options.lateAfterMonths ?? sharedMonths;
       const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
 
       attachWatermark(doc, logoBuf);
@@ -1319,15 +1328,23 @@ const generateInstallmentPlanSheet = async (options = {}) => {
         return hy + 26;
       };
 
-      const drawFooter = () => {
+      /**
+       * `months` is the period the page is about. A page showing one plan says
+       * that plan's length; a comparison page says a number only when every
+       * plan on it runs the same length, and otherwise falls back to wording
+       * that cannot contradict the schedules above it.
+       */
+      const drawFooter = (months) => {
         const fy = 802 - 40 - 88;
         doc.moveTo(ML, fy).lineTo(ML + W, fy).lineWidth(0.6).strokeColor('#dddddd').stroke();
         reset();
         // The late-payment charge, set apart so it is not skimmed over: it is
         // the one term on this sheet that costs the customer money.
         doc.roundedRect(ML, fy + 6, W, 30, 3).fill('#fdf2e9');
+        const period = months ? months + ' months' : 'agreed payment period';
         doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#b34700')
-          .text('If the ' + lateAfterMonths + ' months pass and payment is not complete, an additional '
+          .text('If the ' + period + ' pass' + (months ? '' : 'es')
+            + ' and payment is not complete, an additional '
             + latePercent + '% of the total amount is charged for every week thereafter.',
             ML + 8, fy + 13, { width: W - 16, align: 'center', lineGap: 1 });
         reset();
@@ -1536,13 +1553,13 @@ const generateInstallmentPlanSheet = async (options = {}) => {
         let y = drawHeader('All plans at a glance');
         packages.forEach((p) => {
           if (y + COMPACT_H > FOOTER_TOP - 8) {
-            drawFooter();
+            drawFooter(lateAfterMonths);
             nextPage();
             y = drawHeader('All plans at a glance (continued)');
           }
           y = drawPackageCompact(p, y) + 12;
         });
-        drawFooter();
+        drawFooter(lateAfterMonths);
       }
 
       if (wantsSeparate) {
@@ -1550,7 +1567,7 @@ const generateInstallmentPlanSheet = async (options = {}) => {
           nextPage();   // pageAdded redraws the watermark
           const y = drawHeader();
           drawPackageFull(p, y);
-          drawFooter();
+          drawFooter(p.months);
         });
       }
 

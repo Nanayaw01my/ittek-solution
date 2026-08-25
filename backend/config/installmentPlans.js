@@ -111,6 +111,40 @@ const POWER_STATION_PACKAGES = [
   },
 ];
 
+
+const LITHIUM_PACKAGES = [
+  {
+    name: '2.56KW Power Station',
+    total: 45000,
+    deposit: 22500,
+    months: 4,
+    monthly: 5625,
+    weeks: 16,
+    weekly: 1406.25,
+    cashPrice: 32000,
+    contents: [
+      '2.56KW lithium battery',
+      '2 × 570W panels',
+      '3.2KW hybrid inverter',
+    ],
+  },
+  {
+    name: '2KW Solar Power',
+    total: 35000,
+    deposit: 17500,
+    months: 3,
+    monthly: 5834,
+    weeks: 12,
+    weekly: 487,
+    cashPrice: 27000,
+    contents: [
+      '2 × 100AH gel batteries',
+      '2 × 570W panels',
+      '3.2KW hybrid inverter',
+    ],
+  },
+];
+
 /** What the printable-sheet route can be asked for. */
 const PLAN_SETS = {
   freezer: {
@@ -123,6 +157,11 @@ const PLAN_SETS = {
     filename: 'power-station-plan.pdf',
     packages: POWER_STATION_PACKAGES,
   },
+  lithium: {
+    title: 'LITHIUM BATTERY INSTALLMENT PLAN',
+    filename: 'lithium-battery-plan.pdf',
+    packages: LITHIUM_PACKAGES,
+  },
 };
 
-module.exports = { FREEZER_PACKAGES, POWER_STATION_PACKAGES, PLAN_SETS };
+module.exports = { FREEZER_PACKAGES, POWER_STATION_PACKAGES, LITHIUM_PACKAGES, PLAN_SETS };
