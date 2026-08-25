@@ -1248,7 +1248,7 @@ const generateBlankReceiptForm = async (options = {}) => {
  * out, not a document raised for one person. It is signed off by the manager
  * and the company rather than by a buyer.
  *
- * @param {Object} options - { logoUrl, company, packages }
+ * @param {Object} options - { logoUrl, company, packages, latePercent, lateAfterMonths }
  * @returns {Promise<Buffer>}
  */
 const generateFreezerOfferSheet = async (options = {}) => {
@@ -1275,6 +1275,11 @@ const generateFreezerOfferSheet = async (options = {}) => {
       const companyPhone = company.phone || '+233 595413632';
 
       const gh = (n) => 'GHC' + Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 0 });
+
+      // Late-payment terms, taken from the first package so the sheet and the
+      // plans it prints cannot drift apart.
+      const latePercent = options.latePercent ?? 3;
+      const lateAfterMonths = options.lateAfterMonths ?? (packages[0]?.months ?? 3);
       const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
 
       attachWatermark(doc, logoBuf);
@@ -1384,19 +1389,28 @@ const generateFreezerOfferSheet = async (options = {}) => {
       });
 
       // ── Footer ────────────────────────────────────────────────────────────
-      const fy = 802 - 40 - 52;
+      const fy = 802 - 40 - 88;
       doc.moveTo(ML, fy).lineTo(ML + W, fy).lineWidth(0.6).strokeColor('#dddddd').stroke();
       reset();
+      // The late-payment charge, set apart so it is not skimmed over: it is the
+      // one term on this sheet that costs the customer money.
+      doc.roundedRect(ML, fy + 6, W, 30, 3).fill('#fdf2e9');
+      doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#b34700')
+        .text('If the ' + lateAfterMonths + ' months pass and payment is not complete, an additional '
+          + latePercent + '% of the total amount is charged for every week thereafter.',
+          ML + 8, fy + 13, { width: W - 16, align: 'center', lineGap: 1 });
+      reset();
+
       doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
         .text('Goods remain the property of the Company until the agreed price is paid in full. Prices are subject to change without notice.',
-          ML, fy + 8, { width: W, align: 'center' });
+          ML, fy + 44, { width: W, align: 'center' });
 
       const sigW = (W - 60) / 2;
       [['MANAGER', ''], ['FOR THE COMPANY', '']].forEach(([lbl], i) => {
         const sx = ML + i * (sigW + 60);
-        doc.moveTo(sx, fy + 40).lineTo(sx + sigW, fy + 40).lineWidth(0.6).strokeColor('#999999').stroke();
+        doc.moveTo(sx, fy + 74).lineTo(sx + sigW, fy + 74).lineWidth(0.6).strokeColor('#999999').stroke();
         doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
-          .text(lbl, sx, fy + 44, { width: sigW, align: 'center' });
+          .text(lbl, sx, fy + 78, { width: sigW, align: 'center' });
         reset();
       });
 
