@@ -1244,11 +1244,11 @@ const generateBlankReceiptForm = async (options = {}) => {
  * deciding between the two, so both prices sit side by side and the saving for
  * paying cash is stated rather than left to be worked out.
  *
- * Customer, date and reference lines are printed blank unless supplied, so the
- * same sheet serves as a counter handout and as something written on and
- * signed.
+ * Carries no customer, date or reference: it is a price sheet the shop hands
+ * out, not a document raised for one person. It is signed off by the manager
+ * and the company rather than by a buyer.
  *
- * @param {Object} options - { logoUrl, company, packages, customer, reference, date }
+ * @param {Object} options - { logoUrl, company, packages }
  * @returns {Promise<Buffer>}
  */
 const generateFreezerOfferSheet = async (options = {}) => {
@@ -1299,25 +1299,8 @@ const generateFreezerOfferSheet = async (options = {}) => {
       doc.fontSize(15).font('Helvetica-Bold').fillColor(ORANGE)
         .text('DC FREEZER INSTALLMENT PLAN', ML, y, { width: W });
       reset();
-      y += 20;
-
-      // Customer line — written on by hand when nothing is supplied.
-      const line = (label, value, x, rightX, labelW) => {
-        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(LGRAY)
-          .text(label, x, y + 2, { width: labelW, lineBreak: false });
-        doc.moveTo(x + labelW, y + 11).lineTo(rightX, y + 11).lineWidth(0.6).strokeColor(RULE).stroke();
-        if (value) {
-          doc.fontSize(9).font('Helvetica-Bold').fillColor('#111111')
-            .text(String(value), x + labelW + 4, y + 1, { width: rightX - x - labelW - 8, lineBreak: false });
-        }
-        reset();
-      };
-      const customer = options.customer || {};
-      line('Customer', customer.name, ML, ML + 300, 52);
-      line('Date', options.date, ML + 320, ML + W, 30);
-      y += 20;
-      line('Telephone', customer.phone, ML, ML + 300, 52);
-      line('Ref', options.reference, ML + 320, ML + W, 30);
+      // No customer, date or reference lines: this is a price sheet the shop
+      // hands out, not a document raised for one person.
       y += 26;
 
       // ── One block per package ─────────────────────────────────────────────
@@ -1409,7 +1392,7 @@ const generateFreezerOfferSheet = async (options = {}) => {
           ML, fy + 8, { width: W, align: 'center' });
 
       const sigW = (W - 60) / 2;
-      [['CUSTOMER', ''], ['FOR THE COMPANY', '']].forEach(([lbl], i) => {
+      [['MANAGER', ''], ['FOR THE COMPANY', '']].forEach(([lbl], i) => {
         const sx = ML + i * (sigW + 60);
         doc.moveTo(sx, fy + 40).lineTo(sx + sigW, fy + 40).lineWidth(0.6).strokeColor('#999999').stroke();
         doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)

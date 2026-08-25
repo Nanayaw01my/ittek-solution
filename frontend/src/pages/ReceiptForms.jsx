@@ -378,7 +378,7 @@ export default function ReceiptForms() {
             <h3 className="font-bold text-gray-800 text-sm">DC Freezer Installment Plan</h3>
             <p className="text-xs text-gray-500 mt-0.5">
               All packages on one A4 sheet — installment terms, ready cash price and what is
-              in each box. Customer and reference lines print blank to write on.
+              in each box. Signed off by the manager and the company.
             </p>
           </div>
           <button

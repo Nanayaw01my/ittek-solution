@@ -85,8 +85,8 @@ router.post('/receipt', authenticate, async (req, res) => {
  * GET /api/forms/freezer-plan
  *
  * The DC freezer installment offer sheet — every package with its installment
- * terms, its ready cash price and what is in the box. A handout, so any
- * signed-in staff member can print one for a customer at the counter.
+ * terms, its ready cash price and what is in the box. The same sheet for
+ * everyone, so any signed-in staff member can print one at the counter.
  */
 router.get('/freezer-plan', authenticate, async (req, res) => {
   try {
@@ -99,9 +99,6 @@ router.get('/freezer-plan', authenticate, async (req, res) => {
         phone: settings.company_phone,
       },
       packages: FREEZER_PACKAGES,
-      date: new Date().toLocaleDateString('en-GB'),
-      customer: { name: req.query.customer, phone: req.query.phone },
-      reference: req.query.reference,
     });
 
     res.setHeader('Content-Type', 'application/pdf');
