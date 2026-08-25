@@ -8,3 +8,6 @@ export const getFilledReceiptForm = (data) =>
 
 export const getInstallmentPlanSheet = (params) =>
   api.get('/forms/installment-plan', { params, responseType: 'blob' })
+
+export const getPriceSheet = (params) =>
+  api.get('/forms/price-sheet', { params, responseType: 'blob' })

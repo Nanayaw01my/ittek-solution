@@ -2,8 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const Settings = require('../models/Settings');
-const { generateBlankReceiptForm, generateInstallmentPlanSheet } = require('../utils/pdfGenerator');
-const { PLAN_SETS } = require('../config/installmentPlans');
+const {
+  generateBlankReceiptForm, generateInstallmentPlanSheet, generateFixedPriceList,
+} = require('../utils/pdfGenerator');
+const { PLAN_SETS, PRICE_LISTS } = require('../config/installmentPlans');
 
 /** Shared by both routes below. */
 const buildForm = async (opts) => {
@@ -143,6 +145,46 @@ router.get('/installment-plan', authenticate, printPlanSheet);
 router.get('/freezer-plan', authenticate, (req, res) => {
   req.query.set = req.query.set || 'freezer';
   return printPlanSheet(req, res);
+});
+
+/**
+ * GET /api/forms/price-sheet?set=solar-systems
+ *
+ * A straight price list: the product and what it costs. No deposit, no
+ * schedule, no late-payment term — this is not an installment sheet and must
+ * not read like one.
+ */
+router.get('/price-sheet', authenticate, async (req, res) => {
+  try {
+    const setKey = String(req.query.set || 'solar-systems').toLowerCase();
+    const list = PRICE_LISTS[setKey];
+    if (!list) {
+      return res.status(404).json({
+        success: false,
+        message: `Unknown price list. Try one of: ${Object.keys(PRICE_LISTS).join(', ')}.`,
+      });
+    }
+
+    const settings = (await Settings.findOne().lean()) || {};
+    const pdf = await generateFixedPriceList({
+      logoUrl: settings.logo_url,
+      company: {
+        name: settings.company_name,
+        address: settings.company_address,
+        phone: settings.company_phone,
+      },
+      title: list.title,
+      subtitle: list.subtitle,
+      items: list.items,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${list.filename}"`);
+    return res.end(pdf);
+  } catch (err) {
+    console.error('Price sheet error:', err.message);
+    return res.status(500).json({ success: false, message: 'Could not generate the sheet.' });
+  }
 });
 
 module.exports = router;

@@ -145,6 +145,32 @@ const LITHIUM_PACKAGES = [
   },
 ];
 
+
+/**
+ * Straight price lists — a product and what it costs, nothing more.
+ *
+ * Deliberately separate from the installment sets: these carry no deposit, no
+ * schedule and no late-payment term, and the sheet must not imply one.
+ */
+const SOLAR_SYSTEM_PRICES = [
+  { name: '4KW Solar Power', price: 45000 },
+  { name: '5KW Solar Power', price: 65000 },
+  { name: '10KW Solar Power', price: 95000 },
+  { name: '15KW Solar Power', price: 120000 },
+  { name: '20KW Solar Power', price: 200000 },
+  { name: '25KW Solar Power', price: 250000 },
+  { name: '30KW Solar Power', price: 308000 },
+];
+
+const PRICE_LISTS = {
+  'solar-systems': {
+    title: 'SOLAR POWER SYSTEM',
+    subtitle: 'Price list for solar systems',
+    filename: 'solar-system-prices.pdf',
+    items: SOLAR_SYSTEM_PRICES,
+  },
+};
+
 /** What the printable-sheet route can be asked for. */
 const PLAN_SETS = {
   freezer: {
@@ -164,4 +190,7 @@ const PLAN_SETS = {
   },
 };
 
-module.exports = { FREEZER_PACKAGES, POWER_STATION_PACKAGES, LITHIUM_PACKAGES, PLAN_SETS };
+module.exports = {
+  FREEZER_PACKAGES, POWER_STATION_PACKAGES, LITHIUM_PACKAGES,
+  SOLAR_SYSTEM_PRICES, PLAN_SETS, PRICE_LISTS,
+};

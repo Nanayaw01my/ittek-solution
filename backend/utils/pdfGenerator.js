@@ -1578,10 +1578,140 @@ const generateInstallmentPlanSheet = async (options = {}) => {
   });
 };
 
+
+/**
+ * A fixed price list (A4) — a product and what it costs, nothing more.
+ *
+ * Kept separate from the installment sheet on purpose. There is no deposit, no
+ * schedule and no late-payment term here, and a sheet that borrowed that
+ * furniture would imply terms that do not apply.
+ *
+ * @param {Object} options - { logoUrl, company, title, subtitle, items }
+ * @returns {Promise<Buffer>}
+ */
+const generateFixedPriceList = async (options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+  const items = options.items || [];
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, bottom: 40, left: 40, right: 40 } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 40;
+      const W = 515;
+      const ORANGE = '#e86b00';
+      const LGRAY = '#777777';
+      const PAGE_BOTTOM = 802;
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+      const companyAddress = company.address || 'Bogoso, Western Region';
+      const companyPhone = company.phone || '+233 595413632';
+
+      const gh = (n) => 'GHC' + Number(n || 0).toLocaleString('en-GB', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      });
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      attachWatermark(doc, logoBuf);
+
+      const drawHeader = () => {
+        let hy = 40;
+        if (logoBuf) {
+          try { doc.image(logoBuf, ML, hy, { width: 48 }); } catch { /* keep the gap */ }
+        }
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#111111')
+          .text(companyName, ML + 58, hy + 2, { width: W - 58 });
+        doc.fontSize(8.5).font('Helvetica').fillColor(LGRAY)
+          .text([companyAddress, companyPhone && 'Tel: ' + companyPhone].filter(Boolean).join('  |  '),
+            ML + 58, hy + 20, { width: W - 58 });
+        reset();
+
+        hy += 52;
+        doc.moveTo(ML, hy).lineTo(ML + W, hy).lineWidth(1.5).strokeColor(ORANGE).stroke();
+        reset();
+
+        hy += 12;
+        doc.fontSize(16).font('Helvetica-Bold').fillColor(ORANGE)
+          .text(options.title || 'PRICE LIST', ML, hy, { width: W });
+        if (options.subtitle) {
+          doc.fontSize(10).font('Helvetica').fillColor('#555555')
+            .text(options.subtitle, ML, hy + 21, { width: W });
+          hy += 16;
+        }
+        reset();
+        return hy + 30;
+      };
+
+      const FOOTER_TOP = PAGE_BOTTOM - 40 - 60;
+      const drawFooter = () => {
+        doc.moveTo(ML, FOOTER_TOP).lineTo(ML + W, FOOTER_TOP).lineWidth(0.6).strokeColor('#dddddd').stroke();
+        reset();
+        doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
+          .text('Prices are subject to change without notice. Installation and delivery are quoted separately.',
+            ML, FOOTER_TOP + 10, { width: W, align: 'center' });
+
+        const sigW = (W - 60) / 2;
+        [['MANAGER', ''], ['FOR THE COMPANY', '']].forEach(([lbl], i) => {
+          const sx = ML + i * (sigW + 60);
+          doc.moveTo(sx, FOOTER_TOP + 44).lineTo(sx + sigW, FOOTER_TOP + 44)
+            .lineWidth(0.6).strokeColor('#999999').stroke();
+          doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
+            .text(lbl, sx, FOOTER_TOP + 48, { width: sigW, align: 'center' });
+          reset();
+        });
+      };
+
+      const ROW_H = 34;
+      const drawTableHead = (y) => {
+        doc.rect(ML, y, W, 24).fill(ORANGE);
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff');
+        doc.text('SYSTEM', ML + 14, y + 8, { width: W - 180 });
+        doc.text('PRICE', ML + W - 160, y + 8, { width: 146, align: 'right' });
+        reset();
+        return y + 24;
+      };
+
+      let y = drawTableHead(drawHeader());
+      const tableTop = y;
+
+      items.forEach((item, i) => {
+        if (y + ROW_H > FOOTER_TOP - 8) {
+          doc.rect(ML, tableTop, W, y - tableTop).lineWidth(0.7).strokeColor('#dddddd').stroke();
+          drawFooter();
+          doc.addPage();       // pageAdded redraws the watermark
+          y = drawTableHead(drawHeader());
+        }
+        if (i % 2 === 1) { doc.rect(ML, y, W, ROW_H).fill('#faf6f2'); reset(); }
+        doc.fontSize(12).font('Helvetica').fillColor('#111111')
+          .text(item.name, ML + 14, y + 10, { width: W - 180, lineBreak: false });
+        doc.fontSize(13).font('Helvetica-Bold').fillColor('#111111')
+          .text(gh(item.price), ML + W - 160, y + 9, { width: 146, align: 'right', lineBreak: false });
+        doc.moveTo(ML, y + ROW_H).lineTo(ML + W, y + ROW_H).lineWidth(0.4).strokeColor('#e8e8e8').stroke();
+        reset();
+        y += ROW_H;
+      });
+
+      doc.rect(ML, tableTop, W, y - tableTop).lineWidth(0.7).strokeColor('#dddddd').stroke();
+      reset();
+      drawFooter();
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 module.exports = {
   generateReceipt, generateCreditAgreement, generateLayawayAgreement,
   generatePriceList, generateReport, generateBlankReceiptForm,
-  generateInstallmentPlanSheet,
+  generateInstallmentPlanSheet, generateFixedPriceList,
   // The original name, kept so nothing that imports it breaks.
   generateFreezerOfferSheet: generateInstallmentPlanSheet,
 };
