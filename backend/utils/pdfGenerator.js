@@ -1235,7 +1235,197 @@ const generateBlankReceiptForm = async (options = {}) => {
   });
 };
 
+
+/**
+ * The DC freezer installment offer sheet (A4).
+ *
+ * One page carrying every package: what it costs on installment, what it costs
+ * for ready cash, and exactly what hardware is in the box. Handed to a customer
+ * deciding between the two, so both prices sit side by side and the saving for
+ * paying cash is stated rather than left to be worked out.
+ *
+ * Customer, date and reference lines are printed blank unless supplied, so the
+ * same sheet serves as a counter handout and as something written on and
+ * signed.
+ *
+ * @param {Object} options - { logoUrl, company, packages, customer, reference, date }
+ * @returns {Promise<Buffer>}
+ */
+const generateFreezerOfferSheet = async (options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+  const packages = options.packages || [];
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, bottom: 40, left: 40, right: 40 } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 40;
+      const W = 515;
+      const ORANGE = '#e86b00';
+      const LGRAY = '#777777';
+      const RULE = '#c9c9c9';
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+      const companyAddress = company.address || 'Bogoso, Western Region';
+      const companyPhone = company.phone || '+233 595413632';
+
+      const gh = (n) => 'GHC' + Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 0 });
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      attachWatermark(doc, logoBuf);
+
+      // ── Header ────────────────────────────────────────────────────────────
+      let y = 40;
+      if (logoBuf) {
+        try { doc.image(logoBuf, ML, y, { width: 48 }); } catch { /* keep the gap */ }
+      }
+      doc.fontSize(14).font('Helvetica-Bold').fillColor('#111111')
+        .text(companyName, ML + 58, y + 2, { width: W - 58 });
+      doc.fontSize(8.5).font('Helvetica').fillColor(LGRAY)
+        .text([companyAddress, companyPhone && 'Tel: ' + companyPhone].filter(Boolean).join('  |  '),
+          ML + 58, y + 20, { width: W - 58 });
+      reset();
+
+      y += 52;
+      doc.moveTo(ML, y).lineTo(ML + W, y).lineWidth(1.5).strokeColor(ORANGE).stroke();
+      reset();
+
+      y += 10;
+      doc.fontSize(15).font('Helvetica-Bold').fillColor(ORANGE)
+        .text('DC FREEZER INSTALLMENT PLAN', ML, y, { width: W });
+      reset();
+      y += 20;
+
+      // Customer line — written on by hand when nothing is supplied.
+      const line = (label, value, x, rightX, labelW) => {
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(LGRAY)
+          .text(label, x, y + 2, { width: labelW, lineBreak: false });
+        doc.moveTo(x + labelW, y + 11).lineTo(rightX, y + 11).lineWidth(0.6).strokeColor(RULE).stroke();
+        if (value) {
+          doc.fontSize(9).font('Helvetica-Bold').fillColor('#111111')
+            .text(String(value), x + labelW + 4, y + 1, { width: rightX - x - labelW - 8, lineBreak: false });
+        }
+        reset();
+      };
+      const customer = options.customer || {};
+      line('Customer', customer.name, ML, ML + 300, 52);
+      line('Date', options.date, ML + 320, ML + W, 30);
+      y += 20;
+      line('Telephone', customer.phone, ML, ML + 300, 52);
+      line('Ref', options.reference, ML + 320, ML + W, 30);
+      y += 26;
+
+      // ── One block per package ─────────────────────────────────────────────
+      packages.forEach((p) => {
+        const balance = Math.max(0, p.total - p.deposit);
+        const monthlyTotal = p.monthly * p.months;
+        const weeklyTotal = p.weekly * p.weeks;
+        const saving = p.total - p.cashPrice;
+
+        const BLOCK_H = 132;
+        doc.roundedRect(ML, y, W, BLOCK_H, 5).lineWidth(0.8).strokeColor('#dddddd').stroke();
+
+        // Title band
+        doc.rect(ML, y, W, 20).fill(ORANGE);
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#ffffff')
+          .text(p.name.toUpperCase(), ML + 10, y + 6, { width: W - 20 });
+        reset();
+
+        const bodyY = y + 28;
+        const colW = (W - 30) / 3;
+
+        // Column 1 — the installment plan
+        let cy = bodyY;
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('INSTALLMENT PLAN', ML + 10, cy, { width: colW });
+        cy += 12;
+        const kv = (k, v, strong) => {
+          doc.fontSize(8).font('Helvetica').fillColor('#555555')
+            .text(k, ML + 10, cy, { width: colW * 0.52, lineBreak: false });
+          doc.fontSize(strong ? 9 : 8).font('Helvetica-Bold').fillColor('#111111')
+            .text(v, ML + 10 + colW * 0.52, cy - (strong ? 1 : 0), { width: colW * 0.48 - 6, align: 'right', lineBreak: false });
+          reset();
+          cy += 13;
+        };
+        kv('Total amount', gh(p.total), true);
+        kv('Initial deposit', gh(p.deposit));
+        kv('Balance', gh(balance), true);
+        kv('Period', p.months + ' months');
+
+        // Column 2 — how the balance is paid
+        const c2 = ML + 10 + colW + 5;
+        cy = bodyY;
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('PAYING THE BALANCE', c2, cy, { width: colW });
+        cy += 12;
+        const sched = (k, per, times, total) => {
+          doc.fontSize(8).font('Helvetica').fillColor('#555555')
+            .text(k, c2, cy, { width: colW, lineBreak: false });
+          cy += 11;
+          doc.fontSize(9).font('Helvetica-Bold').fillColor('#111111')
+            .text(`${gh(per)} × ${times}  =  ${gh(total)}`, c2, cy, { width: colW, lineBreak: false });
+          reset();
+          cy += 15;
+        };
+        sched('Every month', p.monthly, p.months, monthlyTotal);
+        sched('Every week', p.weekly, p.weeks, weeklyTotal);
+
+        // Column 3 — the cash alternative
+        const c3 = ML + 10 + (colW + 5) * 2;
+        cy = bodyY;
+        doc.roundedRect(c3 - 6, cy - 4, colW + 6, 52, 4).fill('#f4f9f4');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#2f7d32')
+          .text('READY CASH PRICE', c3, cy, { width: colW });
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#2f7d32')
+          .text(gh(p.cashPrice), c3, cy + 12, { width: colW });
+        doc.fontSize(7.5).font('Helvetica').fillColor('#2f7d32')
+          .text('You save ' + gh(saving), c3, cy + 31, { width: colW });
+        reset();
+
+        // What is in the package, across the foot of the block
+        const listY = y + BLOCK_H - 34;
+        doc.moveTo(ML + 10, listY - 6).lineTo(ML + W - 10, listY - 6)
+          .lineWidth(0.4).strokeColor('#e5e5e5').stroke();
+        doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
+          .text('PACKAGE INCLUDES', ML + 10, listY, { width: 100, lineBreak: false });
+        doc.fontSize(8).font('Helvetica').fillColor('#111111')
+          .text((p.contents || []).join('   •   '), ML + 100, listY, { width: W - 110, lineBreak: false });
+        reset();
+
+        y += BLOCK_H + 12;
+      });
+
+      // ── Footer ────────────────────────────────────────────────────────────
+      const fy = 802 - 40 - 52;
+      doc.moveTo(ML, fy).lineTo(ML + W, fy).lineWidth(0.6).strokeColor('#dddddd').stroke();
+      reset();
+      doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+        .text('Goods remain the property of the Company until the agreed price is paid in full. Prices are subject to change without notice.',
+          ML, fy + 8, { width: W, align: 'center' });
+
+      const sigW = (W - 60) / 2;
+      [['CUSTOMER', ''], ['FOR THE COMPANY', '']].forEach(([lbl], i) => {
+        const sx = ML + i * (sigW + 60);
+        doc.moveTo(sx, fy + 40).lineTo(sx + sigW, fy + 40).lineWidth(0.6).strokeColor('#999999').stroke();
+        doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
+          .text(lbl, sx, fy + 44, { width: sigW, align: 'center' });
+        reset();
+      });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 module.exports = {
   generateReceipt, generateCreditAgreement, generateLayawayAgreement,
   generatePriceList, generateReport, generateBlankReceiptForm,
+  generateFreezerOfferSheet,
 };

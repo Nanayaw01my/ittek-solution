@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const Settings = require('../models/Settings');
-const { generateBlankReceiptForm } = require('../utils/pdfGenerator');
+const { generateBlankReceiptForm, generateFreezerOfferSheet } = require('../utils/pdfGenerator');
+const { FREEZER_PACKAGES } = require('../config/freezerPackages');
 
 /** Shared by both routes below. */
 const buildForm = async (opts) => {
@@ -77,6 +78,38 @@ router.post('/receipt', authenticate, async (req, res) => {
   } catch (err) {
     console.error('Receipt form error:', err.message);
     return res.status(500).json({ success: false, message: 'Could not generate the receipt.' });
+  }
+});
+
+/**
+ * GET /api/forms/freezer-plan
+ *
+ * The DC freezer installment offer sheet — every package with its installment
+ * terms, its ready cash price and what is in the box. A handout, so any
+ * signed-in staff member can print one for a customer at the counter.
+ */
+router.get('/freezer-plan', authenticate, async (req, res) => {
+  try {
+    const settings = (await Settings.findOne().lean()) || {};
+    const pdf = await generateFreezerOfferSheet({
+      logoUrl: settings.logo_url,
+      company: {
+        name: settings.company_name,
+        address: settings.company_address,
+        phone: settings.company_phone,
+      },
+      packages: FREEZER_PACKAGES,
+      date: new Date().toLocaleDateString('en-GB'),
+      customer: { name: req.query.customer, phone: req.query.phone },
+      reference: req.query.reference,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="dc-freezer-plan.pdf"');
+    return res.end(pdf);
+  } catch (err) {
+    console.error('Freezer plan error:', err.message);
+    return res.status(500).json({ success: false, message: 'Could not generate the sheet.' });
   }
 });
 
