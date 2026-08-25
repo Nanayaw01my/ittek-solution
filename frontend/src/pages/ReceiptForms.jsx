@@ -261,28 +261,6 @@ export default function ReceiptForms() {
                   </button>
                 </div>
               ))}
-
-      {/* A straight price list, not an installment sheet — no deposit, no
-          schedule, no late-payment term on it. */}
-      <div className="mt-4 bg-white rounded-xl border border-gray-200 p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="font-bold text-gray-800 text-sm">Solar Power System Price List</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              The 4KW to 30KW systems and what each costs. Prices only — no installment
-              terms on this sheet.
-            </p>
-          </div>
-          <button
-            onClick={() => printPriceSheet('solar-systems')}
-            disabled={!!planBusy}
-            className="flex items-center gap-2 px-4 py-2.5 border border-orange-300 hover:bg-orange-50 disabled:opacity-60 text-orange-700 rounded-xl font-bold text-sm transition-colors flex-shrink-0"
-          >
-            <FiSun size={16} />
-            {planBusy === 'solar-systems' ? 'Preparing…' : 'Print'}
-          </button>
-        </div>
-      </div>
             </div>
           )}
 
@@ -455,6 +433,28 @@ export default function ReceiptForms() {
           </div>
         </div>
       ))}
+
+      {/* A straight price list, not an installment sheet — no deposit, no
+          schedule, no late-payment term on it. */}
+      <div className="mt-4 bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-bold text-gray-800 text-sm">Solar Power System Price List</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              The 4KW to 30KW systems and what each costs. Prices only — no installment
+              terms on this sheet.
+            </p>
+          </div>
+          <button
+            onClick={() => printPriceSheet('solar-systems')}
+            disabled={!!planBusy}
+            className="flex items-center gap-2 px-4 py-2.5 border border-orange-300 hover:bg-orange-50 disabled:opacity-60 text-orange-700 rounded-xl font-bold text-sm transition-colors flex-shrink-0"
+          >
+            <FiSun size={16} />
+            {planBusy === 'solar-systems' ? 'Preparing…' : 'Print'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
