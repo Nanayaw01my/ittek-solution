@@ -85,12 +85,24 @@ router.post('/receipt', authenticate, async (req, res) => {
  * GET /api/forms/freezer-plan
  *
  * The DC freezer installment offer sheet — every package with its installment
- * terms, its ready cash price and what is in the box. The same sheet for
- * everyone, so any signed-in staff member can print one at the counter.
+ * terms, its ready cash price and what is in the box. One page per plan by
+ * default. The same sheet for everyone, so any signed-in staff member can
+ * print one at the counter.
  */
 router.get('/freezer-plan', authenticate, async (req, res) => {
   try {
     const settings = (await Settings.findOne().lean()) || {};
+
+    // ?package=118 prints just that plan; ?layout=combined puts them all on
+    // one sheet for comparing.
+    const wanted = String(req.query.package || '').trim().toLowerCase();
+    const packages = wanted
+      ? FREEZER_PACKAGES.filter((p) => p.name.toLowerCase().includes(wanted))
+      : FREEZER_PACKAGES;
+
+    if (packages.length === 0) {
+      return res.status(404).json({ success: false, message: 'No matching freezer package.' });
+    }
     const pdf = await generateFreezerOfferSheet({
       logoUrl: settings.logo_url,
       company: {
@@ -98,7 +110,8 @@ router.get('/freezer-plan', authenticate, async (req, res) => {
         address: settings.company_address,
         phone: settings.company_phone,
       },
-      packages: FREEZER_PACKAGES,
+      packages,
+      layout: req.query.layout === 'combined' ? 'combined' : 'separate',
     });
 
     res.setHeader('Content-Type', 'application/pdf');

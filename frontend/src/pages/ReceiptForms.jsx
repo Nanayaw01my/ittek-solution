@@ -128,10 +128,10 @@ export default function ReceiptForms() {
     }
   }
 
-  const printFreezerPlan = async () => {
+  const printFreezerPlan = async (layout) => {
     setFreezerBusy(true)
     try {
-      await openPdfInNewTab(() => getFreezerPlanSheet(), 'dc-freezer-plan.pdf')
+      await openPdfInNewTab(() => getFreezerPlanSheet(layout ? { layout } : undefined), 'dc-freezer-plan.pdf')
     } catch (err) {
       toast.error(err.message || 'Could not generate the sheet.')
     } finally {
@@ -377,12 +377,19 @@ export default function ReceiptForms() {
           <div>
             <h3 className="font-bold text-gray-800 text-sm">DC Freezer Installment Plan</h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              All packages on one A4 sheet — installment terms, ready cash price and what is
-              in each box. Signed off by the manager and the company.
+              One A4 sheet per plan — installment terms, ready cash price and what is in the
+              box. Signed off by the manager and the company.
+              <button
+                onClick={() => printFreezerPlan('combined')}
+                disabled={freezerBusy}
+                className="ml-1 underline font-semibold text-orange-600 hover:text-orange-700 disabled:opacity-60"
+              >
+                Print all three on one sheet instead
+              </button>
             </p>
           </div>
           <button
-            onClick={printFreezerPlan}
+            onClick={() => printFreezerPlan()}
             disabled={freezerBusy}
             className="flex items-center gap-2 px-4 py-2.5 border border-orange-300 hover:bg-orange-50 disabled:opacity-60 text-orange-700 rounded-xl font-bold text-sm transition-colors flex-shrink-0"
           >

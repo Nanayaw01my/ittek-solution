@@ -1239,16 +1239,20 @@ const generateBlankReceiptForm = async (options = {}) => {
 /**
  * The DC freezer installment offer sheet (A4).
  *
- * One page carrying every package: what it costs on installment, what it costs
- * for ready cash, and exactly what hardware is in the box. Handed to a customer
- * deciding between the two, so both prices sit side by side and the saving for
- * paying cash is stated rather than left to be worked out.
+ * Each package gets its own page by default — that is the sheet handed to a
+ * customer who has already chosen a size. Pass layout:'combined' to put all
+ * of them on one page instead, for comparing.
+ *
+ * Either way a package shows what it costs on installment, what it costs for
+ * ready cash, and exactly what hardware is in the box. Both prices sit side by
+ * side and the saving for paying cash is stated rather than left to be worked
+ * out.
  *
  * Carries no customer, date or reference: it is a price sheet the shop hands
  * out, not a document raised for one person. It is signed off by the manager
  * and the company rather than by a buyer.
  *
- * @param {Object} options - { logoUrl, company, packages, latePercent, lateAfterMonths }
+ * @param {Object} options - { logoUrl, company, packages, layout, latePercent, lateAfterMonths }
  * @returns {Promise<Buffer>}
  */
 const generateFreezerOfferSheet = async (options = {}) => {
@@ -1284,50 +1288,78 @@ const generateFreezerOfferSheet = async (options = {}) => {
 
       attachWatermark(doc, logoBuf);
 
-      // ── Header ────────────────────────────────────────────────────────────
-      let y = 40;
-      if (logoBuf) {
-        try { doc.image(logoBuf, ML, y, { width: 48 }); } catch { /* keep the gap */ }
-      }
-      doc.fontSize(14).font('Helvetica-Bold').fillColor('#111111')
-        .text(companyName, ML + 58, y + 2, { width: W - 58 });
-      doc.fontSize(8.5).font('Helvetica').fillColor(LGRAY)
-        .text([companyAddress, companyPhone && 'Tel: ' + companyPhone].filter(Boolean).join('  |  '),
-          ML + 58, y + 20, { width: W - 58 });
-      reset();
-
-      y += 52;
-      doc.moveTo(ML, y).lineTo(ML + W, y).lineWidth(1.5).strokeColor(ORANGE).stroke();
-      reset();
-
-      y += 10;
-      doc.fontSize(15).font('Helvetica-Bold').fillColor(ORANGE)
-        .text('DC FREEZER INSTALLMENT PLAN', ML, y, { width: W });
-      reset();
-      // No customer, date or reference lines: this is a price sheet the shop
-      // hands out, not a document raised for one person.
-      y += 26;
-
-      // ── One block per package ─────────────────────────────────────────────
-      packages.forEach((p) => {
-        const balance = Math.max(0, p.total - p.deposit);
-        const monthlyTotal = p.monthly * p.months;
-        const weeklyTotal = p.weekly * p.weeks;
-        const saving = p.total - p.cashPrice;
-
-        const BLOCK_H = 132;
-        doc.roundedRect(ML, y, W, BLOCK_H, 5).lineWidth(0.8).strokeColor('#dddddd').stroke();
-
-        // Title band
-        doc.rect(ML, y, W, 20).fill(ORANGE);
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#ffffff')
-          .text(p.name.toUpperCase(), ML + 10, y + 6, { width: W - 20 });
+      // ── Page furniture, drawn once per sheet ──────────────────────────────
+      const drawHeader = (subtitle) => {
+        let hy = 40;
+        if (logoBuf) {
+          try { doc.image(logoBuf, ML, hy, { width: 48 }); } catch { /* keep the gap */ }
+        }
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#111111')
+          .text(companyName, ML + 58, hy + 2, { width: W - 58 });
+        doc.fontSize(8.5).font('Helvetica').fillColor(LGRAY)
+          .text([companyAddress, companyPhone && 'Tel: ' + companyPhone].filter(Boolean).join('  |  '),
+            ML + 58, hy + 20, { width: W - 58 });
         reset();
 
-        const bodyY = y + 28;
+        hy += 52;
+        doc.moveTo(ML, hy).lineTo(ML + W, hy).lineWidth(1.5).strokeColor(ORANGE).stroke();
+        reset();
+
+        hy += 10;
+        doc.fontSize(15).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('DC FREEZER INSTALLMENT PLAN', ML, hy, { width: W });
+        if (subtitle) {
+          doc.fontSize(10).font('Helvetica').fillColor('#555555')
+            .text(subtitle, ML, hy + 19, { width: W });
+          hy += 16;
+        }
+        reset();
+        return hy + 26;
+      };
+
+      const drawFooter = () => {
+        const fy = 802 - 40 - 88;
+        doc.moveTo(ML, fy).lineTo(ML + W, fy).lineWidth(0.6).strokeColor('#dddddd').stroke();
+        reset();
+        // The late-payment charge, set apart so it is not skimmed over: it is
+        // the one term on this sheet that costs the customer money.
+        doc.roundedRect(ML, fy + 6, W, 30, 3).fill('#fdf2e9');
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#b34700')
+          .text('If the ' + lateAfterMonths + ' months pass and payment is not complete, an additional '
+            + latePercent + '% of the total amount is charged for every week thereafter.',
+            ML + 8, fy + 13, { width: W - 16, align: 'center', lineGap: 1 });
+        reset();
+
+        doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+          .text('Goods remain the property of the Company until the agreed price is paid in full. Prices are subject to change without notice.',
+            ML, fy + 44, { width: W, align: 'center' });
+
+        const sigW = (W - 60) / 2;
+        [['MANAGER', ''], ['FOR THE COMPANY', '']].forEach(([lbl], i) => {
+          const sx = ML + i * (sigW + 60);
+          doc.moveTo(sx, fy + 74).lineTo(sx + sigW, fy + 74).lineWidth(0.6).strokeColor('#999999').stroke();
+          doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
+            .text(lbl, sx, fy + 78, { width: sigW, align: 'center' });
+          reset();
+        });
+      };
+
+      /** The compact block: three columns, used when all plans share a page. */
+      const drawPackageCompact = (p, top) => {
+        const balance = Math.max(0, p.total - p.deposit);
+        const saving = p.total - p.cashPrice;
+        const contents = p.contents || [];
+        const BLOCK_H = 132;
+
+        doc.roundedRect(ML, top, W, BLOCK_H, 5).lineWidth(0.8).strokeColor('#dddddd').stroke();
+        doc.rect(ML, top, W, 20).fill(ORANGE);
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#ffffff')
+          .text(p.name.toUpperCase(), ML + 10, top + 6, { width: W - 20 });
+        reset();
+
+        const bodyY = top + 28;
         const colW = (W - 30) / 3;
 
-        // Column 1 — the installment plan
         let cy = bodyY;
         doc.fontSize(7.5).font('Helvetica-Bold').fillColor(ORANGE)
           .text('INSTALLMENT PLAN', ML + 10, cy, { width: colW });
@@ -1345,7 +1377,6 @@ const generateFreezerOfferSheet = async (options = {}) => {
         kv('Balance', gh(balance), true);
         kv('Period', p.months + ' months');
 
-        // Column 2 — how the balance is paid
         const c2 = ML + 10 + colW + 5;
         cy = bodyY;
         doc.fontSize(7.5).font('Helvetica-Bold').fillColor(ORANGE)
@@ -1360,10 +1391,9 @@ const generateFreezerOfferSheet = async (options = {}) => {
           reset();
           cy += 15;
         };
-        sched('Every month', p.monthly, p.months, monthlyTotal);
-        sched('Every week', p.weekly, p.weeks, weeklyTotal);
+        sched('Every month', p.monthly, p.months, p.monthly * p.months);
+        sched('Every week', p.weekly, p.weeks, p.weekly * p.weeks);
 
-        // Column 3 — the cash alternative
         const c3 = ML + 10 + (colW + 5) * 2;
         cy = bodyY;
         doc.roundedRect(c3 - 6, cy - 4, colW + 6, 52, 4).fill('#f4f9f4');
@@ -1375,44 +1405,122 @@ const generateFreezerOfferSheet = async (options = {}) => {
           .text('You save ' + gh(saving), c3, cy + 31, { width: colW });
         reset();
 
-        // What is in the package, across the foot of the block
-        const listY = y + BLOCK_H - 34;
+        const listY = top + BLOCK_H - 34;
         doc.moveTo(ML + 10, listY - 6).lineTo(ML + W - 10, listY - 6)
           .lineWidth(0.4).strokeColor('#e5e5e5').stroke();
         doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
           .text('PACKAGE INCLUDES', ML + 10, listY, { width: 100, lineBreak: false });
         doc.fontSize(8).font('Helvetica').fillColor('#111111')
-          .text((p.contents || []).join('   •   '), ML + 100, listY, { width: W - 110, lineBreak: false });
+          .text(contents.join('   •   '), ML + 100, listY, { width: W - 110, lineBreak: false });
         reset();
 
-        y += BLOCK_H + 12;
-      });
+        return top + BLOCK_H;
+      };
 
-      // ── Footer ────────────────────────────────────────────────────────────
-      const fy = 802 - 40 - 88;
-      doc.moveTo(ML, fy).lineTo(ML + W, fy).lineWidth(0.6).strokeColor('#dddddd').stroke();
-      reset();
-      // The late-payment charge, set apart so it is not skimmed over: it is the
-      // one term on this sheet that costs the customer money.
-      doc.roundedRect(ML, fy + 6, W, 30, 3).fill('#fdf2e9');
-      doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#b34700')
-        .text('If the ' + lateAfterMonths + ' months pass and payment is not complete, an additional '
-          + latePercent + '% of the total amount is charged for every week thereafter.',
-          ML + 8, fy + 13, { width: W - 16, align: 'center', lineGap: 1 });
-      reset();
+      /**
+       * The sheet-per-plan block. Not the compact one scaled up — at larger
+       * type the three columns collide, so this stacks instead: the plan and
+       * the cash price side by side, then the two payment schedules in boxes
+       * of their own, then the contents as a list.
+       */
+      const drawPackageFull = (p, top) => {
+        const balance = Math.max(0, p.total - p.deposit);
+        const saving = p.total - p.cashPrice;
+        const contents = p.contents || [];
+        const TITLE_H = 30;
+        const BLOCK_H = 300 + contents.length * 19;
 
-      doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
-        .text('Goods remain the property of the Company until the agreed price is paid in full. Prices are subject to change without notice.',
-          ML, fy + 44, { width: W, align: 'center' });
-
-      const sigW = (W - 60) / 2;
-      [['MANAGER', ''], ['FOR THE COMPANY', '']].forEach(([lbl], i) => {
-        const sx = ML + i * (sigW + 60);
-        doc.moveTo(sx, fy + 74).lineTo(sx + sigW, fy + 74).lineWidth(0.6).strokeColor('#999999').stroke();
-        doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
-          .text(lbl, sx, fy + 78, { width: sigW, align: 'center' });
+        doc.roundedRect(ML, top, W, BLOCK_H, 6).lineWidth(0.8).strokeColor('#dddddd').stroke();
+        doc.rect(ML, top, W, TITLE_H).fill(ORANGE);
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#ffffff')
+          .text(p.name.toUpperCase(), ML + 14, top + 8, { width: W - 28 });
         reset();
-      });
+
+        // ── The plan, and the cash alternative beside it ────────────────────
+        const secY = top + TITLE_H + 18;
+        const leftW = 290;
+        doc.fontSize(9).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('INSTALLMENT PLAN', ML + 14, secY, { width: leftW });
+        let ry = secY + 18;
+        const row = (k, v, strong) => {
+          doc.fontSize(10).font('Helvetica').fillColor('#555555')
+            .text(k, ML + 14, ry, { width: 150, lineBreak: false });
+          doc.fontSize(strong ? 12 : 10).font('Helvetica-Bold').fillColor('#111111')
+            .text(v, ML + 150, ry - (strong ? 2 : 0), { width: leftW - 150, align: 'right', lineBreak: false });
+          reset();
+          ry += strong ? 20 : 18;
+        };
+        row('Total amount', gh(p.total), true);
+        row('Initial deposit', gh(p.deposit));
+        row('Balance to pay', gh(balance), true);
+        row('Period', p.months + ' months');
+
+        const cardX = ML + leftW + 30;
+        const cardW = W - leftW - 44;
+        doc.roundedRect(cardX, secY - 8, cardW, 92, 5).fill('#f1f8f1');
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#2f7d32')
+          .text('READY CASH PRICE', cardX + 12, secY + 2, { width: cardW - 24 });
+        doc.fontSize(22).font('Helvetica-Bold').fillColor('#2f7d32')
+          .text(gh(p.cashPrice), cardX + 12, secY + 20, { width: cardW - 24 });
+        doc.fontSize(9).font('Helvetica').fillColor('#2f7d32')
+          .text('Pay cash and save ' + gh(saving), cardX + 12, secY + 52, { width: cardW - 24 });
+        reset();
+
+        // ── The two ways of clearing the balance ────────────────────────────
+        const payY = top + TITLE_H + 122;
+        doc.fontSize(9).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('PAYING THE BALANCE', ML + 14, payY, { width: W - 28 });
+
+        const boxW = (W - 40) / 2;
+        [
+          ['EVERY MONTH', p.monthly, p.months, p.monthly * p.months],
+          ['EVERY WEEK', p.weekly, p.weeks, p.weekly * p.weeks],
+        ].forEach(([label, per, times, total], i) => {
+          const bx = ML + 14 + i * (boxW + 12);
+          const by = payY + 18;
+          doc.roundedRect(bx, by, boxW, 62, 5).lineWidth(0.7).strokeColor('#e3e3e3').stroke();
+          doc.fontSize(8).font('Helvetica-Bold').fillColor(LGRAY)
+            .text(label, bx + 12, by + 9, { width: boxW - 24 });
+          doc.fontSize(15).font('Helvetica-Bold').fillColor('#111111')
+            .text(gh(per) + ' × ' + times, bx + 12, by + 22, { width: boxW - 24 });
+          doc.fontSize(8.5).font('Helvetica').fillColor('#666666')
+            .text('Totalling ' + gh(total), bx + 12, by + 44, { width: boxW - 24 });
+          reset();
+        });
+
+        // ── What is in the box ──────────────────────────────────────────────
+        const listY = top + TITLE_H + 218;
+        doc.moveTo(ML + 14, listY - 12).lineTo(ML + W - 14, listY - 12)
+          .lineWidth(0.5).strokeColor('#e5e5e5').stroke();
+        doc.fontSize(9).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('PACKAGE INCLUDES', ML + 14, listY, { width: W - 28 });
+        contents.forEach((item, i) => {
+          const iy = listY + 22 + i * 19;
+          doc.circle(ML + 22, iy + 4, 2).fill(ORANGE);
+          doc.fontSize(10.5).font('Helvetica').fillColor('#111111')
+            .text(item, ML + 34, iy, { width: W - 50 });
+          reset();
+        });
+
+        return top + BLOCK_H;
+      };
+
+      // ── Lay the sheets out ────────────────────────────────────────────────
+      // 'separate' gives each plan its own page, which is what gets handed to a
+      // customer who has already chosen a size. 'combined' puts all three on
+      // one sheet for comparing.
+      if (options.layout === 'combined') {
+        let y = drawHeader();
+        packages.forEach((p) => { y = drawPackageCompact(p, y) + 12; });
+        drawFooter();
+      } else {
+        packages.forEach((p, i) => {
+          if (i > 0) doc.addPage();   // pageAdded redraws the watermark
+          const y = drawHeader();
+          drawPackageFull(p, y);
+          drawFooter();
+        });
+      }
 
       doc.end();
     } catch (err) {
