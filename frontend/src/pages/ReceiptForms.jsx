@@ -1,11 +1,11 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer, FiBatteryCharging, FiZap, FiSun } from 'react-icons/fi'
-import { getBlankReceiptForm, getFilledReceiptForm, getInstallmentPlanSheet, getPriceSheet } from '../api/forms'
+import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer, FiBatteryCharging, FiZap, FiSun, FiAward } from 'react-icons/fi'
+import { getBlankReceiptForm, getFilledReceiptForm, getInstallmentPlanSheet, getPriceSheet, getAcceptanceLetter } from '../api/forms'
 import { getProducts } from '../api/products'
 import { openPdfInNewTab } from '../utils/openPdf'
-import { formatCurrency } from '../utils/helpers'
+import { formatCurrency, formatDate } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 
 /**
@@ -29,6 +29,15 @@ export default function ReceiptForms() {
   const [customer, setCustomer] = useState({ name: '', phone: '', address: '' })
   const [receiptNo, setReceiptNo] = useState('')
   const [discount, setDiscount] = useState('')
+
+  // Acceptance letter for a student on attachment or internship. Only the name
+  // is required — the letter is written from whatever is filled in.
+  const [letter, setLetter] = useState({
+    name: '', title: '', institution: '', programme: '',
+    kind: 'attachment', startDate: '', endDate: '', department: '',
+    addressee: '', signatoryName: '',
+  })
+  const [letterBusy, setLetterBusy] = useState(false)
 
   const { data: productData, isFetching } = useQuery({
     queryKey: ['form-products', search],
@@ -125,6 +134,27 @@ export default function ReceiptForms() {
       toast.error(err.message || 'Could not generate the form.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const printLetter = async () => {
+    if (!letter.name.trim()) return toast.error("Enter the person's name.")
+    setLetterBusy(true)
+    try {
+      await openPdfInNewTab(
+        () => getAcceptanceLetter({
+          ...letter,
+          name: letter.name.trim(),
+          // A blank date would otherwise print as an empty gap mid-sentence.
+          startDate: letter.startDate ? formatDate(letter.startDate) : undefined,
+          endDate: letter.endDate ? formatDate(letter.endDate) : undefined,
+        }),
+        'acceptance-letter.pdf'
+      )
+    } catch (err) {
+      toast.error(err.message || 'Could not generate the letter.')
+    } finally {
+      setLetterBusy(false)
     }
   }
 
@@ -454,6 +484,106 @@ export default function ReceiptForms() {
             {planBusy === 'solar-systems' ? 'Preparing…' : 'Print'}
           </button>
         </div>
+      </div>
+
+      {/* Acceptance letter for a student on attachment or internship. */}
+      <div className="mt-4 bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-start gap-3 mb-4">
+          <FiAward className="text-orange-500 flex-shrink-0 mt-0.5" size={18} />
+          <div>
+            <h3 className="font-bold text-gray-800 text-sm">Attachment / Internship Acceptance Letter</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Confirms that the person named has been accepted to do their attachment or
+              internship here. Only the name is required — the letter is written from
+              whatever you fill in.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <select
+            value={letter.title}
+            onChange={e => setLetter({ ...letter, title: e.target.value })}
+            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+          >
+            <option value="">Title (optional)</option>
+            <option value="Mr.">Mr.</option>
+            <option value="Mrs.">Mrs.</option>
+            <option value="Ms.">Ms.</option>
+            <option value="Miss">Miss</option>
+          </select>
+          <input
+            value={letter.name}
+            onChange={e => setLetter({ ...letter, name: e.target.value })}
+            placeholder="Full name *"
+            className="sm:col-span-2 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+          <input
+            value={letter.institution}
+            onChange={e => setLetter({ ...letter, institution: e.target.value })}
+            placeholder="School or institution"
+            className="sm:col-span-2 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+          <select
+            value={letter.kind}
+            onChange={e => setLetter({ ...letter, kind: e.target.value })}
+            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+          >
+            <option value="attachment">Industrial attachment</option>
+            <option value="internship">Internship</option>
+          </select>
+          <input
+            value={letter.programme}
+            onChange={e => setLetter({ ...letter, programme: e.target.value })}
+            placeholder="Programme or course"
+            className="sm:col-span-2 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+          <input
+            value={letter.department}
+            onChange={e => setLetter({ ...letter, department: e.target.value })}
+            placeholder="Unit they join"
+            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Start date</label>
+            <input
+              type="date"
+              value={letter.startDate}
+              onChange={e => setLetter({ ...letter, startDate: e.target.value })}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">End date</label>
+            <input
+              type="date"
+              value={letter.endDate}
+              onChange={e => setLetter({ ...letter, endDate: e.target.value })}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+          <input
+            value={letter.signatoryName}
+            onChange={e => setLetter({ ...letter, signatoryName: e.target.value })}
+            placeholder="Who signs it"
+            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+          <input
+            value={letter.addressee}
+            onChange={e => setLetter({ ...letter, addressee: e.target.value })}
+            placeholder="Addressed to (default: To Whom It May Concern)"
+            className="sm:col-span-3 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+
+        <button
+          onClick={printLetter}
+          disabled={letterBusy}
+          className="mt-4 w-full flex items-center justify-center gap-2 py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
+        >
+          <FiPrinter size={16} />
+          {letterBusy ? 'Preparing…' : 'Print acceptance letter'}
+        </button>
       </div>
     </div>
   )

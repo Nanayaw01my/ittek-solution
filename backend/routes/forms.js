@@ -4,6 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const Settings = require('../models/Settings');
 const {
   generateBlankReceiptForm, generateInstallmentPlanSheet, generateFixedPriceList,
+  generateAcceptanceLetter,
 } = require('../utils/pdfGenerator');
 const { PLAN_SETS, PRICE_LISTS } = require('../config/installmentPlans');
 
@@ -184,6 +185,52 @@ router.get('/price-sheet', authenticate, async (req, res) => {
   } catch (err) {
     console.error('Price sheet error:', err.message);
     return res.status(500).json({ success: false, message: 'Could not generate the sheet.' });
+  }
+});
+
+/**
+ * POST /api/forms/acceptance-letter
+ *
+ * An acceptance letter for a student coming on industrial attachment or
+ * internship. Only the name is required; every other field simply shapes the
+ * sentences, so a letter written with half the details still reads properly.
+ */
+router.post('/acceptance-letter', authenticate, async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    if (!name) {
+      return res.status(400).json({ success: false, message: 'Enter the person\'s name.' });
+    }
+
+    const settings = (await Settings.findOne().lean()) || {};
+    const pdf = await generateAcceptanceLetter({
+      logoUrl: settings.logo_url,
+      company: {
+        name: settings.company_name,
+        address: settings.company_address,
+        phone: settings.company_phone,
+      },
+      name,
+      title: req.body.title,
+      institution: req.body.institution,
+      programme: req.body.programme,
+      kind: req.body.kind,
+      startDate: req.body.startDate,
+      endDate: req.body.endDate,
+      department: req.body.department,
+      addressee: req.body.addressee,
+      reference: req.body.reference,
+      signatoryName: req.body.signatoryName,
+      signatoryRole: req.body.signatoryRole,
+    });
+
+    const safe = name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="acceptance-letter-${safe}.pdf"`);
+    return res.end(pdf);
+  } catch (err) {
+    console.error('Acceptance letter error:', err.message);
+    return res.status(500).json({ success: false, message: 'Could not generate the letter.' });
   }
 });
 

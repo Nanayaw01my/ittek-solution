@@ -1708,10 +1708,194 @@ const generateFixedPriceList = async (options = {}) => {
   });
 };
 
+
+/**
+ * Acceptance letter for an industrial attachment or internship (A4).
+ *
+ * Written for a named person and addressed to whoever asked for it — usually a
+ * school. Everything but the name is optional: the sentences are assembled
+ * from what was supplied, so a letter with only a name still reads properly
+ * rather than printing "undefined" or an empty clause.
+ *
+ * Pronouns follow the title when one is given (Mr → he, Mrs/Ms/Miss → she) and
+ * are they/them otherwise, since the shop will not always know and a wrong
+ * guess is worse than the neutral form.
+ *
+ * @param {Object} options - { logoUrl, company, name, title, institution,
+ *   programme, kind, startDate, endDate, department, addressee, reference,
+ *   date, signatoryName, signatoryRole }
+ * @returns {Promise<Buffer>}
+ */
+const generateAcceptanceLetter = async (options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, bottom: 40, left: 55, right: 55 } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 55;
+      const W = 485;
+      const ORANGE = '#e86b00';
+      const LGRAY = '#777777';
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+      const companyAddress = company.address || 'Bogoso, Western Region';
+      const companyPhone = company.phone || '+233 595413632';
+
+      const name = String(options.name || '').trim();
+      const title = String(options.title || '').trim();
+      const fullName = [title, name].filter(Boolean).join(' ');
+      const institution = String(options.institution || '').trim();
+      const programme = String(options.programme || '').trim();
+      const department = String(options.department || '').trim();
+      const kind = options.kind === 'internship' ? 'internship' : 'industrial attachment';
+      const addressee = String(options.addressee || '').trim();
+      const reference = String(options.reference || '').trim();
+      const letterDate = String(options.date || new Date().toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'long', year: 'numeric',
+      })).trim();
+      const signatoryName = String(options.signatoryName || '').trim();
+      const signatoryRole = String(options.signatoryRole || 'Manager').trim();
+
+      // he/she when the title says so, they/them when it does not.
+      const t = title.toLowerCase().replace(/\./g, '');
+      const subject = t === 'mr' ? 'he' : ['mrs', 'ms', 'miss', 'madam'].includes(t) ? 'she' : 'they';
+      const possessive = subject === 'he' ? 'his' : subject === 'she' ? 'her' : 'their';
+      const objectPron = subject === 'he' ? 'him' : subject === 'she' ? 'her' : 'them';
+      const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      attachWatermark(doc, logoBuf);
+
+      // ── Letterhead ────────────────────────────────────────────────────────
+      let y = 42;
+      if (logoBuf) {
+        try { doc.image(logoBuf, ML, y, { width: 52 }); } catch { /* keep the gap */ }
+      }
+      doc.fontSize(15).font('Helvetica-Bold').fillColor('#111111')
+        .text(companyName, ML + 64, y + 4, { width: W - 64 });
+      doc.fontSize(9).font('Helvetica').fillColor(LGRAY)
+        .text(companyAddress, ML + 64, y + 24, { width: W - 64 });
+      doc.text('Tel: ' + companyPhone, ML + 64, y + 37, { width: W - 64 });
+      reset();
+
+      y += 62;
+      doc.moveTo(ML, y).lineTo(ML + W, y).lineWidth(1.5).strokeColor(ORANGE).stroke();
+      reset();
+
+      // ── Reference and date ────────────────────────────────────────────────
+      y += 18;
+      if (reference) {
+        doc.fontSize(9.5).font('Helvetica').fillColor('#333333')
+          .text('Our Ref: ' + reference, ML, y, { width: W / 2 });
+      }
+      doc.fontSize(9.5).font('Helvetica').fillColor('#333333')
+        .text(letterDate, ML + W / 2, y, { width: W / 2, align: 'right' });
+      reset();
+
+      // ── Addressee ─────────────────────────────────────────────────────────
+      y += 30;
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#111111')
+        .text(addressee || 'TO WHOM IT MAY CONCERN', ML, y, { width: W });
+      y = doc.y + 20;
+
+      doc.fontSize(11).font('Helvetica').fillColor('#111111').text('Dear Sir/Madam,', ML, y);
+      y = doc.y + 16;
+
+      // ── Subject line ──────────────────────────────────────────────────────
+      const subjectLine = 'RE: ACCEPTANCE FOR ' + (kind === 'internship' ? 'INTERNSHIP' : 'INDUSTRIAL ATTACHMENT')
+        + (name ? ' — ' + name.toUpperCase() : '');
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#111111')
+        .text(subjectLine, ML, y, { width: W, underline: true });
+      y = doc.y + 18;
+
+      // ── Body ──────────────────────────────────────────────────────────────
+      const who = fullName || 'the applicant';
+      const fromSchool = institution ? ' of ' + institution : '';
+      const studying = programme ? ', offering ' + programme + ',' : '';
+
+      const paragraphs = [];
+
+      paragraphs.push(
+        // 'has', not 'have': the subject of this sentence is the person's
+        // name, which is singular even where the pronoun later is they.
+        `We write to confirm that ${who}${fromSchool}${studying} has been accepted to undertake `
+        + `${possessive} ${kind} with ${companyName}.`
+      );
+
+      if (options.startDate && options.endDate) {
+        paragraphs.push(
+          `The ${kind} is scheduled to run from ${options.startDate} to ${options.endDate}.`
+          + (department ? ` ${cap(subject)} will be attached to our ${department} unit.` : '')
+        );
+      } else if (department) {
+        paragraphs.push(`${cap(subject)} will be attached to our ${department} unit.`);
+      }
+
+      paragraphs.push(
+        `${cap(subject)} will work under the supervision of our staff, and we shall provide the guidance and `
+        + `practical exposure needed to meet the requirements of the programme. We will also report on `
+        + `${possessive} conduct and performance at the end of the period should the institution require it.`
+      );
+
+      paragraphs.push(
+        `We are pleased to receive ${objectPron} and trust that the period spent with us will be of `
+        + `benefit to ${possessive} training.`
+      );
+
+      paragraphs.push('Thank you.');
+
+      doc.fontSize(11).font('Helvetica').fillColor('#111111');
+      paragraphs.forEach((para) => {
+        doc.text(para, ML, y, { width: W, align: 'justify', lineGap: 3 });
+        y = doc.y + 14;
+      });
+
+      // ── Signature ─────────────────────────────────────────────────────────
+      y += 10;
+      doc.fontSize(11).font('Helvetica').fillColor('#111111').text('Yours faithfully,', ML, y);
+      y = doc.y + 46;
+
+      doc.moveTo(ML, y).lineTo(ML + 220, y).lineWidth(0.7).strokeColor('#888888').stroke();
+      reset();
+      if (signatoryName) {
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#111111')
+          .text(signatoryName, ML, y + 6, { width: 220 });
+        doc.fontSize(9.5).font('Helvetica').fillColor(LGRAY)
+          .text(signatoryRole, ML, y + 20, { width: 220 });
+      } else {
+        doc.fontSize(9.5).font('Helvetica-Bold').fillColor(LGRAY)
+          .text(signatoryRole.toUpperCase(), ML, y + 6, { width: 220 });
+        doc.fontSize(8.5).font('Helvetica').fillColor(LGRAY)
+          .text('Name, signature and company stamp', ML, y + 19, { width: 220 });
+      }
+      reset();
+
+      // ── Footer ────────────────────────────────────────────────────────────
+      const fy = 802 - 40 - 28;
+      doc.moveTo(ML, fy).lineTo(ML + W, fy).lineWidth(0.6).strokeColor('#dddddd').stroke();
+      doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
+        .text(companyName + '  |  ' + companyAddress + '  |  Tel: ' + companyPhone,
+          ML, fy + 8, { width: W, align: 'center' });
+      reset();
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 module.exports = {
   generateReceipt, generateCreditAgreement, generateLayawayAgreement,
   generatePriceList, generateReport, generateBlankReceiptForm,
-  generateInstallmentPlanSheet, generateFixedPriceList,
+  generateInstallmentPlanSheet, generateFixedPriceList, generateAcceptanceLetter,
   // The original name, kept so nothing that imports it breaks.
   generateFreezerOfferSheet: generateInstallmentPlanSheet,
 };
