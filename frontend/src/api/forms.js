@@ -12,5 +12,8 @@ export const getInstallmentPlanSheet = (params) =>
 export const getPriceSheet = (params) =>
   api.get('/forms/price-sheet', { params, responseType: 'blob' })
 
+export const getPhonePlanSheet = (data) =>
+  api.post('/forms/phone-plan', data, { responseType: 'blob' })
+
 export const getAcceptanceLetter = (data) =>
   api.post('/forms/acceptance-letter', data, { responseType: 'blob' })

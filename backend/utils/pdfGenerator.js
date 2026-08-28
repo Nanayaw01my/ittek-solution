@@ -1426,14 +1426,18 @@ const generateInstallmentPlanSheet = async (options = {}) => {
           reset();
         }
 
-        const listY = top + BLOCK_H - 34;
-        doc.moveTo(ML + 10, listY - 6).lineTo(ML + W - 10, listY - 6)
-          .lineWidth(0.4).strokeColor('#e5e5e5').stroke();
-        doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
-          .text('PACKAGE INCLUDES', ML + 10, listY, { width: 100, lineBreak: false });
-        doc.fontSize(8).font('Helvetica').fillColor('#111111')
-          .text(contents.join('   •   '), ML + 100, listY, { width: W - 110, lineBreak: false });
-        reset();
+        // Nothing listed means nothing to head: a phone sold on its own would
+        // otherwise print "PACKAGE INCLUDES" against an empty line.
+        if (contents.length) {
+          const listY = top + BLOCK_H - 34;
+          doc.moveTo(ML + 10, listY - 6).lineTo(ML + W - 10, listY - 6)
+            .lineWidth(0.4).strokeColor('#e5e5e5').stroke();
+          doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
+            .text('PACKAGE INCLUDES', ML + 10, listY, { width: 100, lineBreak: false });
+          doc.fontSize(8).font('Helvetica').fillColor('#111111')
+            .text(contents.join('   •   '), ML + 100, listY, { width: W - 110, lineBreak: false });
+          reset();
+        }
 
         return top + BLOCK_H;
       };
@@ -1515,10 +1519,12 @@ const generateInstallmentPlanSheet = async (options = {}) => {
 
         // ── What is in the box ──────────────────────────────────────────────
         const listY = top + TITLE_H + 218;
-        doc.moveTo(ML + 14, listY - 12).lineTo(ML + W - 14, listY - 12)
-          .lineWidth(0.5).strokeColor('#e5e5e5').stroke();
-        doc.fontSize(9).font('Helvetica-Bold').fillColor(ORANGE)
-          .text('PACKAGE INCLUDES', ML + 14, listY, { width: W - 28 });
+        if (contents.length) {
+          doc.moveTo(ML + 14, listY - 12).lineTo(ML + W - 14, listY - 12)
+            .lineWidth(0.5).strokeColor('#e5e5e5').stroke();
+          doc.fontSize(9).font('Helvetica-Bold').fillColor(ORANGE)
+            .text('PACKAGE INCLUDES', ML + 14, listY, { width: W - 28 });
+        }
         contents.forEach((item, i) => {
           const iy = listY + 22 + i * 19;
           doc.circle(ML + 22, iy + 4, 2).fill(ORANGE);

@@ -189,6 +189,89 @@ router.get('/price-sheet', authenticate, async (req, res) => {
 });
 
 /**
+ * POST /api/forms/phone-plan
+ *
+ * An installment sheet for phones. Unlike the freezer, power station and
+ * lithium sets, these are not fixed offers held in a config file — phone
+ * prices move week to week, so the models and figures are typed in and the
+ * sheet is printed from them.
+ *
+ * The weekly and monthly figures are worked out here rather than taken from
+ * the request: the schedule on a sheet handed to a customer has to divide the
+ * balance exactly, and the one place that can be guaranteed is the place that
+ * prints it.
+ */
+router.post('/phone-plan', authenticate, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const months = Math.min(24, Math.max(1, Number(body.months) || 3));
+    const weeks = Math.min(104, Math.max(1, Number(body.weeks) || 12));
+
+    const items = Array.isArray(body.items) ? body.items : [];
+    const packages = items
+      .map((i) => {
+        const name = String(i.name || '').trim().slice(0, 120);
+        const total = Number(i.total) || 0;
+        // A deposit above the price would print a negative schedule; clamp it
+        // rather than refusing the sheet over a typo in one row.
+        const deposit = Math.min(Math.max(0, Number(i.deposit) || 0), total);
+        const balance = total - deposit;
+        const cash = Number(i.cashPrice) || 0;
+
+        // Kept to the pesewa. Rounding up to the cedi would collect more than
+        // the balance across the term without saying so on the sheet.
+        const round = (n) => Math.round(n * 100) / 100;
+
+        return {
+          name,
+          total,
+          deposit,
+          months,
+          monthly: round(balance / months),
+          weeks,
+          weekly: round(balance / weeks),
+          // Only when it is a real alternative price, not a blank field.
+          ...(cash > 0 && cash < total ? { cashPrice: cash } : {}),
+          contents: String(i.contents || '')
+            .split(',')
+            .map((c) => c.trim())
+            .filter(Boolean)
+            .slice(0, 8),
+        };
+      })
+      .filter((p) => p.name && p.total > 0)
+      .slice(0, 12);
+
+    if (packages.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Add at least one phone with a model name and a total price.',
+      });
+    }
+
+    const settings = (await Settings.findOne().lean()) || {};
+    const pdf = await generateInstallmentPlanSheet({
+      logoUrl: settings.logo_url,
+      company: {
+        name: settings.company_name,
+        address: settings.company_address,
+        phone: settings.company_phone,
+      },
+      title: String(body.title || 'IPHONE INSTALLMENT PLAN').toUpperCase().slice(0, 60),
+      packages,
+      layout: ['combined', 'separate'].includes(body.layout) ? body.layout : 'all',
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="phone-installment-plan.pdf"');
+    return res.end(pdf);
+  } catch (err) {
+    console.error('Phone plan sheet error:', err.message);
+    return res.status(500).json({ success: false, message: 'Could not generate the sheet.' });
+  }
+});
+
+/**
  * POST /api/forms/acceptance-letter
  *
  * An acceptance letter for a student coming on industrial attachment or

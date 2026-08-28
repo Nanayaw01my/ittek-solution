@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer, FiBatteryCharging, FiZap, FiSun, FiAward } from 'react-icons/fi'
-import { getBlankReceiptForm, getFilledReceiptForm, getInstallmentPlanSheet, getPriceSheet, getAcceptanceLetter } from '../api/forms'
+import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer, FiBatteryCharging, FiZap, FiSun, FiAward, FiSmartphone } from 'react-icons/fi'
+import { getBlankReceiptForm, getFilledReceiptForm, getInstallmentPlanSheet, getPriceSheet, getAcceptanceLetter, getPhonePlanSheet } from '../api/forms'
 import { getProducts } from '../api/products'
 import { openPdfInNewTab } from '../utils/openPdf'
 import { formatCurrency, formatDate } from '../utils/helpers'
@@ -38,6 +38,66 @@ export default function ReceiptForms() {
     addressee: '', signatoryName: '',
   })
   const [letterBusy, setLetterBusy] = useState(false)
+
+  // Phone installment sheet. The solar packages are fixed offers held in a
+  // config file; phone prices move too often for that, so the models and
+  // figures are typed in here and the sheet is printed from them.
+  const [phoneTerm, setPhoneTerm] = useState({ months: 3, weeks: 12 })
+  const [phones, setPhones] = useState([
+    { key: 'p1', name: '', total: '', deposit: '', cashPrice: '', contents: '' },
+  ])
+  const [phoneBusy, setPhoneBusy] = useState(false)
+
+  const addPhone = () => setPhones(prev => [
+    ...prev,
+    { key: `p${Date.now()}`, name: '', total: '', deposit: '', cashPrice: '', contents: '' },
+  ])
+  const updatePhone = (key, field, value) =>
+    setPhones(prev => prev.map(p => (p.key === key ? { ...p, [field]: value } : p)))
+  const removePhone = (key) => setPhones(prev => prev.filter(p => p.key !== key))
+
+  /**
+   * What each row will print. Shown beside the inputs so the schedule can be
+   * checked against the balance before the sheet is handed to a customer —
+   * the backend does this same sum, this is only the preview of it.
+   */
+  const phoneSchedule = (p) => {
+    const total = parseFloat(p.total) || 0
+    const deposit = Math.min(Math.max(0, parseFloat(p.deposit) || 0), total)
+    const balance = total - deposit
+    const months = Math.max(1, Number(phoneTerm.months) || 3)
+    const weeks = Math.max(1, Number(phoneTerm.weeks) || 12)
+    return { total, deposit, balance, monthly: balance / months, weekly: balance / weeks }
+  }
+
+  const validPhones = phones.filter(p => p.name.trim() && (parseFloat(p.total) || 0) > 0)
+
+  const printPhonePlan = async () => {
+    if (validPhones.length === 0) {
+      return toast.error('Add at least one phone with a model and a total price.')
+    }
+    setPhoneBusy(true)
+    try {
+      await openPdfInNewTab(
+        () => getPhonePlanSheet({
+          months: Number(phoneTerm.months) || 3,
+          weeks: Number(phoneTerm.weeks) || 12,
+          items: validPhones.map(p => ({
+            name: p.name.trim(),
+            total: parseFloat(p.total) || 0,
+            deposit: parseFloat(p.deposit) || 0,
+            cashPrice: parseFloat(p.cashPrice) || 0,
+            contents: p.contents.trim(),
+          })),
+        }),
+        'phone-installment-plan.pdf'
+      )
+    } catch (err) {
+      toast.error(err.message || 'Could not generate the sheet.')
+    } finally {
+      setPhoneBusy(false)
+    }
+  }
 
   const { data: productData, isFetching } = useQuery({
     queryKey: ['form-products', search],
@@ -484,6 +544,130 @@ export default function ReceiptForms() {
             {planBusy === 'solar-systems' ? 'Preparing…' : 'Print'}
           </button>
         </div>
+      </div>
+
+      {/* Phone installment sheet, built from typed-in prices rather than a
+          fixed offer list — phone prices change too often to hold in code. */}
+      <div className="mt-4 bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-start gap-3 mb-4">
+          <FiSmartphone className="text-orange-500 flex-shrink-0 mt-0.5" size={18} />
+          <div>
+            <h3 className="font-bold text-gray-800 text-sm">iPhone Installment Plan</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Enter each phone with its total price and down payment. The weekly and
+              monthly payments are worked out from the balance over the term below, so
+              the schedule on the sheet always clears exactly what is owed.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Months</label>
+            <input
+              type="number" min="1"
+              value={phoneTerm.months}
+              onChange={e => setPhoneTerm(t => ({ ...t, months: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Weeks</label>
+            <input
+              type="number" min="1"
+              value={phoneTerm.weeks}
+              onChange={e => setPhoneTerm(t => ({ ...t, weeks: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {phones.map((p) => {
+            const s = phoneSchedule(p)
+            return (
+              <div key={p.key} className="border border-gray-200 rounded-xl p-3 space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    value={p.name}
+                    onChange={e => updatePhone(p.key, 'name', e.target.value)}
+                    placeholder="iPhone 13 Pro Max 256GB"
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  {phones.length > 1 && (
+                    <button
+                      onClick={() => removePhone(p.key)}
+                      className="px-2 text-gray-400 hover:text-red-500"
+                      title="Remove"
+                    >
+                      <FiX size={16} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    type="number" min="0" value={p.total}
+                    onChange={e => updatePhone(p.key, 'total', e.target.value)}
+                    placeholder="Total price"
+                    className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <input
+                    type="number" min="0" value={p.deposit}
+                    onChange={e => updatePhone(p.key, 'deposit', e.target.value)}
+                    placeholder="Down payment"
+                    className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <input
+                    type="number" min="0" value={p.cashPrice}
+                    onChange={e => updatePhone(p.key, 'cashPrice', e.target.value)}
+                    placeholder="Cash price (optional)"
+                    className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+
+                <input
+                  value={p.contents}
+                  onChange={e => updatePhone(p.key, 'contents', e.target.value)}
+                  placeholder="What is in the box, separated by commas (optional)"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+
+                {s.total > 0 && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs bg-orange-50 rounded-lg px-3 py-2">
+                    <span className="text-gray-600">
+                      Balance <span className="font-bold text-gray-800">{formatCurrency(s.balance)}</span>
+                    </span>
+                    <span className="text-gray-600">
+                      Monthly × {phoneTerm.months}{' '}
+                      <span className="font-bold text-orange-700">{formatCurrency(s.monthly)}</span>
+                    </span>
+                    <span className="text-gray-600">
+                      Weekly × {phoneTerm.weeks}{' '}
+                      <span className="font-bold text-orange-700">{formatCurrency(s.weekly)}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <button
+          onClick={addPhone}
+          className="mt-3 flex items-center gap-2 text-sm font-semibold text-orange-600 hover:text-orange-700"
+        >
+          <FiPlus size={16} /> Add another phone
+        </button>
+
+        <button
+          onClick={printPhonePlan}
+          disabled={phoneBusy}
+          className="mt-4 w-full flex items-center justify-center gap-2 py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
+        >
+          <FiPrinter size={16} />
+          {phoneBusy ? 'Preparing…' : 'Print phone installment sheet'}
+        </button>
       </div>
 
       {/* Acceptance letter for a student on attachment or internship. */}
