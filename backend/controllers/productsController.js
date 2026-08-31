@@ -384,7 +384,63 @@ const bulkImport = async (req, res) => {
   }
 };
 
+/**
+ * The whole catalogue in one response, for the till to keep offline.
+ *
+ * Deliberately not the paginated list: the POS used to fill its offline copy
+ * from page one of that, which meant only the first 50 products by name were
+ * ever available with no connection and everything later in the alphabet
+ * simply could not be sold.
+ *
+ * Trimmed to what the till actually needs. A full catalogue has to fit in the
+ * browser's storage alongside the queued sales, and cost prices and supplier
+ * details have no business sitting on a shop floor device in the first place.
+ */
+const getOfflineCatalogue = async (req, res) => {
+  try {
+    const products = await Product.find({ is_active: true })
+      .select('name barcode selling_price quantity low_stock_level unit image_url has_variants variants category_id')
+      .populate('category_id', 'name')
+      .sort({ name: 1 })
+      .lean();
+
+    const slim = products.map((p) => ({
+      _id: p._id,
+      name: p.name,
+      barcode: p.barcode || '',
+      selling_price: p.selling_price,
+      quantity: p.quantity,
+      low_stock_level: p.low_stock_level,
+      unit: p.unit,
+      image_url: p.image_url,
+      category_id: p.category_id ? { _id: p.category_id._id, name: p.category_id.name } : null,
+      has_variants: !!p.has_variants,
+      // A product with variants is unsellable without them — the till sells
+      // the variant, never the parent.
+      variants: (p.variants || []).map((v) => ({
+        _id: v._id,
+        sku: v.sku,
+        name: v.name,
+        barcode: v.barcode || '',
+        selling_price: v.selling_price,
+        quantity: v.quantity,
+      })),
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: slim,
+      count: slim.length,
+      synced_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('Offline catalogue error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 module.exports = {
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
   getLowStock, getByBarcode, searchProducts, bulkImport, getProductSummary,
+  getOfflineCatalogue,
 };

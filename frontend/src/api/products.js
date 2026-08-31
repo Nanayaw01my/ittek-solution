@@ -9,6 +9,9 @@ export const searchProducts = (query) => api.post('/products/search', { query })
 export const getProductByBarcode = (barcode) => api.get(`/products/barcode/${barcode}`)
 export const getLowStockProducts = () => api.get('/products/low-stock')
 
+// The whole catalogue in one response, for the till to hold offline.
+export const getOfflineCatalogue = () => api.get('/products/offline-catalogue')
+
 export const getCategories = () => api.get('/categories')
 export const createCategory = (data) => api.post('/categories', data)
 export const updateCategory = (id, data) => api.put(`/categories/${id}`, data)

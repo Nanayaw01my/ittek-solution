@@ -8,6 +8,7 @@ const multer = require('multer');
 const {
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
   getLowStock, getByBarcode, searchProducts, bulkImport, getProductSummary,
+  getOfflineCatalogue,
 } = require('../controllers/productsController');
 const { previewImport, commitImport } = require('../controllers/productImportController');
 
@@ -33,6 +34,10 @@ router.post(
   auditLog('IMPORT_PRODUCTS', (req) => ({ count: (req.body.rows || []).length })),
   commitImport
 );
+// The whole catalogue for the till to hold offline. Above '/:id', or the path
+// would be read as a product id.
+router.get('/offline-catalogue', authenticate, getOfflineCatalogue);
+
 // Before '/:id', or the summary path would be read as a product id.
 router.get('/summary', authenticate, getProductSummary);
 router.get('/', authenticate, getProducts);

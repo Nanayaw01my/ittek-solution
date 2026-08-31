@@ -1,21 +1,44 @@
 const QUEUE_KEY = 'ittek_offline_sales_queue'
 const PRODUCTS_KEY = 'ittek_products_cache'
 const CACHE_TIME_KEY = 'ittek_products_cache_time'
-const CACHE_MAX_AGE = 24 * 60 * 60 * 1000 // 24 hours
+/**
+ * The catalogue is kept until it is replaced, not until it expires.
+ *
+ * It used to be thrown away after 24 hours, which meant a shop whose internet
+ * had been down for a day opened the till to an empty product list — exactly
+ * the moment the offline copy is worth having. Stale prices can be seen and
+ * judged; no products at all cannot be worked around.
+ *
+ * The age is shown on the sync button instead, so staff know how old the
+ * figures are and can refresh them the moment there is a signal.
+ */
 
 export const saveProductsCache = (products) => {
   try {
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products))
     localStorage.setItem(CACHE_TIME_KEY, Date.now().toString())
-  } catch {}
+    return true
+  } catch {
+    // Almost always the ~5MB quota. The queued sales matter more than the
+    // catalogue — they are money that has not reached the server yet — so
+    // drop the catalogue rather than let a half-written one sit there.
+    try { localStorage.removeItem(PRODUCTS_KEY) } catch {}
+    return false
+  }
 }
 
 export const getCachedProducts = () => {
   try {
     const cached = localStorage.getItem(PRODUCTS_KEY)
-    const time = parseInt(localStorage.getItem(CACHE_TIME_KEY) || '0')
-    if (!cached || Date.now() - time > CACHE_MAX_AGE) return null
-    return JSON.parse(cached)
+    return cached ? JSON.parse(cached) : null
+  } catch { return null }
+}
+
+/** When the catalogue was last downloaded, or null if it never has been. */
+export const getProductsCacheTime = () => {
+  try {
+    const t = parseInt(localStorage.getItem(CACHE_TIME_KEY) || '0')
+    return t > 0 ? t : null
   } catch { return null }
 }
 

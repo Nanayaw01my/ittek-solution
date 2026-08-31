@@ -1,16 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart, FiCreditCard, FiPause, FiList, FiRefreshCw, FiPackage } from 'react-icons/fi'
+import { FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart, FiCreditCard, FiPause, FiList, FiRefreshCw, FiPackage, FiDownloadCloud } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
-import { getProducts } from '../api/products'
+import { getProducts, getOfflineCatalogue } from '../api/products'
 import { createSale, createShortPayment } from '../api/pos'
 import { getSettings } from '../api/settings'
 import useAuthStore from '../store/authStore'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import useOnlineStatus from '../hooks/useOnlineStatus'
 import {
-  queueSale, saveProductsCache, getCachedProducts,
+  queueSale, saveProductsCache, getCachedProducts, getProductsCacheTime,
   saveSettingsCache, getCachedSettings, saveLocalHold, removeLocalHold,
   cacheLogo, getCachedLogo, nextOfflineInvoiceNo,
 } from '../utils/offlineQueue'
@@ -517,12 +517,72 @@ export default function POS() {
 
   const rawProducts = Array.isArray(productsData) ? productsData : (productsData?.products || [])
 
-  // Refresh the offline product cache whenever a full (non-search) list arrives from the server
-  useEffect(() => {
-    if (isOnline && !debouncedSearch && rawProducts.length > 0) {
-      saveProductsCache(rawProducts)
+  // ── Offline catalogue ──────────────────────────────────────────────────────
+  // The list above is page one of the catalogue, 50 products at a time, which
+  // is all the till needs while it has a connection. It is NOT what gets kept
+  // for offline use: doing that is what left everything past the first 50
+  // products by name unsellable with no signal. The whole catalogue is
+  // downloaded in one go below instead, and kept until it is replaced.
+  const [syncing, setSyncing] = useState(false)
+  const [syncedAt, setSyncedAt] = useState(() => getProductsCacheTime())
+  const [cachedCount, setCachedCount] = useState(() => (getCachedProducts() || []).length)
+
+  const syncCatalogue = useCallback(async ({ quiet = false } = {}) => {
+    if (!navigator.onLine) {
+      if (!quiet) toast.error('No connection — cannot download the catalogue now.')
+      return
     }
-  }, [rawProducts, isOnline, debouncedSearch])
+    setSyncing(true)
+    try {
+      const res = await getOfflineCatalogue()
+      const list = res.data?.data || res.data || []
+      if (!Array.isArray(list) || list.length === 0) {
+        if (!quiet) toast.error('The server returned no products.')
+        return
+      }
+      const stored = saveProductsCache(list)
+      if (!stored) {
+        // Storage is full. Saying so matters: staff would otherwise believe
+        // the till is ready for a day with no internet when it is not.
+        toast.error('Not enough storage on this device to hold the catalogue.')
+        setCachedCount(0)
+        setSyncedAt(null)
+        return
+      }
+      setCachedCount(list.length)
+      setSyncedAt(Date.now())
+      if (!quiet) toast.success(`${list.length} products saved for offline use`)
+    } catch (err) {
+      if (!quiet) toast.error(err.message || 'Could not download the catalogue.')
+    } finally {
+      setSyncing(false)
+    }
+  }, [])
+
+  // Keep it current on its own: on opening the till with no catalogue at all,
+  // and once the copy on the device is more than six hours old. Staff should
+  // not have to remember to press a button for the till to work later.
+  useEffect(() => {
+    if (!isOnline) return
+    const age = syncedAt ? Date.now() - syncedAt : Infinity
+    if (cachedCount === 0 || age > 6 * 60 * 60 * 1000) {
+      syncCatalogue({ quiet: true })
+    }
+    // Once per reconnection, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline])
+
+  /** "just now" / "3 hours ago" / "2 days ago" — how stale the prices are. */
+  const syncedAgo = (() => {
+    if (!syncedAt) return 'never'
+    const mins = Math.floor((Date.now() - syncedAt) / 60000)
+    if (mins < 2) return 'just now'
+    if (mins < 60) return `${mins} min ago`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs} hour${hrs > 1 ? 's' : ''} ago`
+    const days = Math.floor(hrs / 24)
+    return `${days} day${days > 1 ? 's' : ''} ago`
+  })()
 
   // Offline: always derive products from the localStorage cache (filter client-side for search)
   const offlineCache = !isOnline ? (getCachedProducts() || []) : null
@@ -830,9 +890,36 @@ export default function POS() {
           {!isOnline && (
             <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
               <FiAlertTriangle size={13} />
-              Offline — showing cached products. Sales will sync when reconnected.
+              {cachedCount > 0
+                ? `Offline — ${cachedCount} saved products, downloaded ${syncedAgo}. Sales will sync when reconnected.`
+                : 'Offline — no products saved on this device. Connect once and press Save for offline.'}
             </div>
           )}
+
+          {/* Downloading the whole catalogue is what makes the till usable with
+              no signal. Kept visible with its age rather than hidden in
+              settings: the figure staff need to judge is how old it is. */}
+          <div className="mb-2 flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+            <span className="text-gray-600 truncate">
+              <span className="font-semibold text-gray-800">{cachedCount}</span>
+              {' '}products saved for offline · updated{' '}
+              <span className={syncedAt && Date.now() - syncedAt > 24 * 60 * 60 * 1000
+                ? 'font-semibold text-amber-700' : 'font-semibold text-gray-800'}>
+                {syncedAgo}
+              </span>
+            </span>
+            <button
+              onClick={() => syncCatalogue()}
+              disabled={syncing || !isOnline}
+              title={isOnline
+                ? 'Download every product to this device so the till works with no internet'
+                : 'Offline — reconnect to update the saved products'}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-orange-300 text-orange-700 font-semibold hover:bg-orange-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+            >
+              <FiDownloadCloud size={13} className={syncing ? 'animate-pulse' : ''} />
+              {syncing ? 'Saving…' : 'Save for offline'}
+            </button>
+          </div>
           <div className="flex gap-2">
             <div className="relative flex-1">
               <FiSearch size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
