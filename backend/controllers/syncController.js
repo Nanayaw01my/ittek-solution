@@ -19,10 +19,20 @@ const calcTotals = (items, discount = 0, discount_type = 'fixed') => {
 const processSingleSale = async (type, payload, userId, username) => {
   const {
     customer_name, customer_phone, cart, discount = 0, discount_type = 'fixed',
-    payment_method, amount_paid, payments, redeem_points = 0,
+    payment_method, amount_paid, payments, redeem_points = 0, client_ref,
   } = payload;
 
   if (!cart || !cart.length) throw new Error('Empty cart');
+
+  // The same sale can arrive twice: the till may have tried to send it live,
+  // lost the reply after the server had written it, and queued it as well.
+  // Treat that as already done rather than booking it a second time.
+  if (client_ref) {
+    const existing = await Sale.findOne({ client_ref });
+    if (existing) {
+      return { invoice_no: existing.invoice_no, sale_id: existing._id, duplicate: true, shortfalls: [] };
+    }
+  }
 
   // Use the same builder as the online till so variants are resolved and
   // priced identically — an offline sale of a variant must not sync back as
@@ -49,7 +59,8 @@ const processSingleSale = async (type, payload, userId, username) => {
     if (tender.error) throw new Error(tender.error);
 
     const sale = await Sale.create({
-      invoice_no, user_id: userId, customer_name, customer_phone,
+      invoice_no, client_ref: client_ref || undefined,
+      user_id: userId, customer_name, customer_phone,
       subtotal, discount, discount_type,
       total_amount: paidAmount, cart_total, debt_amount: debtAmount,
       payment_status: 'partial', payment_method: tender.method, payments: tender.payments,
@@ -78,7 +89,8 @@ const processSingleSale = async (type, payload, userId, username) => {
   if (tender.error) throw new Error(tender.error);
 
   const sale = await Sale.create({
-    invoice_no, user_id: userId, customer_name, customer_phone,
+    invoice_no, client_ref: client_ref || undefined,
+    user_id: userId, customer_name, customer_phone,
     subtotal, discount, discount_type,
     total_amount: cart_total, cart_total, debt_amount: 0,
     payment_status: 'paid', payment_method: tender.method, payments: tender.payments,

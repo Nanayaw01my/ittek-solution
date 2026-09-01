@@ -661,7 +661,20 @@ export default function POS() {
     setResumedHoldId(null)
   }
 
+  /**
+   * One key per attempt at a sale, so the server can recognise the same sale
+   * arriving twice — sent live, connection lost before the reply, then queued
+   * and synced. Without it that retry books the sale twice and takes the stock
+   * down twice.
+   */
+  const newClientRef = () => (
+    (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `ref-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  )
+
   const buildSalePayload = (extras = {}) => ({
+    client_ref: newClientRef(),
     cart: cart.map(i => ({
       product_id: i._id,
       variant_sku: i.variant_sku,
@@ -677,6 +690,32 @@ export default function POS() {
     ...extras,
   })
 
+  /**
+   * True when the request never reached the server at all — no response came
+   * back. navigator.onLine only says whether the device is attached to a
+   * network, so a shop on WiFi with no internet reads as "online" and the till
+   * takes the live path. This is what actually tells us otherwise.
+   *
+   * A response WITH a status is deliberately not treated this way: the server
+   * answered, so the sale is either recorded or genuinely rejected, and
+   * queueing it would risk booking it twice.
+   */
+  const serverUnreachable = (err) => !err?.response
+
+  /**
+   * Keep a sale that could not be sent. Previously this path only showed
+   * "Sale failed" — the sale was never written and never queued, so it was
+   * gone: not on the server, not on the device, nothing to sync later.
+   */
+  const keepForLater = (type, payload, receiptExtras = {}) => {
+    queueSale(type, payload)
+    setLastSale(buildOfflineReceipt(receiptExtras))
+    setShowReceipt(true)
+    clearCart()
+    toast.success('No connection — sale saved on this device and will sync automatically.',
+      { duration: 6000 })
+  }
+
   const saleMutation = useMutation({
     mutationFn: (data) => createSale(data),
     onSuccess: (res) => {
@@ -687,7 +726,11 @@ export default function POS() {
       queryClient.invalidateQueries(['dashboard-stats'])
       toast.success('Sale completed!')
     },
-    onError: (err) => {
+    onError: (err, variables) => {
+      if (serverUnreachable(err)) {
+        keepForLater('sale', variables, variables?.payments ? { payments: variables.payments } : {})
+        return
+      }
       toast.error(err.response?.data?.message || 'Sale failed')
     },
   })
@@ -805,7 +848,15 @@ export default function POS() {
       queryClient.invalidateQueries(['dashboard-stats'])
       toast.success('Short payment recorded!')
     },
-    onError: (err) => {
+    onError: (err, variables) => {
+      if (serverUnreachable(err)) {
+        const paid = Number(variables?.amount_paid) || 0
+        setShowShortModal(false)
+        keepForLater('short_payment', variables, {
+          amountPaid: paid, change: 0, balanceDue: Math.max(0, grandTotal - paid),
+        })
+        return
+      }
       toast.error(err.response?.data?.message || 'Failed to process short payment')
     },
   })

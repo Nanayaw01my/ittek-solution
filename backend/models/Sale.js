@@ -40,6 +40,23 @@ const SaleSchema = new mongoose.Schema(
       unique: true,
       required: true,
     },
+    /**
+     * Idempotency key set by the till, one per attempt at a sale.
+     *
+     * A till that loses the connection mid-request cannot tell whether the
+     * sale was written or not, so it retries. Without this, that retry books
+     * the sale twice and deducts the stock twice. With it, the second attempt
+     * finds the first and returns it instead of writing again.
+     *
+     * Not unique at the index level: sales made before this existed have no
+     * key, and a unique index over many nulls is a migration risk on a live
+     * collection. The lookup below is the guard.
+     */
+    client_ref: {
+      type: String,
+      index: true,
+      sparse: true,
+    },
     // Random public handle for the receipt page. Never expose the ObjectId in
     // receipt URLs — ObjectIds are guessable and would leak other customers'
     // receipts to anyone who increments one.

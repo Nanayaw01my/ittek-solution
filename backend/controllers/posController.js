@@ -42,10 +42,25 @@ const processSale = async (req, res) => {
     const {
       customer_name, customer_phone, cart, discount = 0, discount_type = 'fixed',
       payment_method, payments, redeem_points = 0, currency, held_sale_id,
+      client_ref,
     } = req.body;
 
     if (!cart || cart.length === 0) {
       return res.status(400).json({ success: false, message: 'Cart cannot be empty.' });
+    }
+
+    // Already booked. The till lost the reply and tried again, so hand back the
+    // sale it already made rather than making a second one and deducting the
+    // stock twice.
+    if (client_ref) {
+      const existing = await Sale.findOne({ client_ref }).populate('user_id', 'username');
+      if (existing) {
+        return res.status(200).json({
+          success: true,
+          message: 'Sale already recorded.',
+          data: existing,
+        });
+      }
     }
 
     // Resolve variants, validate stock, price the lines
@@ -84,6 +99,7 @@ const processSale = async (req, res) => {
     // Create sale
     const sale = await Sale.create({
       invoice_no,
+      client_ref: client_ref || undefined,
       user_id: req.user._id,
       customer_name,
       customer_phone,
