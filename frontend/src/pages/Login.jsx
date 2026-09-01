@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiEye, FiEyeOff, FiUser, FiLock, FiArrowRight, FiAlertCircle, FiWifiOff } from 'react-icons/fi'
+import { FiEye, FiEyeOff, FiUser, FiLock, FiArrowRight, FiAlertCircle, FiWifiOff, FiClock } from 'react-icons/fi'
 import { login } from '../api/auth'
 import useAuthStore from '../store/authStore'
 import { describeApiError } from '../utils/apiError'
+import { getPendingCount } from '../utils/offlineQueue'
 
 const REMEMBER_KEY = 'ittek_remembered_user'
 
@@ -22,6 +23,9 @@ export default function Login() {
   // Only the username is remembered — never the password.
   const remembered = localStorage.getItem(REMEMBER_KEY) || ''
   const [remember, setRemember] = useState(!!remembered)
+
+  // Read once: sales held on this device that have not reached the server.
+  const [pendingOffline] = useState(() => getPendingCount())
 
   const { register, handleSubmit, formState: { errors }, setError, setFocus } = useForm({
     defaultValues: { username: remembered },
@@ -86,6 +90,25 @@ export default function Login() {
       </div>
 
       <div className="w-full max-w-sm">
+
+        {/*
+          A login session lasts 24 hours, so a till that sold offline for a
+          long stretch can land here on reconnecting. The sales are still on
+          the device — say so, because the natural fear at this screen is that
+          signing out lost them.
+        */}
+        {pendingOffline > 0 && (
+          <div className="mb-5 flex gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <FiClock className="text-amber-500 flex-shrink-0 mt-0.5" size={17} />
+            <p className="text-xs text-amber-900">
+              <span className="font-bold">
+                {pendingOffline} sale{pendingOffline === 1 ? '' : 's'} made offline
+              </span>{' '}
+              {pendingOffline === 1 ? 'is' : 'are'} still saved on this device. Sign in and
+              you will be asked to send {pendingOffline === 1 ? 'it' : 'them'} to the server.
+            </p>
+          </div>
+        )}
 
         {/* Brand */}
         <div className="text-center mb-8">
