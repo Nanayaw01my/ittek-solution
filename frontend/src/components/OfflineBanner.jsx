@@ -6,6 +6,7 @@ import useOnlineStatus from '../hooks/useOnlineStatus'
 import { getPendingQueue, removeSaleFromQueue } from '../utils/offlineQueue'
 import { syncOfflineSales } from '../api/sync'
 import PendingSalesModal from './PendingSalesModal'
+import Modal from './Modal'
 
 export default function OfflineBanner() {
   const isOnline = useOnlineStatus()
@@ -14,6 +15,7 @@ export default function OfflineBanner() {
   const [pendingCount, setPendingCount] = useState(0)
   const [syncing, setSyncing] = useState(false)
   const [showPending, setShowPending] = useState(false)
+  const [askSync, setAskSync] = useState(false)
 
   const refreshCount = () => setPendingCount(getPendingQueue().length)
 
@@ -82,8 +84,12 @@ export default function OfflineBanner() {
   // closed while offline and opened later when the connection is back, so no
   // offline→online change is ever observed and the sales sat there.
   useEffect(() => {
-    if (isOnline && (!wasOnlineRef.current || getPendingQueue().length > 0)) {
-      handleSync()
+    // Ask rather than sync behind their back. Staff want to know money made
+    // offline is going in, and to choose the moment — mid-queue at the counter
+    // is not it. The banner keeps the sales either way; nothing is lost by
+    // answering later.
+    if (isOnline && getPendingQueue().length > 0) {
+      setAskSync(true)
     }
     wasOnlineRef.current = isOnline
     // Deliberately not depending on handleSync: it changes identity while
@@ -128,6 +134,48 @@ export default function OfflineBanner() {
     </div>
 
     <PendingSalesModal isOpen={showPending} onClose={() => setShowPending(false)} />
+
+    {/* Asked on coming back online, so the sales are not left sitting there
+        unnoticed and are not pushed up without anyone knowing either. */}
+    <Modal
+      isOpen={askSync && isOnline && pendingCount > 0}
+      onClose={() => setAskSync(false)}
+      title="Sync the sales made offline?"
+      size="sm"
+    >
+      <div className="p-5 space-y-4">
+        <p className="text-sm text-gray-700">
+          You are back online with{' '}
+          <span className="font-bold text-gray-900">{pendingCount}</span> sale
+          {pendingCount === 1 ? '' : 's'} made offline on this device. Send them to
+          the server now?
+        </p>
+        <button
+          onClick={() => { setAskSync(false); setShowPending(true) }}
+          className="text-xs font-semibold text-orange-600 hover:text-orange-700 underline"
+        >
+          See what they are first
+        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setAskSync(false)}
+            className="flex-1 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50"
+          >
+            Not now
+          </button>
+          <button
+            onClick={() => { setAskSync(false); handleSync() }}
+            disabled={syncing}
+            className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white rounded-xl font-bold text-sm"
+          >
+            {syncing ? 'Syncing…' : 'Sync now'}
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 text-center">
+          Choosing "Not now" keeps them safe on this device — the banner stays until they are sent.
+        </p>
+      </div>
+    </Modal>
     </>
   )
 }
