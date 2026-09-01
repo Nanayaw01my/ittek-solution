@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { FiDownload, FiFileText } from 'react-icons/fi'
+import { FiPrinter, FiFileText } from 'react-icons/fi'
 import {
   getDailySalesReport, getSalesByUserReport, getTopProductsReport,
-  getProfitLossReport, getDebtorsReport, getStockValuationReport, exportReport
+  getProfitLossReport, getDebtorsReport, getStockValuationReport, exportReportPdf
 } from '../api/reports'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
@@ -16,21 +16,22 @@ import Table from '../components/Table'
 import RefreshButton from '../components/RefreshButton'
 import { format, startOfMonth } from 'date-fns'
 import toast from 'react-hot-toast'
-import { saveAs } from 'file-saver'
 
 const TABS = ['Daily Sales', 'By User', 'Top Products', 'Profit & Loss', 'Debtors', 'Stock Valuation']
 
-function ExportBtn({ type, params, label = 'Export' }) {
+function ExportBtn({ type, params, label = 'Export PDF' }) {
   const [loading, setLoading] = useState(false)
   const handleExport = async () => {
     setLoading(true)
     try {
-      const res = await exportReport(type, params)
-      const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' })
-      saveAs(blob, `${type}-report-${format(new Date(), 'yyyy-MM-dd')}.xlsx`)
-      toast.success('Export downloaded!')
-    } catch {
-      toast.error('Export failed')
+      // Opened rather than downloaded: these get looked at and printed, and a
+      // file dropped in Downloads is a step further from the printer.
+      await openPdfInNewTab(
+        () => exportReportPdf(type, params),
+        `${type}-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`
+      )
+    } catch (err) {
+      toast.error(err.message || 'Export failed')
     } finally {
       setLoading(false)
     }
@@ -41,7 +42,7 @@ function ExportBtn({ type, params, label = 'Export' }) {
       disabled={loading}
       className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold disabled:opacity-60"
     >
-      <FiDownload size={14} /> {loading ? 'Exporting...' : label}
+      <FiPrinter size={14} /> {loading ? 'Preparing…' : label}
     </button>
   )
 }

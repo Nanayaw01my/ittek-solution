@@ -1716,6 +1716,192 @@ const generateFixedPriceList = async (options = {}) => {
 
 
 /**
+ * A report as an A4 table — the generic one, driven entirely by its columns.
+ *
+ * Column widths are given as weights rather than points, so a caller says
+ * "this column is twice that one" and the table fills the page whatever the
+ * orientation. Anything that would overflow its cell is truncated with an
+ * ellipsis rather than wrapping, because a report is read down its columns and
+ * one wrapped product name knocks every figure beside it out of line.
+ *
+ * @param {Object} options - { logoUrl, company, title, subtitle, columns,
+ *   rows, summary, landscape, note }
+ *   columns: [{ label, key, weight, align, format }]
+ *   summary: [{ label, value }] — printed above the table
+ * @returns {Promise<Buffer>}
+ */
+const generateTableReport = async (options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+  const columns = options.columns || [];
+  const rows = options.rows || [];
+  const summary = options.summary || [];
+
+  return new Promise((resolve, reject) => {
+    try {
+      const landscape = !!options.landscape;
+      const doc = new PDFDocument({
+        size: 'A4',
+        layout: landscape ? 'landscape' : 'portrait',
+        margins: { top: 40, bottom: 40, left: 40, right: 40 },
+      });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 40;
+      const W = (landscape ? 842 : 595) - ML * 2;
+      const PAGE_BOTTOM = landscape ? 595 : 842;
+      const ORANGE = '#e86b00';
+      const LGRAY = '#777777';
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+      const companyAddress = company.address || 'Bogoso, Western Region';
+      const companyPhone = company.phone || '+233 595413632';
+
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      const totalWeight = columns.reduce((s, c) => s + (c.weight || 1), 0) || 1;
+      const widths = columns.map((c) => ((c.weight || 1) / totalWeight) * W);
+      const colX = (i) => ML + widths.slice(0, i).reduce((s, w) => s + w, 0);
+
+      /** Cut to fit rather than wrap — a wrapped cell misaligns the whole row. */
+      const fit = (text, width, size) => {
+        let s = String(text ?? '');
+        doc.fontSize(size);
+        if (doc.widthOfString(s) <= width) return s;
+        while (s.length > 1 && doc.widthOfString(s + '…') > width) s = s.slice(0, -1);
+        return s + '…';
+      };
+
+      attachWatermark(doc, logoBuf, { width: landscape ? 300 : 330 });
+
+      const drawHeader = () => {
+        let hy = 40;
+        if (logoBuf) {
+          try { doc.image(logoBuf, ML, hy, { width: 44 }); } catch { /* keep the gap */ }
+        }
+        doc.fontSize(13).font('Helvetica-Bold').fillColor('#111111')
+          .text(companyName, ML + 54, hy + 1, { width: W - 54 });
+        doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
+          .text([companyAddress, companyPhone && 'Tel: ' + companyPhone].filter(Boolean).join('  |  '),
+            ML + 54, hy + 17, { width: W - 54 });
+        reset();
+
+        hy += 46;
+        doc.moveTo(ML, hy).lineTo(ML + W, hy).lineWidth(1.5).strokeColor(ORANGE).stroke();
+        reset();
+
+        hy += 9;
+        doc.fontSize(14).font('Helvetica-Bold').fillColor(ORANGE)
+          .text(options.title || 'REPORT', ML, hy, { width: W });
+        hy += 18;
+        if (options.subtitle) {
+          doc.fontSize(8.5).font('Helvetica').fillColor('#555555')
+            .text(options.subtitle, ML, hy, { width: W });
+          hy += 13;
+        }
+        doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+          .text('Generated ' + new Date().toLocaleString('en-GB'), ML, hy, { width: W });
+        reset();
+        return hy + 18;
+      };
+
+      /** The headline figures, boxed above the detail. */
+      const drawSummary = (y) => {
+        if (summary.length === 0) return y;
+        const perRow = Math.min(4, summary.length);
+        const boxW = (W - (perRow - 1) * 8) / perRow;
+        const lines = Math.ceil(summary.length / perRow);
+        summary.forEach((s, i) => {
+          const bx = ML + (i % perRow) * (boxW + 8);
+          const by = y + Math.floor(i / perRow) * 44;
+          doc.roundedRect(bx, by, boxW, 38, 3).fill('#fdf2e9');
+          doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#b34700')
+            .text(String(s.label).toUpperCase(), bx + 8, by + 7, { width: boxW - 16, lineBreak: false });
+          doc.fontSize(11).font('Helvetica-Bold').fillColor('#111111')
+            .text(String(s.value), bx + 8, by + 19, { width: boxW - 16, lineBreak: false });
+          reset();
+        });
+        return y + lines * 44 + 8;
+      };
+
+      const FOOTER_TOP = PAGE_BOTTOM - 40 - 34;
+      const drawFooter = () => {
+        doc.moveTo(ML, FOOTER_TOP).lineTo(ML + W, FOOTER_TOP).lineWidth(0.5).strokeColor('#dddddd').stroke();
+        reset();
+        doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
+          .text(options.note || 'This report is generated from the system records and is for internal use.',
+            ML, FOOTER_TOP + 8, { width: W, align: 'center' });
+        reset();
+      };
+
+      const HEAD_H = 22;
+      const ROW_H = 17;
+
+      const drawTableHead = (y) => {
+        doc.rect(ML, y, W, HEAD_H).fill(ORANGE);
+        doc.font('Helvetica-Bold').fillColor('#ffffff');
+        columns.forEach((c, i) => {
+          doc.fontSize(7).text(fit(c.label, widths[i] - 10, 7), colX(i) + 5, y + 7.5,
+            { width: widths[i] - 10, align: c.align || 'left', lineBreak: false });
+        });
+        reset();
+        return y + HEAD_H;
+      };
+
+      let y = drawTableHead(drawSummary(drawHeader()));
+      let tableTop = y;
+
+      const closeTable = () => {
+        doc.rect(ML, tableTop, W, y - tableTop).lineWidth(0.6).strokeColor('#dddddd').stroke();
+        reset();
+      };
+
+      if (rows.length === 0) {
+        doc.fontSize(9).font('Helvetica-Oblique').fillColor(LGRAY)
+          .text('No records for this period.', ML, y + 12, { width: W, align: 'center' });
+        reset();
+        y += 34;
+      }
+
+      rows.forEach((row, ri) => {
+        if (y + ROW_H > FOOTER_TOP - 6) {
+          closeTable();
+          drawFooter();
+          doc.addPage();          // pageAdded redraws the watermark
+          // No summary on continuation pages: it describes the whole report,
+          // and repeating it reads as a fresh set of totals for that page.
+          y = drawTableHead(drawHeader());
+          tableTop = y;
+        }
+        if (ri % 2 === 1) { doc.rect(ML, y, W, ROW_H).fill('#faf6f2'); reset(); }
+
+        columns.forEach((c, i) => {
+          const raw = c.format ? c.format(row[c.key], row) : row[c.key];
+          doc.fontSize(7.5).font(c.bold ? 'Helvetica-Bold' : 'Helvetica').fillColor('#111111')
+            .text(fit(raw ?? '', widths[i] - 10, 7.5), colX(i) + 5, y + 5,
+              { width: widths[i] - 10, align: c.align || 'left', lineBreak: false });
+        });
+
+        doc.moveTo(ML, y + ROW_H).lineTo(ML + W, y + ROW_H)
+          .lineWidth(0.3).strokeColor('#ebebeb').stroke();
+        reset();
+        y += ROW_H;
+      });
+
+      closeTable();
+      drawFooter();
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
+
+/**
  * An installment price table (A4) — one row per model.
  *
  * The block-per-package sheet reads well for a handful of solar packages, but
@@ -2100,7 +2286,7 @@ const generateAcceptanceLetter = async (options = {}) => {
 module.exports = {
   generateReceipt, generateCreditAgreement, generateLayawayAgreement,
   generatePriceList, generateReport, generateBlankReceiptForm,
-  generateInstallmentPlanSheet, generateInstallmentTable,
+  generateInstallmentPlanSheet, generateInstallmentTable, generateTableReport,
   generateFixedPriceList, generateAcceptanceLetter,
   // The original name, kept so nothing that imports it breaks.
   generateFreezerOfferSheet: generateInstallmentPlanSheet,

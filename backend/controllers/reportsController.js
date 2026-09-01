@@ -8,7 +8,7 @@ const WorkerPayment = require('../models/WorkerPayment');
 const Purchase = require('../models/Purchase');
 const Refund = require('../models/Refund');
 const Layaway = require('../models/Layaway');
-const { generateReport, generatePriceList } = require('../utils/pdfGenerator');
+const { generateReport, generatePriceList, generateTableReport } = require('../utils/pdfGenerator');
 const Settings = require('../models/Settings');
 
 /**
@@ -459,6 +459,298 @@ const exportData = async (req, res) => {
 };
 
 /**
+ * GET /api/reports/export/pdf/:reportType?startDate=&endDate=
+ *
+ * Any report on the Reports screen as an A4 PDF.
+ *
+ * This replaces a spreadsheet export that never worked: the client asked for
+ * /reports/export/:type while the route was /reports/export/excel/:reportType,
+ * and the handler behind it returned raw JSON rather than a workbook — so even
+ * a matching path would have saved a JSON file named .xlsx that Excel refuses
+ * to open. A PDF is also the more useful thing here: these get printed and
+ * filed, not edited.
+ *
+ * Each report is turned into columns and rows here rather than in the browser,
+ * so the printed figures come from the same queries the screen shows.
+ */
+const exportReportPdf = async (req, res) => {
+  try {
+    const { reportType } = req.params;
+    const { startDate, endDate } = req.query;
+    const dateFilter = getDateFilter(startDate, endDate);
+
+    const money = (v) => 'GHC' + Number(v || 0).toLocaleString('en-GB', {
+      minimumFractionDigits: 2, maximumFractionDigits: 2,
+    });
+    const plain = (v) => Number(v || 0).toLocaleString('en-GB');
+    const day = (v) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
+
+    const period = startDate || endDate
+      ? `${startDate ? day(startDate) : 'the beginning'} to ${endDate ? day(endDate) : 'today'}`
+      : 'All time';
+
+    const saleMatch = {};
+    if (dateFilter) saleMatch.sale_date = dateFilter;
+
+    let spec;
+
+    if (reportType === 'daily-sales') {
+      const rows = await Sale.aggregate([
+        { $match: saleMatch },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$sale_date' } },
+            total_revenue: { $sum: '$total_amount' },
+            total_transactions: { $sum: 1 },
+            total_cost: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.cost_price', '$$this.quantity'] }] } } } },
+          },
+        },
+        { $sort: { _id: -1 } },
+      ]);
+      const revenue = rows.reduce((s, r) => s + r.total_revenue, 0);
+      const cost = rows.reduce((s, r) => s + r.total_cost, 0);
+      const txns = rows.reduce((s, r) => s + r.total_transactions, 0);
+
+      spec = {
+        title: 'DAILY SALES REPORT',
+        columns: [
+          { key: '_id', label: 'DATE', weight: 2, format: day },
+          { key: 'total_transactions', label: 'SALES', weight: 1.2, align: 'right', format: plain },
+          { key: 'total_revenue', label: 'REVENUE', weight: 2, align: 'right', format: money, bold: true },
+          { key: 'total_cost', label: 'COST', weight: 2, align: 'right', format: money },
+          { key: 'profit', label: 'PROFIT', weight: 2, align: 'right', bold: true,
+            format: (_v, r) => money(r.total_revenue - r.total_cost) },
+        ],
+        rows,
+        summary: [
+          { label: 'Days', value: plain(rows.length) },
+          { label: 'Transactions', value: plain(txns) },
+          { label: 'Revenue', value: money(revenue) },
+          { label: 'Gross profit', value: money(revenue - cost) },
+        ],
+      };
+    } else if (reportType === 'sales-by-user') {
+      const rows = await Sale.aggregate([
+        { $match: saleMatch },
+        { $group: { _id: '$user_id', total_revenue: { $sum: '$total_amount' }, transactions: { $sum: 1 }, avg_sale: { $avg: '$total_amount' } } },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+        { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+        { $project: { username: '$user.username', total_revenue: 1, transactions: 1, avg_sale: 1 } },
+        { $sort: { total_revenue: -1 } },
+      ]);
+      spec = {
+        title: 'SALES BY USER',
+        columns: [
+          { key: 'username', label: 'USER', weight: 3, format: (v) => v || 'Unknown' },
+          { key: 'transactions', label: 'SALES', weight: 1.2, align: 'right', format: plain },
+          { key: 'total_revenue', label: 'REVENUE', weight: 2, align: 'right', format: money, bold: true },
+          { key: 'avg_sale', label: 'AVERAGE SALE', weight: 2, align: 'right', format: money },
+        ],
+        rows,
+        summary: [
+          { label: 'Users', value: plain(rows.length) },
+          { label: 'Transactions', value: plain(rows.reduce((s, r) => s + r.transactions, 0)) },
+          { label: 'Revenue', value: money(rows.reduce((s, r) => s + r.total_revenue, 0)) },
+        ],
+      };
+    } else if (reportType === 'top-products') {
+      const rows = await Sale.aggregate([
+        { $match: saleMatch },
+        { $unwind: '$items' },
+        {
+          $group: {
+            _id: '$items.product_id',
+            product_name: { $first: '$items.product_name' },
+            total_quantity: { $sum: '$items.quantity' },
+            total_revenue: { $sum: '$items.total' },
+            total_cost: { $sum: { $multiply: ['$items.cost_price', '$items.quantity'] } },
+          },
+        },
+        { $addFields: { profit: { $subtract: ['$total_revenue', '$total_cost'] } } },
+        { $sort: { total_quantity: -1 } },
+        { $limit: Number(req.query.limit) || 50 },
+      ]);
+      spec = {
+        title: 'TOP PRODUCTS',
+        columns: [
+          { key: 'product_name', label: 'PRODUCT', weight: 4, format: (v) => v || 'Unknown' },
+          { key: 'total_quantity', label: 'QTY SOLD', weight: 1.4, align: 'right', format: plain },
+          { key: 'total_revenue', label: 'REVENUE', weight: 2, align: 'right', format: money, bold: true },
+          { key: 'total_cost', label: 'COST', weight: 2, align: 'right', format: money },
+          { key: 'profit', label: 'PROFIT', weight: 2, align: 'right', format: money, bold: true },
+        ],
+        rows,
+        summary: [
+          { label: 'Products', value: plain(rows.length) },
+          { label: 'Units sold', value: plain(rows.reduce((s, r) => s + r.total_quantity, 0)) },
+          { label: 'Revenue', value: money(rows.reduce((s, r) => s + r.total_revenue, 0)) },
+          { label: 'Profit', value: money(rows.reduce((s, r) => s + r.profit, 0)) },
+        ],
+      };
+    } else if (reportType === 'profit-loss') {
+      const expenseMatch = {};
+      if (dateFilter) expenseMatch.expense_date = dateFilter;
+      const [salesAgg, expenseAgg, byCategory] = await Promise.all([
+        Sale.aggregate([
+          { $match: saleMatch },
+          {
+            $group: {
+              _id: null,
+              revenue: { $sum: '$total_amount' },
+              transactions: { $sum: 1 },
+              cogs: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.cost_price', '$$this.quantity'] }] } } } },
+            },
+          },
+        ]),
+        Expense.aggregate([{ $match: expenseMatch }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+        Expense.aggregate([
+          { $match: expenseMatch },
+          { $group: { _id: '$category', total: { $sum: '$amount' } } },
+          { $sort: { total: -1 } },
+        ]),
+      ]);
+      const revenue = salesAgg[0]?.revenue || 0;
+      const cogs = salesAgg[0]?.cogs || 0;
+      const expenses = expenseAgg[0]?.total || 0;
+      const gross = revenue - cogs;
+      const net = gross - expenses;
+
+      // A profit and loss is a statement, not a list, so it is laid out as
+      // labelled lines rather than forced into a table of records.
+      const rows = [
+        { line: 'Revenue', amount: revenue, strong: true },
+        { line: 'Less: Cost of goods sold', amount: -cogs },
+        { line: 'GROSS PROFIT', amount: gross, strong: true },
+        { line: '', amount: null },
+        { line: 'OPERATING EXPENSES', amount: null, strong: true },
+        ...byCategory.map((c) => ({ line: '   ' + (c._id || 'Uncategorised'), amount: -c.total })),
+        { line: 'Total expenses', amount: -expenses, strong: true },
+        { line: '', amount: null },
+        { line: 'NET PROFIT / (LOSS)', amount: net, strong: true },
+      ];
+
+      spec = {
+        title: 'PROFIT & LOSS STATEMENT',
+        columns: [
+          { key: 'line', label: 'ITEM', weight: 5, format: (v, r) => (r.strong ? String(v).toUpperCase() : v) },
+          {
+            key: 'amount', label: 'AMOUNT', weight: 2, align: 'right', bold: true,
+            format: (v) => (v === null || v === undefined ? ''
+              : v < 0 ? '(' + money(Math.abs(v)) + ')' : money(v)),
+          },
+        ],
+        rows,
+        summary: [
+          { label: 'Revenue', value: money(revenue) },
+          { label: 'Gross profit', value: money(gross) },
+          { label: 'Expenses', value: money(expenses) },
+          { label: 'Net profit', value: money(net) },
+        ],
+      };
+    } else if (reportType === 'debtors') {
+      const debts = await Debt.find({ status: { $in: ['active', 'overdue'] } })
+        .sort({ due_date: 1 })
+        .lean();
+      const rows = debts.map((d) => ({
+        customer_name: d.customer_name,
+        customer_phone: d.customer_phone || '—',
+        amount_owed: d.amount_owed,
+        amount_paid: d.amount_paid,
+        remaining: Math.max(0, (d.amount_owed || 0) - (d.amount_paid || 0)),
+        due_date: d.due_date,
+        status: d.status,
+      }));
+      spec = {
+        title: 'DEBTORS REPORT',
+        subtitle: 'Customers with an outstanding balance',
+        columns: [
+          { key: 'customer_name', label: 'CUSTOMER', weight: 3 },
+          { key: 'customer_phone', label: 'PHONE', weight: 2 },
+          { key: 'amount_owed', label: 'OWED', weight: 2, align: 'right', format: money },
+          { key: 'amount_paid', label: 'PAID', weight: 2, align: 'right', format: money },
+          { key: 'remaining', label: 'REMAINING', weight: 2, align: 'right', format: money, bold: true },
+          { key: 'due_date', label: 'DUE', weight: 1.6, align: 'right', format: day },
+          { key: 'status', label: 'STATUS', weight: 1.4, align: 'right', format: (v) => String(v || '').toUpperCase() },
+        ],
+        rows,
+        landscape: true,
+        summary: [
+          { label: 'Debtors', value: plain(rows.length) },
+          { label: 'Overdue', value: plain(rows.filter((r) => r.status === 'overdue').length) },
+          { label: 'Total outstanding', value: money(rows.reduce((s, r) => s + r.remaining, 0)) },
+        ],
+        // Dates only, no time: this gets read against a wall calendar.
+        note: 'Outstanding balances as at ' + new Date().toLocaleDateString('en-GB') + '.',
+      };
+    } else if (reportType === 'stock-valuation') {
+      const products = await Product.find({ is_active: true })
+        .populate('category_id', 'name')
+        .sort({ name: 1 })
+        .lean();
+      const rows = products.map((p) => ({
+        name: p.name,
+        category: p.category_id?.name || 'Uncategorised',
+        quantity: p.quantity,
+        cost_price: p.cost_price,
+        selling_price: p.selling_price,
+        cost_value: (p.quantity || 0) * (p.cost_price || 0),
+        selling_value: (p.quantity || 0) * (p.selling_price || 0),
+      }));
+      spec = {
+        title: 'STOCK VALUATION',
+        // No date range on this one: it is what is on the shelf right now, and
+        // printing a period against it invites the figures being read as a
+        // month's movement.
+        subtitle: 'Stock currently on hand',
+        columns: [
+          { key: 'name', label: 'PRODUCT', weight: 3.4 },
+          { key: 'category', label: 'CATEGORY', weight: 2 },
+          { key: 'quantity', label: 'QTY', weight: 1, align: 'right', format: plain },
+          { key: 'cost_price', label: 'COST', weight: 1.6, align: 'right', format: money },
+          { key: 'selling_price', label: 'SELLING', weight: 1.6, align: 'right', format: money },
+          { key: 'cost_value', label: 'COST VALUE', weight: 2, align: 'right', format: money },
+          { key: 'selling_value', label: 'SELLING VALUE', weight: 2, align: 'right', format: money, bold: true },
+        ],
+        rows,
+        landscape: true,
+        summary: [
+          { label: 'Products', value: plain(rows.length) },
+          { label: 'Units in stock', value: plain(rows.reduce((s, r) => s + (r.quantity || 0), 0)) },
+          { label: 'Cost value', value: money(rows.reduce((s, r) => s + r.cost_value, 0)) },
+          { label: 'Selling value', value: money(rows.reduce((s, r) => s + r.selling_value, 0)) },
+        ],
+        note: 'Stock on hand as at ' + new Date().toLocaleString('en-GB') + '.',
+      };
+    } else {
+      return res.status(404).json({
+        success: false,
+        message: 'Unknown report. Try one of: daily-sales, sales-by-user, top-products, profit-loss, debtors, stock-valuation.',
+      });
+    }
+
+    const settings = (await Settings.findOne().lean()) || {};
+    const pdf = await generateTableReport({
+      logoUrl: settings.logo_url,
+      company: {
+        name: settings.company_name,
+        address: settings.company_address,
+        phone: settings.company_phone,
+      },
+      subtitle: spec.subtitle || `Period: ${period}`,
+      ...spec,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition',
+      `inline; filename="${reportType}-${new Date().toISOString().slice(0, 10)}.pdf"`);
+    return res.end(pdf);
+  } catch (err) {
+    console.error('Report PDF export error:', err.message);
+    return res.status(500).json({ success: false, message: 'Could not generate the report.' });
+  }
+};
+
+/**
  * GET /api/reports/financial-overview
  */
 const getFinancialOverview = async (req, res) => {
@@ -705,6 +997,7 @@ const getPriceList = async (req, res) => {
 };
 
 module.exports = {
+  exportReportPdf,
   getPriceList,
   getDashboardStats, getSalesTrend,
   getDailySales, getSalesByUser, getTopProducts, getProfitLoss,

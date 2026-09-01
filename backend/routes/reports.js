@@ -6,7 +6,7 @@ const {
   getDashboardStats,
   getPriceList, getSalesTrend,
   getDailySales, getSalesByUser, getTopProducts, getProfitLoss,
-  getDebtors, getStockValuation, getExpenseBreakdown, exportData,
+  getDebtors, getStockValuation, getExpenseBreakdown, exportData, exportReportPdf,
   getFinancialOverview, getCashFlow,
 } = require('../controllers/reportsController');
 
@@ -35,5 +35,7 @@ router.get('/expense-breakdown', getExpenseBreakdown);
 router.get('/financial-overview', requirePage('financial'), getFinancialOverview);
 router.get('/cash-flow', requirePage('financial'), getCashFlow);
 router.get('/export/excel/:reportType', exportData);
+// Any report as a printable A4 PDF.
+router.get('/export/pdf/:reportType', exportReportPdf);
 
 module.exports = router;
