@@ -1,8 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { FiRotateCcw, FiSearch, FiTrash2, FiPlus, FiMinus, FiX } from 'react-icons/fi'
-import { approveRefund, rejectRefund, getRefunds, lookupSaleByInvoice, createRefund, deleteRefund } from '../api/refunds'
+import { approveRefund, rejectRefund, getRefunds, lookupSaleByInvoice, searchSales, createRefund, deleteRefund } from '../api/refunds'
 import useAuthStore from '../store/authStore'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import Modal from '../components/Modal'
@@ -23,28 +23,61 @@ function RefundForm({ onClose, onSuccess }) {
   const [reason, setReason] = useState('')
   const [method, setMethod] = useState('cash')
 
-  const handleLookup = async () => {
-    if (!invoiceInput.trim()) return
+  // ── Picking the sale ───────────────────────────────────────────────────────
+  // Typing the invoice code exactly used to be the only way in, so a customer
+  // who had lost their receipt could not be refunded at all. The list below
+  // shows recent sales to pick from and searches on the code, the customer's
+  // name or their phone.
+  const [picking, setPicking] = useState(false)
+  const [matches, setMatches] = useState([])
+  const [searching, setSearching] = useState(false)
+
+  useEffect(() => {
+    if (!picking) return
+    let cancelled = false
+    setSearching(true)
+    const t = setTimeout(async () => {
+      try {
+        const res = await searchSales(invoiceInput.trim())
+        if (!cancelled) setMatches(res.data || [])
+      } catch {
+        if (!cancelled) setMatches([])
+      } finally {
+        if (!cancelled) setSearching(false)
+      }
+    }, 300)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [invoiceInput, picking])
+
+  /** Fill the form from a sale — shared by the picker and the typed lookup. */
+  const loadSale = (sale) => {
+    setCustomerName(sale.customer_name || '')
+    setCustomerPhone(sale.customer_phone || '')
+    const items = (sale.items || []).map(i => ({
+      product_id: i.product_id,
+      product_name: i.product_name,
+      unit_price: i.unit_price,
+      maxQty: i.quantity,
+      quantity: i.quantity,
+      total: i.unit_price * i.quantity,
+      selected: true,
+    }))
+    setSaleItems(items)
+    setSelectedItems(items)
+    setRefundAmount(items.reduce((s, i) => s + i.total, 0).toFixed(2))
+  }
+
+  const handleLookup = async (code) => {
+    const wanted = (code ?? invoiceInput).trim()
+    if (!wanted) return
     setLookupLoading(true)
     try {
-      const res = await lookupSaleByInvoice(invoiceInput.trim())
+      const res = await lookupSaleByInvoice(wanted)
       const sale = res.data
-      setCustomerName(sale.customer_name || '')
-      setCustomerPhone(sale.customer_phone || '')
-      const items = (sale.items || []).map(i => ({
-        product_id: i.product_id,
-        product_name: i.product_name,
-        unit_price: i.unit_price,
-        maxQty: i.quantity,
-        quantity: i.quantity,
-        total: i.unit_price * i.quantity,
-        selected: true,
-      }))
-      setSaleItems(items)
-      setSelectedItems(items)
-      const total = items.reduce((s, i) => s + i.total, 0)
-      setRefundAmount(total.toFixed(2))
-      toast.success('Invoice found — items loaded')
+      setInvoiceInput(sale.invoice_no || wanted)
+      loadSale(sale)
+      setPicking(false)
+      toast.success(`${sale.invoice_no} found — items loaded`)
     } catch {
       toast.error('Invoice not found')
       setSaleItems([])
@@ -115,24 +148,64 @@ function RefundForm({ onClose, onSuccess }) {
     <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
       {/* Invoice lookup */}
       <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-1.5">Original Invoice Number (optional)</label>
+        <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+          Original sale <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
         <div className="flex gap-2">
-          <input
-            value={invoiceInput}
-            onChange={e => setInvoiceInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleLookup()}
-            placeholder="e.g. INV-0001"
-            className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-          />
+          <div className="relative flex-1">
+            <input
+              value={invoiceInput}
+              onChange={e => { setInvoiceInput(e.target.value); setPicking(true) }}
+              onFocus={() => setPicking(true)}
+              onKeyDown={e => { if (e.key === 'Enter') handleLookup(); if (e.key === 'Escape') setPicking(false) }}
+              placeholder="Invoice code, customer name or phone…"
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+
+            {picking && (
+              <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto">
+                {searching && (
+                  <p className="px-3 py-2.5 text-xs text-gray-400">Searching…</p>
+                )}
+                {!searching && matches.length === 0 && (
+                  <p className="px-3 py-2.5 text-xs text-gray-400">
+                    No matching sales{invoiceInput.trim() ? ' — check the code, name or phone' : ' yet'}.
+                  </p>
+                )}
+                {matches.map(m => (
+                  <button
+                    key={m._id}
+                    type="button"
+                    onClick={() => handleLookup(m.invoice_no)}
+                    className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-gray-100 last:border-0"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-xs font-bold text-gray-800">{m.invoice_no}</span>
+                      <span className="text-sm font-bold text-gray-900">{formatCurrency(m.total_amount)}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 truncate">
+                      {m.customer_name || 'Walk-in customer'}
+                      {m.customer_phone ? ` · ${m.customer_phone}` : ''}
+                      {' · '}{formatDate(m.sale_date)}
+                      {' · '}{m.item_count} item{m.item_count === 1 ? '' : 's'}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
-            onClick={handleLookup}
+            onClick={() => handleLookup()}
             disabled={lookupLoading}
-            className="px-4 py-2 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 disabled:opacity-60 flex items-center gap-1.5"
+            className="px-4 py-2 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 disabled:opacity-60 flex items-center gap-1.5 flex-shrink-0"
           >
             <FiSearch size={14} />
             {lookupLoading ? 'Looking…' : 'Look Up'}
           </button>
         </div>
+        <p className="text-xs text-gray-400 mt-1">
+          Search by invoice code, customer name or phone — or leave it blank to pick from the most recent sales.
+        </p>
       </div>
 
       {/* Items from invoice */}

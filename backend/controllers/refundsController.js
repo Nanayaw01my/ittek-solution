@@ -54,11 +54,73 @@ const getRefunds = async (req, res) => {
  */
 const lookupSaleByInvoice = async (req, res) => {
   try {
-    const sale = await Sale.findOne({ invoice_no: req.params.invoiceNo.trim() });
+    const typed = req.params.invoiceNo.trim();
+    // Exact first, then the same code in any case. Staff read these off a
+    // printed slip and type them back by hand; "inv-0001" is the same sale as
+    // "INV-0001" and refusing it helps nobody.
+    let sale = await Sale.findOne({ invoice_no: typed });
+    if (!sale) {
+      const safe = typed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      sale = await Sale.findOne({ invoice_no: new RegExp(`^${safe}$`, 'i') });
+    }
     if (!sale) return res.status(404).json({ success: false, message: 'Invoice not found.' });
     return res.status(200).json({ success: true, data: sale });
   } catch (err) {
     console.error('Lookup sale error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * GET /api/refunds/sale-search?q=
+ *
+ * Recent sales to pick from when starting a refund. The exact-invoice lookup
+ * above only matches a code typed in full and correctly, which meant a
+ * customer returning goods without their receipt could not be served at all —
+ * the code is on a slip of paper they may not have.
+ *
+ * Searches the invoice number, the customer's name and their phone. With no
+ * search term it simply lists the most recent sales, which is the common case:
+ * goods usually come back within a day or two.
+ */
+const searchSales = async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const filter = {};
+
+    if (q) {
+      // Escaped: a customer name can legitimately contain regex characters,
+      // and an unescaped one would either error or match the wrong sales.
+      const safe = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rx = new RegExp(safe, 'i');
+      filter.$or = [{ invoice_no: rx }, { customer_name: rx }, { customer_phone: rx }];
+    }
+
+    // A Sales user sees only their own sales here, matching how the sales
+    // history already scopes them.
+    if (req.user.role === 'Sales') filter.user_id = req.user._id;
+
+    const sales = await Sale.find(filter)
+      .select('invoice_no customer_name customer_phone total_amount sale_date items')
+      .populate('user_id', 'username')
+      .sort({ sale_date: -1 })
+      .limit(15)
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: sales.map((s) => ({
+        _id: s._id,
+        invoice_no: s.invoice_no,
+        customer_name: s.customer_name || '',
+        customer_phone: s.customer_phone || '',
+        total_amount: s.total_amount,
+        sale_date: s.sale_date,
+        item_count: (s.items || []).length,
+      })),
+    });
+  } catch (err) {
+    console.error('Search sales error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -80,7 +142,11 @@ const createRefund = async (req, res) => {
 
     // Look up original sale if invoice ref provided
     if (invoice_ref) {
-      const sale = await Sale.findOne({ invoice_no: invoice_ref.trim() });
+      const typed = invoice_ref.trim();
+      // Matched the same way the lookup does it, or a refund typed in lower
+      // case would silently save with no link back to the sale it refunds.
+      const safe = typed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const sale = await Sale.findOne({ invoice_no: new RegExp(`^${safe}$`, 'i') });
       if (sale) sale_id = sale._id;
     }
 
@@ -275,4 +341,4 @@ const deleteRefund = async (req, res) => {
   }
 };
 
-module.exports = { getRefunds, lookupSaleByInvoice, createRefund, approveRefund, rejectRefund, updateRefund, deleteRefund };
+module.exports = { getRefunds, lookupSaleByInvoice, searchSales, createRefund, approveRefund, rejectRefund, updateRefund, deleteRefund };
