@@ -261,15 +261,10 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
 
           </div>
 
-          {/* Offline there is no QR: the token and the public page both come
-              from the server, and the sale hasn't reached it yet. */}
-          {!qrCode && saleData.offline && (
-            <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
-              <p className="text-[10px] text-gray-500">
-                QR code and online receipt will be available once this sale syncs.
-              </p>
-            </div>
-          )}
+          {/* Offline there is simply no QR block. The receipt used to explain
+              why, which told the customer about the shop's syncing rather than
+              about their purchase — nothing they can act on, printed on paper
+              they keep. The QR is a convenience; its absence needs no notice. */}
 
           {/* QR code — generated server-side, links to the public receipt page */}
           {qrCode && (
