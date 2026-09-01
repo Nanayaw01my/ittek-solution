@@ -4,7 +4,7 @@ const { body } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
-const { getDebts, getDebt, getDebtSummary, recordPayment } = require('../controllers/debtsController');
+const { getDebts, getDebt, getDebtSummary, recordPayment, deleteDebt } = require('../controllers/debtsController');
 
 // Manager (2) and above
 const managerPlus = [authenticate, requireLevel(2)];
@@ -23,6 +23,15 @@ router.post(
   ],
   auditLog('DEBT_PAYMENT', (req) => ({ debt_id: req.params.id, amount: req.body.amount })),
   recordPayment
+);
+
+// Deleting a debt writes off money owed to the shop, so it sits above the
+// Manager level the rest of this page runs at.
+router.delete(
+  '/:id',
+  requireLevel(3),
+  auditLog('DELETE_DEBT', (req) => ({ debt_id: req.params.id })),
+  deleteDebt
 );
 
 module.exports = router;

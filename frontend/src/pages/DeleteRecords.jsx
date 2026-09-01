@@ -37,7 +37,9 @@ export default function DeleteRecords() {
     queryFn: () => getDeletableRecords(type, { search, page, limit: 25 }).then(r => r.data),
     enabled: !!type,
   })
-  const records = data?.data || []
+  // The api client strips the { success, data } envelope, so this is the
+  // inner object: the records plus the pagination that goes with them.
+  const records = data?.records || []
   const pagination = data?.pagination
 
   const deleteMutation = useMutation({

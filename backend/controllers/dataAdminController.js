@@ -257,12 +257,17 @@ const listRecords = async (req, res) => {
       def.model.countDocuments(filter),
     ]);
 
+    // Everything the screen needs goes inside `data`. The client unwraps
+    // { success, data } and keeps only `data`, so anything sitting beside it
+    // here — the pagination, the warning — never reached the browser at all.
     return res.status(200).json({
       success: true,
-      data: docs.map(def.row),
-      warning: def.warning || null,
-      softDelete: !!def.softDelete,
-      pagination: { total, page: Number(page), limit: perPage, pages: Math.ceil(total / perPage) },
+      data: {
+        records: docs.map(def.row),
+        warning: def.warning || null,
+        softDelete: !!def.softDelete,
+        pagination: { total, page: Number(page), limit: perPage, pages: Math.ceil(total / perPage) },
+      },
     });
   } catch (err) {
     console.error('Data admin list error:', err.message);

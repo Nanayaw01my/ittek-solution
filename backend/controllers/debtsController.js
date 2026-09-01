@@ -168,4 +168,35 @@ const recordPayment = async (req, res) => {
   }
 };
 
-module.exports = { getDebts, getDebt, getDebtSummary, recordPayment };
+/**
+ * DELETE /api/debts/:id
+ *
+ * Removes a debt from the system entirely. CEO / Super Admin only: a debt is
+ * money a customer owes the shop, and deleting one writes that money off with
+ * nothing left to show it existed.
+ *
+ * The sale that created the debt is deliberately left alone. Erasing it too
+ * would rewrite the day's takings for a sale that really happened; the debt
+ * record is the claim on the customer, not the sale itself.
+ */
+const deleteDebt = async (req, res) => {
+  try {
+    const debt = await Debt.findById(req.params.id);
+    if (!debt) return res.status(404).json({ success: false, message: 'Debt not found.' });
+
+    const outstanding = Math.max(0, (debt.amount_owed || 0) - (debt.amount_paid || 0));
+    await Debt.findByIdAndDelete(req.params.id);
+
+    return res.status(200).json({
+      success: true,
+      message: outstanding > 0
+        ? `Debt deleted. GH₵${outstanding.toFixed(2)} owed by ${debt.customer_name} is no longer tracked.`
+        : 'Debt deleted.',
+    });
+  } catch (err) {
+    console.error('Delete debt error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+module.exports = { getDebts, getDebt, getDebtSummary, recordPayment, deleteDebt };

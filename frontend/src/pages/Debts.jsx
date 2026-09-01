@@ -2,9 +2,10 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp } from 'react-icons/fi'
-import { getDebts, recordDebtPayment, getDebtSummary } from '../api/debts'
-import { formatCurrency, formatDate } from '../utils/helpers'
+import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp, FiTrash2 } from 'react-icons/fi'
+import { getDebts, recordDebtPayment, getDebtSummary, deleteDebt } from '../api/debts'
+import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
+import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
 import StatCard from '../components/StatCard'
@@ -104,7 +105,7 @@ function PaymentModal({ debt, onClose, isOpen }) {
   )
 }
 
-function DebtRow({ debt, onPay }) {
+function DebtRow({ debt, onPay, onDelete, canDelete }) {
   const [showHistory, setShowHistory] = useState(false)
 
   const remaining = Math.max(0, (debt.amount_owed || 0) - (debt.amount_paid || 0))
@@ -154,6 +155,15 @@ function DebtRow({ debt, onPay }) {
                 {showHistory ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
               </button>
             )}
+            {canDelete && (
+              <button
+                onClick={() => onDelete(debt)}
+                className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg"
+                title="Delete this debt"
+              >
+                <FiTrash2 size={14} />
+              </button>
+            )}
           </div>
         </td>
       </tr>
@@ -180,6 +190,7 @@ export default function Debts() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [payTarget, setPayTarget] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
   const [page, setPage] = useState(1)
 
   const { data, isLoading } = useQuery({
@@ -190,6 +201,23 @@ export default function Debts() {
       page,
       limit: 15,
     }).then(r => r.data),
+  })
+
+  const { user } = useAuthStore()
+  // Deleting a debt writes off money owed to the shop, so it is kept to the
+  // owners — the same level the server enforces.
+  const canDelete = getRoleLevel(user?.role) >= 3
+  const queryClient = useQueryClient()
+
+  const removeMutation = useMutation({
+    mutationFn: (id) => deleteDebt(id),
+    onSuccess: (res) => {
+      toast.success(res.data?.message || 'Debt deleted.')
+      setDeleteTarget(null)
+      queryClient.invalidateQueries({ queryKey: ['debts'] })
+      queryClient.invalidateQueries({ queryKey: ['debt-summary'] })
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not delete the debt.'),
   })
 
   const { data: summary } = useQuery({
@@ -271,7 +299,7 @@ export default function Debts() {
                 </tr>
               ) : (
                 debts.map(debt => (
-                  <DebtRow key={debt._id} debt={debt} onPay={setPayTarget} />
+                  <DebtRow key={debt._id} debt={debt} onPay={setPayTarget} onDelete={setDeleteTarget} canDelete={canDelete} />
                 ))
               )}
             </tbody>
@@ -284,6 +312,50 @@ export default function Debts() {
         debt={payTarget}
         onClose={() => setPayTarget(null)}
       />
+
+      {/* Deleting a debt writes off money the shop is owed, so it says exactly
+          what is being written off and who owed it before anything happens. */}
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete this debt?"
+        size="md"
+      >
+        {deleteTarget && (
+          <div className="p-5 space-y-4">
+            <div className="flex gap-3 p-3 bg-red-50 border border-red-200 rounded-xl">
+              <FiAlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={18} />
+              <div className="text-sm text-red-800">
+                <p className="font-bold">{deleteTarget.customer_name}</p>
+                <p className="mt-1">
+                  {formatCurrency(Math.max(0, (deleteTarget.amount_owed || 0) - (deleteTarget.amount_paid || 0)))}
+                  {' '}still owed will no longer be tracked, along with every payment
+                  recorded against this debt. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500">
+              The original sale is kept — deleting the debt only removes the claim on the
+              customer, not the record that the sale happened.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => removeMutation.mutate(deleteTarget._id)}
+                disabled={removeMutation.isPending}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-xl font-bold text-sm"
+              >
+                {removeMutation.isPending ? 'Deleting…' : 'Delete debt'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
