@@ -95,14 +95,27 @@ const deductStock = async (items) => {
         await product.save(); // pre-save hook recalculates product.quantity
       }
     } else {
-      // Floored at zero rather than a bare $inc. A synced offline sale can ask
-      // for more than the server still shows, and $inc bypasses the schema's
-      // min:0 — leaving a negative quantity that makes every later save of
-      // that product fail validation.
-      const product = await Product.findById(item.product_id);
-      if (!product) continue;
-      product.quantity = Math.max(0, (product.quantity || 0) - item.quantity);
-      await product.save();
+      // An atomic update, deliberately NOT a load-modify-save.
+      //
+      // save() runs full document validation, so selling a product with any
+      // pre-existing problem — a missing cost price, an empty-string barcode
+      // shared with another row from a file import — would throw and fail the
+      // sale. The till must not refuse to take money because a record it is
+      // not editing has an old defect in it.
+      //
+      // The pipeline form floors the result at zero in the database, which a
+      // bare $inc cannot do: a synced offline sale can ask for more than the
+      // server still shows, and a negative quantity would then break every
+      // later save of that product.
+      await Product.findByIdAndUpdate(item.product_id, [
+        {
+          $set: {
+            quantity: {
+              $max: [0, { $subtract: [{ $ifNull: ['$quantity', 0] }, item.quantity] }],
+            },
+          },
+        },
+      ]);
     }
   }
 };
