@@ -31,7 +31,7 @@ export default function Dashboard() {
   const { user } = useAuthStore()
   const userLevel = getRoleLevel(user?.role)
 
-  const { data: statsData, isLoading: statsLoading } = useQuery({
+  const { data: statsData, isLoading: statsLoading, isError: statsError, error: statsErrObj } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: () => getDashboardStats().then(r => r.data),
     refetchInterval: 60000,
@@ -56,6 +56,23 @@ export default function Dashboard() {
   })
 
   const stats = statsData || {}
+
+  /**
+   * A failed request used to look exactly like a quiet day: every card fell
+   * back to zero and said nothing. On a screen people use to check the day's
+   * takings that is worse than showing nothing at all — GHC 0.00 reads as
+   * "no sales", not as "the figures did not load".
+   */
+  const StatsError = () => (
+    <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+      <FiAlertTriangle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
+      <p className="text-sm text-red-800">
+        <span className="font-bold">The figures below did not load</span> — they are not
+        real zeros. {statsErrObj?.message || 'The server could not be reached.'} Press
+        Refresh to try again.
+      </p>
+    </div>
+  )
   const recentSalesList = Array.isArray(recentSales) ? recentSales : []
   const topProductsList = Array.isArray(topProducts) ? topProducts : (topProducts?.products || [])
 
@@ -70,6 +87,8 @@ export default function Dashboard() {
           </div>
           <RefreshButton keys={['dashboard-stats']} />
         </div>
+
+        {statsError && <div className="mb-4"><StatsError /></div>}
         <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
           <StatCard
             icon={FiShoppingCart}
@@ -152,6 +171,8 @@ export default function Dashboard() {
         <RefreshButton keys={['dashboard-stats', 'sales-trend', 'top-products', 'recent-sales']} />
       </div>
 
+      {statsError && <StatsError />}
+
       {/* Row 1 - Key metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
@@ -160,6 +181,7 @@ export default function Dashboard() {
           label="Today's Sales"
           color="orange"
           loading={statsLoading}
+          hint={statsError ? null : `${stats.todaySalesCount ?? 0} sale${stats.todaySalesCount === 1 ? '' : 's'} today`}
         />
         <StatCard
           icon={FiTrendingUp}

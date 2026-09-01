@@ -68,6 +68,7 @@ const getDashboardStats = async (req, res) => {
       outstandingDebts, activeUsers,
       todayRefundsAgg, monthlyRefundsAgg,
       todayLayawayAgg, monthlyLayawayAgg,
+      todaySalesCountAgg,
     ] = await Promise.all([
       Sale.aggregate([{ $match: { sale_date: { $gte: startOfToday } } }, { $group: { _id: null, total: { $sum: '$total_amount' } } }]),
       Sale.aggregate([{ $match: { sale_date: { $gte: startOfMonth } } }, { $group: { _id: null, total: { $sum: '$total_amount' } } }]),
@@ -97,6 +98,7 @@ const getDashboardStats = async (req, res) => {
         { $match: { 'payments.paid_at': { $gte: startOfMonth } } },
         { $group: { _id: null, total: { $sum: '$payments.amount' } } },
       ]),
+      Sale.countDocuments({ sale_date: { $gte: startOfToday } }),
     ]);
 
     const todayRefunds = todayRefundsAgg[0]?.total || 0;
@@ -114,6 +116,13 @@ const getDashboardStats = async (req, res) => {
       data: {
         todaySales,
         monthlySales,
+        // How many sales were counted, and the window they were counted in.
+        // A zero on a money card is ambiguous — a quiet morning and a failed
+        // request look identical — so the screen is given enough to say which
+        // it is, and the day boundary the server actually used.
+        todaySalesCount: todaySalesCountAgg,
+        dayStart: startOfToday.toISOString(),
+        serverTime: now.toISOString(),
         totalProducts,
         lowStockCount: lowStockProducts.length,
         todayExpenses,

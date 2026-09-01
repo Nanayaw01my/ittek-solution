@@ -1,6 +1,6 @@
 import React from 'react'
 
-export default function StatCard({ icon: Icon, value, label, trend, trendUp, color = 'orange', prefix = '', suffix = '', loading = false }) {
+export default function StatCard({ icon: Icon, value, label, trend, trendUp, color = 'orange', prefix = '', suffix = '', loading = false, hint = null }) {
   const colorMap = {
     orange: { bg: 'bg-orange-100', icon: 'text-orange-500', border: 'border-orange-200' },
     green: { bg: 'bg-green-100', icon: 'text-green-500', border: 'border-green-200' },
@@ -41,6 +41,10 @@ export default function StatCard({ icon: Icon, value, label, trend, trendUp, col
         {prefix}{typeof value === 'number' ? value.toLocaleString('en-GH') : value}{suffix}
       </p>
       <p className="text-sm text-gray-500 mt-1 font-medium">{label}</p>
+      {/* Context under a figure that would otherwise be read wrongly — most
+          usefully, how many records a total was made from, so a zero can be
+          told apart from a total that failed to arrive. */}
+      {hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>}
     </div>
   )
 }
