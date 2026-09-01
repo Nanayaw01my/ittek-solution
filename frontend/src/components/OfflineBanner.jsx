@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { FiWifiOff, FiRefreshCw } from 'react-icons/fi'
+import { FiWifiOff, FiRefreshCw, FiList } from 'react-icons/fi'
 import toast from 'react-hot-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import useOnlineStatus from '../hooks/useOnlineStatus'
 import { getPendingQueue, removeSaleFromQueue } from '../utils/offlineQueue'
 import { syncOfflineSales } from '../api/sync'
+import PendingSalesModal from './PendingSalesModal'
 
 export default function OfflineBanner() {
   const isOnline = useOnlineStatus()
@@ -12,6 +13,7 @@ export default function OfflineBanner() {
   const queryClient = useQueryClient()
   const [pendingCount, setPendingCount] = useState(0)
   const [syncing, setSyncing] = useState(false)
+  const [showPending, setShowPending] = useState(false)
 
   const refreshCount = () => setPendingCount(getPendingQueue().length)
 
@@ -92,15 +94,26 @@ export default function OfflineBanner() {
   if (isOnline && pendingCount === 0) return null
 
   return (
+    <>
     <div className={`flex items-center justify-between px-4 py-2 text-sm font-semibold
       ${!isOnline ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'}`}>
-      <div className="flex items-center gap-2">
-        <FiWifiOff size={15} />
-        <span>
+      <div className="flex items-center gap-2 min-w-0">
+        <FiWifiOff size={15} className="flex-shrink-0" />
+        <span className="truncate">
           {!isOnline
             ? `Offline mode${pendingCount > 0 ? ` — ${pendingCount} sale${pendingCount > 1 ? 's' : ''} queued` : ' — no internet'}`
             : `Back online — ${pendingCount} sale${pendingCount > 1 ? 's' : ''} ready to sync`}
         </span>
+        {/* The count alone is not much use when someone is trying to work out
+            what was sold while the line was down. */}
+        {pendingCount > 0 && (
+          <button
+            onClick={() => setShowPending(true)}
+            className="flex items-center gap-1 bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded-lg text-xs font-bold flex-shrink-0 transition-colors"
+          >
+            <FiList size={12} /> View
+          </button>
+        )}
       </div>
       {isOnline && pendingCount > 0 && (
         <button
@@ -113,5 +126,8 @@ export default function OfflineBanner() {
         </button>
       )}
     </div>
+
+    <PendingSalesModal isOpen={showPending} onClose={() => setShowPending(false)} />
+    </>
   )
 }
