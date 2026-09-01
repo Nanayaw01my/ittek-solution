@@ -149,42 +149,62 @@ const processSale = async (req, res) => {
       } catch (_) {}
     }
 
-    // Anomaly scan — never blocks the sale
-    fraud.checkSale(sale, req.user).catch(() => {});
+    // ── Past this point the sale is made ────────────────────────────────────
+    // The money has been taken and the stock is down. Everything below is
+    // bookkeeping around that fact, and none of it may turn a completed sale
+    // into an error on the till: staff read "Server error", assume nothing was
+    // recorded, and ring the sale up a second time.
+    try {
+      fraud.checkSale(sale, req.user).catch(() => {});
 
-    // Create notification
-    await Notification.create({
-      user_id: null, // broadcast
-      type: 'info',
-      title: 'New Sale',
-      message: `Sale ${invoice_no} - GH₵${cart_total.toFixed(2)} by ${req.user.username}`,
-      link: `/pos/sales/${sale._id}`,
-    });
+      await Notification.create({
+        user_id: null, // broadcast
+        type: 'info',
+        title: 'New Sale',
+        message: `Sale ${invoice_no} - GH₵${cart_total.toFixed(2)} by ${req.user.username}`,
+        link: `/pos/sales/${sale._id}`,
+      });
 
-    // Queue email if above threshold
-    const settings = await Settings.findOne();
-    const threshold = settings?.notification_settings?.large_sale_threshold || 5000;
-    if (cart_total >= threshold && settings?.notification_settings?.email_notifications) {
-      const recipientEmail = settings.company_email || process.env.EMAIL_USER;
-      if (recipientEmail) {
-        await queueEmail({
-          to: recipientEmail,
-          subject: `Large Sale Alert - ${invoice_no}`,
-          html: templates.saleSummary({ invoice_no, customer_name, total_amount: cart_total, items, user: req.user.username }),
-          priority: 'high',
-        });
+      const settings = await Settings.findOne();
+      const threshold = settings?.notification_settings?.large_sale_threshold || 5000;
+      if (cart_total >= threshold && settings?.notification_settings?.email_notifications) {
+        const recipientEmail = settings.company_email || process.env.EMAIL_USER;
+        if (recipientEmail) {
+          await queueEmail({
+            to: recipientEmail,
+            subject: `Large Sale Alert - ${invoice_no}`,
+            html: templates.saleSummary({ invoice_no, customer_name, total_amount: cart_total, items, user: req.user.username }),
+            priority: 'high',
+          });
+        }
       }
+    } catch (afterErr) {
+      console.error('Post-sale bookkeeping failed for', invoice_no, '-', afterErr.stack || afterErr.message);
     }
 
-    const populated = await Sale.findById(sale._id).populate('user_id', 'username');
+    // The receipt is worth the same care: a QR service or a populate failing
+    // must not lose the sale that was just made.
+    let receipt = sale;
+    try {
+      const populated = await Sale.findById(sale._id).populate('user_id', 'username');
+      receipt = await withReceiptQr(populated, req);
+    } catch (receiptErr) {
+      console.error('Receipt build failed for', invoice_no, '-', receiptErr.stack || receiptErr.message);
+    }
+
     return res.status(201).json({
       success: true,
       message: 'Sale processed successfully.',
-      data: await withReceiptQr(populated, req),
+      data: receipt,
     });
   } catch (err) {
-    console.error('Process sale error:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error.' });
+    // The full stack, and the real reason on screen. "Server error." told the
+    // person at the counter nothing and left no trail to follow.
+    console.error('Process sale error:', err.stack || err.message);
+    return res.status(500).json({
+      success: false,
+      message: `Could not complete the sale: ${err.message}`,
+    });
   }
 };
 
@@ -254,27 +274,31 @@ const processShortPayment = async (req, res) => {
       created_by: req.user._id,
     });
 
-    // Notification
-    await Notification.create({
-      user_id: null,
-      type: 'important',
-      title: 'New Debt Created',
-      message: `${customer_name} owes GH₵${debtAmount.toFixed(2)} - ${invoice_no}`,
-      link: `/debts/${debt._id}`,
-    });
+    // The sale and the debt are both written by here. Announcing them is not
+    // worth failing them for — see the note in the full-payment path above.
+    try {
+      await Notification.create({
+        user_id: null,
+        type: 'important',
+        title: 'New Debt Created',
+        message: `${customer_name} owes GH₵${debtAmount.toFixed(2)} - ${invoice_no}`,
+        link: `/debts/${debt._id}`,
+      });
 
-    // Queue email
-    const settings = await Settings.findOne();
-    if (settings?.notification_settings?.email_notifications) {
-      const recipientEmail = settings.company_email || process.env.EMAIL_USER;
-      if (recipientEmail) {
-        await queueEmail({
-          to: recipientEmail,
-          subject: `New Debt - ${customer_name}`,
-          html: templates.debtCreated({ customer_name, amount_owed: debtAmount, due_date: debt.due_date }),
-          priority: 'high',
-        });
+      const settings = await Settings.findOne();
+      if (settings?.notification_settings?.email_notifications) {
+        const recipientEmail = settings.company_email || process.env.EMAIL_USER;
+        if (recipientEmail) {
+          await queueEmail({
+            to: recipientEmail,
+            subject: `New Debt - ${customer_name}`,
+            html: templates.debtCreated({ customer_name, amount_owed: debtAmount, due_date: debt.due_date }),
+            priority: 'high',
+          });
+        }
       }
+    } catch (afterErr) {
+      console.error('Post-sale bookkeeping failed for', invoice_no, '-', afterErr.stack || afterErr.message);
     }
 
     return res.status(201).json({
@@ -283,8 +307,11 @@ const processShortPayment = async (req, res) => {
       data: { sale: await withReceiptQr(sale, req), debt },
     });
   } catch (err) {
-    console.error('Short payment error:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error.' });
+    console.error('Short payment error:', err.stack || err.message);
+    return res.status(500).json({
+      success: false,
+      message: `Could not complete the sale: ${err.message}`,
+    });
   }
 };
 
