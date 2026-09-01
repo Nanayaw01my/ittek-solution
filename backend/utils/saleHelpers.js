@@ -5,10 +5,18 @@ const Product = require('../models/Product');
  * checking stock. Shared by the sale, short-payment and layaway flows so all
  * three agree on pricing and stock rules.
  *
- * @returns {Promise<{ error?: string, items?: Array }>}
+ * `allowShortStock` is for syncing an offline sale, and only for that. At a
+ * live till, refusing to sell what is not on the shelf is the right answer.
+ * On sync the sale already happened hours ago — the goods left the shop and
+ * the customer paid — so refusing it does not put anything back; it just
+ * loses the money. The shortfall is reported instead, and the stock figure is
+ * left to be corrected by a count.
+ *
+ * @returns {Promise<{ error?: string, items?: Array, shortfalls?: Array }>}
  */
-const buildSaleItems = async (cart) => {
+const buildSaleItems = async (cart, { allowShortStock = false } = {}) => {
   const items = [];
+  const shortfalls = [];
 
   for (const cartItem of cart) {
     const product = await Product.findById(cartItem.product_id);
@@ -23,9 +31,16 @@ const buildSaleItems = async (cart) => {
         return { error: `Select a variant for ${product.name}.` };
       }
       if (variant.quantity < cartItem.quantity) {
-        return {
-          error: `Insufficient stock for ${product.name} (${variant.name}). Available: ${variant.quantity}`,
-        };
+        if (!allowShortStock) {
+          return {
+            error: `Insufficient stock for ${product.name} (${variant.name}). Available: ${variant.quantity}`,
+          };
+        }
+        shortfalls.push({
+          product_name: `${product.name} (${variant.name})`,
+          sold: cartItem.quantity,
+          available: variant.quantity,
+        });
       }
       items.push({
         product_id: product._id,
@@ -42,7 +57,14 @@ const buildSaleItems = async (cart) => {
     }
 
     if (product.quantity < cartItem.quantity) {
-      return { error: `Insufficient stock for ${product.name}. Available: ${product.quantity}` };
+      if (!allowShortStock) {
+        return { error: `Insufficient stock for ${product.name}. Available: ${product.quantity}` };
+      }
+      shortfalls.push({
+        product_name: product.name,
+        sold: cartItem.quantity,
+        available: product.quantity,
+      });
     }
     items.push({
       product_id: product._id,
@@ -55,7 +77,7 @@ const buildSaleItems = async (cart) => {
     });
   }
 
-  return { items };
+  return { items, shortfalls };
 };
 
 /**
@@ -73,7 +95,14 @@ const deductStock = async (items) => {
         await product.save(); // pre-save hook recalculates product.quantity
       }
     } else {
-      await Product.findByIdAndUpdate(item.product_id, { $inc: { quantity: -item.quantity } });
+      // Floored at zero rather than a bare $inc. A synced offline sale can ask
+      // for more than the server still shows, and $inc bypasses the schema's
+      // min:0 — leaving a negative quantity that makes every later save of
+      // that product fail validation.
+      const product = await Product.findById(item.product_id);
+      if (!product) continue;
+      product.quantity = Math.max(0, (product.quantity || 0) - item.quantity);
+      await product.save();
     }
   }
 };

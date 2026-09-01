@@ -27,9 +27,15 @@ const processSingleSale = async (type, payload, userId, username) => {
   // Use the same builder as the online till so variants are resolved and
   // priced identically — an offline sale of a variant must not sync back as
   // the parent product at the parent's price.
-  const built = await buildSaleItems(cart);
+  //
+  // allowShortStock: this sale already happened. The goods left the shop and
+  // the customer paid, possibly hours ago. Refusing it because the server's
+  // stock figure is now lower puts nothing back on the shelf — it only loses
+  // the record of the money. The shortfall is reported instead.
+  const built = await buildSaleItems(cart, { allowShortStock: true });
   if (built.error) throw new Error(built.error);
   const items = built.items;
+  const shortfalls = built.shortfalls || [];
 
   const { subtotal, cart_total } = calcTotals(items, discount, discount_type);
   const invoice_no = await generateInvoiceNo();
@@ -64,7 +70,7 @@ const processSingleSale = async (type, payload, userId, username) => {
       link: `/debts/${debt._id}`,
     });
 
-    return { invoice_no, sale_id: sale._id };
+    return { invoice_no, sale_id: sale._id, shortfalls };
   }
 
   // Regular full-payment sale
@@ -110,7 +116,19 @@ const processSingleSale = async (type, payload, userId, username) => {
     link: `/pos/sales/${sale._id}`,
   });
 
-  return { invoice_no, sale_id: sale._id };
+  // Stock that did not add up is worth someone's attention: it means the
+  // shelf and the books disagree, not that the sale was wrong.
+  if (shortfalls.length > 0) {
+    await Notification.create({
+      user_id: null, type: 'important', title: 'Stock shortfall on sync',
+      message: `${invoice_no} sold more than stock showed: `
+        + shortfalls.map((s) => `${s.product_name} (sold ${s.sold}, had ${s.available})`).join('; ')
+        + '. The sale was recorded — check the stock count.',
+      link: '/products',
+    });
+  }
+
+  return { invoice_no, sale_id: sale._id, shortfalls };
 };
 
 /**
@@ -142,10 +160,14 @@ const syncOfflineSales = async (req, res) => {
     const synced = results.filter(r => r.status === 'synced').length;
     const failed = results.filter(r => r.status === 'failed').length;
 
+    // The per-sale status is the thing that matters, and the client must read
+    // it: a sale that failed here has NOT been written, and deleting it from
+    // the device's queue on the strength of a 200 loses it for good. That is
+    // exactly what used to happen.
     return res.status(200).json({
       success: true,
       message: `${synced} synced, ${failed} failed.`,
-      data: results,
+      data: { results, synced, failed },
     });
   } catch (err) {
     console.error('Offline sync error:', err.message);

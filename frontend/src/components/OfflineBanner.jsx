@@ -27,35 +27,67 @@ export default function OfflineBanner() {
     setSyncing(true)
     let ok = 0
     let fail = 0
+    let lastReason = ''
+
     for (const entry of queue) {
       try {
-        await syncOfflineSales([{ type: entry.type, payload: entry.payload }])
+        const res = await syncOfflineSales([{ type: entry.type, payload: entry.payload }])
+
+        // The request succeeding is NOT the sale succeeding. The server answers
+        // 200 whether it wrote the sale or rejected it, with the real outcome in
+        // the per-sale status. This used to treat any 200 as done and delete the
+        // sale from the queue — so a rejected sale was erased from the only
+        // place it existed, and reported as synced.
+        const payload = res?.data
+        const results = payload?.results || (Array.isArray(payload) ? payload : [])
+        const outcome = results[0]
+
+        if (outcome && outcome.status !== 'synced') {
+          fail++
+          lastReason = outcome.reason || ''
+          continue          // stays queued for the next attempt
+        }
+
         removeSaleFromQueue(entry.id)
         ok++
-      } catch {
+      } catch (err) {
+        // Network or server error — also keeps the sale queued.
         fail++
+        lastReason = err?.response?.data?.message || err?.message || ''
       }
     }
+
     setSyncing(false)
     refreshCount()
     if (ok > 0) {
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
       queryClient.invalidateQueries({ queryKey: ['recent-sales'] })
       queryClient.invalidateQueries({ queryKey: ['pos-products'] })
+      queryClient.invalidateQueries({ queryKey: ['sales-history'] })
       toast.success(`Synced ${ok} sale${ok > 1 ? 's' : ''} to server`)
     }
     if (fail > 0) {
-      toast.error(`${fail} sale${fail > 1 ? 's' : ''} failed to sync — will retry next time`)
+      toast.error(
+        `${fail} sale${fail > 1 ? 's' : ''} could not sync${lastReason ? ` — ${lastReason}` : ''}. `
+        + 'Still saved on this device.',
+        { duration: 8000 }
+      )
     }
   }, [syncing, queryClient])
 
-  // Auto-sync when coming back online
+  // Sync on coming back online, and on opening the app with a queue already
+  // waiting. The transition check alone missed the common case: the till is
+  // closed while offline and opened later when the connection is back, so no
+  // offline→online change is ever observed and the sales sat there.
   useEffect(() => {
-    if (isOnline && !wasOnlineRef.current) {
+    if (isOnline && (!wasOnlineRef.current || getPendingQueue().length > 0)) {
       handleSync()
     }
     wasOnlineRef.current = isOnline
-  }, [isOnline, handleSync])
+    // Deliberately not depending on handleSync: it changes identity while
+    // syncing, which would re-enter this effect mid-run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline])
 
   if (isOnline && pendingCount === 0) return null
 
