@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp, FiTrash2 } from 'react-icons/fi'
+import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp, FiTrash2, FiPrinter } from 'react-icons/fi'
 import { getDebts, recordDebtPayment, getDebtSummary, deleteDebt } from '../api/debts'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
@@ -11,20 +11,131 @@ import Modal from '../components/Modal'
 import StatCard from '../components/StatCard'
 import Badge from '../components/Badge'
 import { isPast, parseISO } from 'date-fns'
+import { getSettings } from '../api/settings'
+import { printReceipt } from '../utils/printReceipt'
 import RefreshButton from '../components/RefreshButton'
 
-function PaymentModal({ debt, onClose, isOpen }) {
+/**
+ * The slip the customer walks away with after paying down a debt.
+ *
+ * Built as the same thermal receipt the POS prints — `receipt-print-area` is
+ * what printReceipt() sizes to the shop's roll — rather than an A4 page: a
+ * debt payment happens at the counter, on the same printer, and a customer
+ * handing over cash expects paper in return.
+ *
+ * It states the balance that remains, which is the whole point of it. A
+ * receipt that only says what was paid settles no argument three weeks later
+ * about what is still owed.
+ */
+function DebtReceiptModal({ receipt, onClose, settings }) {
+  if (!receipt) return null
+
+  const cur = 'GH₵'
+  const remaining = Math.max(0, (receipt.amount_owed || 0) - (receipt.amount_paid || 0))
+  const settled = remaining <= 0
+
+  const Line = ({ label, value, bold, colour }) => (
+    <div className="flex justify-between py-0.5">
+      <span className={bold ? 'font-bold' : ''}>{label}</span>
+      <span className={`${bold ? 'font-bold' : ''} ${colour || ''}`}>{value}</span>
+    </div>
+  )
+
+  return (
+    <Modal isOpen={!!receipt} onClose={onClose} title="Payment Receipt" size="md">
+      <div className="p-4">
+        <div className="receipt-print-area bg-white border border-gray-200 rounded-xl p-4 font-mono text-sm">
+          <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
+            {settings?.logo_url && (
+              <img
+                src={settings.logo_url}
+                alt=""
+                className="h-14 mx-auto mb-2 object-contain"
+                onError={(e) => { e.currentTarget.style.display = 'none' }}
+              />
+            )}
+            <p className="font-black text-base">{settings?.company_name || 'DAN & DOR SOLAR COMPANY LIMITED'}</p>
+            {settings?.company_address && <p className="text-xs">{settings.company_address}</p>}
+            {settings?.company_phone && <p className="text-xs">Tel: {settings.company_phone}</p>}
+            <p className="font-bold mt-2">DEBT PAYMENT RECEIPT</p>
+          </div>
+
+          <div className="border-b border-dashed border-gray-300 pb-2 mb-2 text-xs">
+            <Line label="Receipt No" value={receipt.receipt_no || '—'} />
+            <Line label="Date" value={formatDate(receipt.payment_date)} />
+            <Line label="Customer" value={receipt.customer_name || '—'} />
+            {receipt.customer_phone && <Line label="Phone" value={receipt.customer_phone} />}
+            {receipt.received_by && <Line label="Received by" value={receipt.received_by} />}
+            {receipt.payment_method && (
+              <Line label="Method" value={String(receipt.payment_method).replace(/_/g, ' ').toUpperCase()} />
+            )}
+          </div>
+
+          <div className="border-b border-dashed border-gray-300 pb-2 mb-2">
+            <Line label="Total owed" value={`${cur}${(receipt.amount_owed || 0).toFixed(2)}`} />
+            <Line
+              label="Paid before now"
+              value={`${cur}${Math.max(0, (receipt.amount_paid || 0) - (receipt.payment_amount || 0)).toFixed(2)}`}
+            />
+            <div className="border-t border-gray-200 mt-1 pt-1">
+              <Line
+                label="PAID NOW"
+                value={`${cur}${(receipt.payment_amount || 0).toFixed(2)}`}
+                bold
+                colour="text-green-700"
+              />
+            </div>
+          </div>
+
+          <Line
+            label={settled ? 'BALANCE' : 'BALANCE REMAINING'}
+            value={`${cur}${remaining.toFixed(2)}`}
+            bold
+            colour={settled ? 'text-green-700' : 'text-red-600'}
+          />
+
+          <div className="text-center border-t border-dashed border-gray-300 mt-3 pt-3 text-xs">
+            {settled
+              ? <p className="font-bold">PAID IN FULL — THANK YOU</p>
+              : <p className="font-bold">BALANCE OF {cur}{remaining.toFixed(2)} STILL DUE</p>}
+            <p className="mt-1">Thank you for your payment.</p>
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-4">
+          <button
+            onClick={() => printReceipt(settings?.receipt_width_mm)}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
+          >
+            <FiPrinter size={16} /> Print
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function PaymentModal({ debt, onClose, isOpen, onPaid }) {
   const queryClient = useQueryClient()
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
   const mutation = useMutation({
     mutationFn: ({ id, data }) => recordDebtPayment(id, data),
-    onSuccess: () => {
+    onSuccess: (res) => {
       toast.success('Payment recorded!')
       queryClient.invalidateQueries(['debts'])
       queryClient.invalidateQueries(['debt-summary'])
       reset()
       onClose()
+      // Straight to the receipt rather than back to the list: the customer is
+      // still standing there waiting for their slip.
+      if (res?.data) onPaid(res.data)
     },
     onError: err => toast.error(err.response?.data?.message || 'Failed to record payment'),
   })
@@ -105,7 +216,7 @@ function PaymentModal({ debt, onClose, isOpen }) {
   )
 }
 
-function DebtRow({ debt, onPay, onDelete, canDelete }) {
+function DebtRow({ debt, onPay, onDelete, onReprint, canDelete }) {
   const [showHistory, setShowHistory] = useState(false)
 
   const remaining = Math.max(0, (debt.amount_owed || 0) - (debt.amount_paid || 0))
@@ -173,9 +284,20 @@ function DebtRow({ debt, onPay, onDelete, canDelete }) {
             <p className="text-xs font-bold text-gray-600 mb-2">Payment History ({payments.length})</p>
             <div className="space-y-1">
               {payments.map((p) => (
-                <div key={p._id} className="flex justify-between text-xs text-gray-600 bg-white rounded-lg px-3 py-2">
+                <div key={p._id} className="flex items-center justify-between gap-2 text-xs text-gray-600 bg-white rounded-lg px-3 py-2">
                   <span>{formatDate(p.payment_date)} — {p.receipt_no || 'Payment'}</span>
-                  <span className="font-bold text-green-600">{formatCurrency(p.amount)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-green-600">{formatCurrency(p.amount)}</span>
+                    {/* Receipts get lost. Reprinting one rebuilds it from the
+                        payment as it was recorded, not from today's balance. */}
+                    <button
+                      onClick={() => onReprint(debt, p)}
+                      title="Print this receipt again"
+                      className="p-1 text-gray-400 hover:text-orange-600 rounded"
+                    >
+                      <FiPrinter size={13} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -191,6 +313,7 @@ export default function Debts() {
   const [search, setSearch] = useState('')
   const [payTarget, setPayTarget] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [receipt, setReceipt] = useState(null)
   const [page, setPage] = useState(1)
 
   const { data, isLoading } = useQuery({
@@ -204,10 +327,48 @@ export default function Debts() {
   })
 
   const { user } = useAuthStore()
+
+  // The receipt carries the shop's letterhead and prints at the roll width set
+  // in Settings, exactly as the POS receipt does.
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => getSettings().then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  })
   // Deleting a debt writes off money owed to the shop, so it is kept to the
   // owners — the same level the server enforces.
   const canDelete = getRoleLevel(user?.role) >= 3
   const queryClient = useQueryClient()
+
+  /**
+   * Rebuild a past payment's receipt.
+   *
+   * "Paid before now" and the balance are recomputed from the payments up to
+   * and including this one, not from today's figures — a reprint has to say
+   * what the original slip said, or it contradicts the copy the customer is
+   * holding.
+   */
+  const reprint = (debt, payment) => {
+    const ordered = [...(debt.payments || [])].sort(
+      (a, b) => new Date(a.payment_date) - new Date(b.payment_date)
+    )
+    const idx = ordered.findIndex(p => p._id === payment._id)
+    const paidThrough = ordered
+      .slice(0, idx + 1)
+      .reduce((sum, p) => sum + (p.amount || 0), 0)
+
+    setReceipt({
+      receipt_no: payment.receipt_no,
+      payment_date: payment.payment_date,
+      payment_amount: payment.amount,
+      payment_method: payment.payment_method,
+      amount_owed: debt.amount_owed,
+      amount_paid: paidThrough,
+      customer_name: debt.customer_name,
+      customer_phone: debt.customer_phone,
+      received_by: payment.recorded_by?.username,
+    })
+  }
 
   const removeMutation = useMutation({
     mutationFn: (id) => deleteDebt(id),
@@ -299,7 +460,14 @@ export default function Debts() {
                 </tr>
               ) : (
                 debts.map(debt => (
-                  <DebtRow key={debt._id} debt={debt} onPay={setPayTarget} onDelete={setDeleteTarget} canDelete={canDelete} />
+                  <DebtRow
+                    key={debt._id}
+                    debt={debt}
+                    onPay={setPayTarget}
+                    onDelete={setDeleteTarget}
+                    onReprint={reprint}
+                    canDelete={canDelete}
+                  />
                 ))
               )}
             </tbody>
@@ -311,6 +479,13 @@ export default function Debts() {
         isOpen={!!payTarget}
         debt={payTarget}
         onClose={() => setPayTarget(null)}
+        onPaid={setReceipt}
+      />
+
+      <DebtReceiptModal
+        receipt={receipt}
+        settings={settings}
+        onClose={() => setReceipt(null)}
       />
 
       {/* Deleting a debt writes off money the shop is owed, so it says exactly

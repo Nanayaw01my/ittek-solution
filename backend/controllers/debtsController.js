@@ -20,6 +20,8 @@ const getDebts = async (req, res) => {
       Debt.find(filter)
         .populate('sale_id', 'invoice_no sale_date')
         .populate('created_by', 'username')
+        // Named on a reprinted payment receipt, so it says who took the money.
+        .populate('payments.recorded_by', 'username')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit)),
@@ -157,10 +159,24 @@ const recordPayment = async (req, res) => {
       }
     }
 
+    // Everything the printed receipt needs, so the counter does not have to
+    // re-fetch the debt to put a slip of paper in the customer's hand.
     return res.status(200).json({
       success: true,
       message: 'Payment recorded successfully.',
-      data: { debt, receipt_no, payment_amount: paymentAmount },
+      data: {
+        debt,
+        receipt_no,
+        payment_amount: paymentAmount,
+        payment_date: now,
+        payment_method: req.body.payment_method || 'cash',
+        amount_owed: debt.amount_owed,
+        amount_paid: debt.amount_paid,
+        remaining: Math.max(0, debt.amount_owed - debt.amount_paid),
+        customer_name: debt.customer_name,
+        customer_phone: debt.customer_phone,
+        received_by: req.user.username,
+      },
     });
   } catch (err) {
     console.error('Record debt payment error:', err.message);
