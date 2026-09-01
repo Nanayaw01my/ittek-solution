@@ -1716,6 +1716,205 @@ const generateFixedPriceList = async (options = {}) => {
 
 
 /**
+ * An installment price table (A4) — one row per model.
+ *
+ * The block-per-package sheet reads well for a handful of solar packages, but
+ * a phone catalogue runs to thirty-odd models: a page each would be a
+ * thirty-page handout nobody reads, and the compact blocks still run to nine.
+ * A table puts the whole range on two sheets, which is what is actually wanted
+ * at a counter — the customer points at a row.
+ *
+ * Every figure is printed as supplied. The deposit, the monthly and the weekly
+ * are worked out where the offers are defined, so this only lays them out.
+ *
+ * @param {Object} options - { logoUrl, company, title, subtitle, packages,
+ *   latePercent, note }
+ * @returns {Promise<Buffer>}
+ */
+const generateInstallmentTable = async (options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+  const packages = options.packages || [];
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, bottom: 40, left: 40, right: 40 } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 40;
+      const W = 515;
+      const ORANGE = '#e86b00';
+      const LGRAY = '#777777';
+      const PAGE_BOTTOM = 802;
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+      const companyAddress = company.address || 'Bogoso, Western Region';
+      const companyPhone = company.phone || '+233 595413632';
+
+      // No "GHC" on every cell — thirty rows of it is noise, and the column
+      // headings say the currency once.
+      const num = (n) => Number(n || 0).toLocaleString('en-GB', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      });
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      const latePercent = options.latePercent ?? 3;
+      const months = packages.length && packages.every((p) => p.months === packages[0].months)
+        ? packages[0].months : null;
+      const weeks = packages.length && packages.every((p) => p.weeks === packages[0].weeks)
+        ? packages[0].weeks : null;
+
+      attachWatermark(doc, logoBuf);
+
+      const drawHeader = () => {
+        let hy = 40;
+        if (logoBuf) {
+          try { doc.image(logoBuf, ML, hy, { width: 48 }); } catch { /* keep the gap */ }
+        }
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#111111')
+          .text(companyName, ML + 58, hy + 2, { width: W - 58 });
+        doc.fontSize(8.5).font('Helvetica').fillColor(LGRAY)
+          .text([companyAddress, companyPhone && 'Tel: ' + companyPhone].filter(Boolean).join('  |  '),
+            ML + 58, hy + 20, { width: W - 58 });
+        reset();
+
+        hy += 52;
+        doc.moveTo(ML, hy).lineTo(ML + W, hy).lineWidth(1.5).strokeColor(ORANGE).stroke();
+        reset();
+
+        hy += 10;
+        doc.fontSize(15).font('Helvetica-Bold').fillColor(ORANGE)
+          .text(options.title || 'INSTALLMENT PRICE LIST', ML, hy, { width: W });
+        hy += 19;
+        if (options.subtitle) {
+          doc.fontSize(9).font('Helvetica').fillColor('#555555')
+            .text(options.subtitle, ML, hy, { width: W });
+          hy += 14;
+        }
+        reset();
+        return hy + 12;
+      };
+
+      const FOOTER_TOP = PAGE_BOTTOM - 40 - 92;
+      const drawFooter = () => {
+        doc.moveTo(ML, FOOTER_TOP).lineTo(ML + W, FOOTER_TOP).lineWidth(0.6).strokeColor('#dddddd').stroke();
+        reset();
+
+        // The one term that costs the customer money, set apart so it is not
+        // skimmed past.
+        doc.roundedRect(ML, FOOTER_TOP + 6, W, 30, 3).fill('#fdf2e9');
+        const period = months ? months + ' months' : 'agreed payment period';
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#b34700')
+          .text('If the ' + period + ' pass' + (months ? '' : 'es')
+            + ' and payment is not complete, an additional ' + latePercent
+            + '% of the total amount is charged for every week thereafter.',
+            ML + 8, FOOTER_TOP + 13, { width: W - 16, align: 'center', lineGap: 1 });
+        reset();
+
+        doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+          .text('Goods remain the property of the Company until the agreed price is paid in full. Prices are subject to change without notice.',
+            ML, FOOTER_TOP + 44, { width: W, align: 'center' });
+
+        const sigW = (W - 60) / 2;
+        [['MANAGER'], ['FOR THE COMPANY']].forEach(([lbl], i) => {
+          const sx = ML + i * (sigW + 60);
+          doc.moveTo(sx, FOOTER_TOP + 76).lineTo(sx + sigW, FOOTER_TOP + 76)
+            .lineWidth(0.6).strokeColor('#999999').stroke();
+          doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
+            .text(lbl, sx, FOOTER_TOP + 80, { width: sigW, align: 'center' });
+          reset();
+        });
+      };
+
+      // Model | Cash | Total | Deposit | Monthly | Weekly
+      const COLS = [
+        { key: 'name', label: 'MODEL', w: 150, align: 'left' },
+        { key: 'cashPrice', label: 'CASH', w: 63, align: 'right' },
+        { key: 'total', label: 'TOTAL', w: 63, align: 'right' },
+        { key: 'deposit', label: 'DEPOSIT', w: 68, align: 'right' },
+        { key: 'monthly', label: months ? `MONTHLY x${months}` : 'MONTHLY', w: 84, align: 'right' },
+        { key: 'weekly', label: weeks ? `WEEKLY x${weeks}` : 'WEEKLY', w: 77, align: 'right' },
+      ];
+      const colX = (i) => ML + COLS.slice(0, i).reduce((s, c) => s + c.w, 0);
+
+      const HEAD_H = 26;
+      const ROW_H = 19;
+
+      const drawTableHead = (y) => {
+        doc.rect(ML, y, W, HEAD_H).fill(ORANGE);
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff');
+        COLS.forEach((c, i) => {
+          doc.text(c.label, colX(i) + 6, y + 9, { width: c.w - 12, align: c.align, lineBreak: false });
+        });
+        reset();
+        return y + HEAD_H;
+      };
+
+      let y = drawTableHead(drawHeader());
+      let tableTop = y;
+
+      const closeTable = () => {
+        doc.rect(ML, tableTop, W, y - tableTop).lineWidth(0.7).strokeColor('#dddddd').stroke();
+        reset();
+      };
+
+      packages.forEach((p, i) => {
+        if (y + ROW_H > FOOTER_TOP - 6) {
+          closeTable();
+          drawFooter();
+          doc.addPage();          // pageAdded redraws the watermark
+          y = drawTableHead(drawHeader());
+          tableTop = y;
+        }
+
+        if (i % 2 === 1) { doc.rect(ML, y, W, ROW_H).fill('#faf6f2'); reset(); }
+
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#111111')
+          .text(p.name, colX(0) + 6, y + 5.5, { width: COLS[0].w - 12, lineBreak: false });
+
+        // A dash, not a blank: an empty cash cell reads as a missing figure,
+        // where these models genuinely have no cheaper cash price.
+        doc.fontSize(8).font('Helvetica').fillColor(p.cashPrice ? '#1a7f37' : '#bbbbbb')
+          .text(p.cashPrice ? num(p.cashPrice) : '—',
+            colX(1) + 6, y + 5.5, { width: COLS[1].w - 12, align: 'right', lineBreak: false });
+
+        [['total', 2, 'Helvetica-Bold', '#111111'],
+         ['deposit', 3, 'Helvetica', '#111111'],
+         ['monthly', 4, 'Helvetica-Bold', '#b34700'],
+         ['weekly', 5, 'Helvetica-Bold', '#b34700']].forEach(([key, ci, font, colour]) => {
+          doc.fontSize(8).font(font).fillColor(colour)
+            .text(num(p[key]), colX(ci) + 6, y + 5.5,
+              { width: COLS[ci].w - 12, align: 'right', lineBreak: false });
+        });
+
+        doc.moveTo(ML, y + ROW_H).lineTo(ML + W, y + ROW_H)
+          .lineWidth(0.35).strokeColor('#e8e8e8').stroke();
+        reset();
+        y += ROW_H;
+      });
+
+      closeTable();
+
+      if (options.note) {
+        doc.fontSize(8).font('Helvetica-Oblique').fillColor(LGRAY)
+          .text(options.note, ML, y + 8, { width: W });
+        reset();
+      }
+
+      drawFooter();
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
+
+/**
  * Acceptance letter for an industrial attachment or internship (A4).
  *
  * Written for a named person and addressed to whoever asked for it — usually a
@@ -1901,7 +2100,8 @@ const generateAcceptanceLetter = async (options = {}) => {
 module.exports = {
   generateReceipt, generateCreditAgreement, generateLayawayAgreement,
   generatePriceList, generateReport, generateBlankReceiptForm,
-  generateInstallmentPlanSheet, generateFixedPriceList, generateAcceptanceLetter,
+  generateInstallmentPlanSheet, generateInstallmentTable,
+  generateFixedPriceList, generateAcceptanceLetter,
   // The original name, kept so nothing that imports it breaks.
   generateFreezerOfferSheet: generateInstallmentPlanSheet,
 };

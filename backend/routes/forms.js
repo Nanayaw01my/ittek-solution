@@ -3,10 +3,11 @@ const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const Settings = require('../models/Settings');
 const {
-  generateBlankReceiptForm, generateInstallmentPlanSheet, generateFixedPriceList,
-  generateAcceptanceLetter,
+  generateBlankReceiptForm, generateInstallmentPlanSheet, generateInstallmentTable,
+  generateFixedPriceList, generateAcceptanceLetter,
 } = require('../utils/pdfGenerator');
 const { PLAN_SETS, PRICE_LISTS } = require('../config/installmentPlans');
+const { IPHONE_PACKAGES } = require('../config/iphonePlans');
 
 /** Shared by both routes below. */
 const buildForm = async (opts) => {
@@ -184,6 +185,41 @@ router.get('/price-sheet', authenticate, async (req, res) => {
     return res.end(pdf);
   } catch (err) {
     console.error('Price sheet error:', err.message);
+    return res.status(500).json({ success: false, message: 'Could not generate the sheet.' });
+  }
+});
+
+/**
+ * GET /api/forms/iphone-plan
+ *
+ * The standing iPhone installment offer: every model the shop stocks, its cash
+ * price, and what it costs paid over three months or twelve weeks.
+ *
+ * Printed as a table rather than a page per model — thirty-three phones would
+ * otherwise be a thirty-three page handout.
+ */
+router.get('/iphone-plan', authenticate, async (req, res) => {
+  try {
+    const settings = (await Settings.findOne().lean()) || {};
+    const pdf = await generateInstallmentTable({
+      logoUrl: settings.logo_url,
+      company: {
+        name: settings.company_name,
+        address: settings.company_address,
+        phone: settings.company_phone,
+      },
+      title: 'IPHONE INSTALLMENT PLAN',
+      subtitle: 'Half the total is paid as deposit. The balance is cleared over 3 months or 12 weeks.',
+      packages: IPHONE_PACKAGES,
+      note: 'Where no cash price is shown, the installment price is already the cash price. '
+        + 'The iPhone 7 is sold outright only and is not on this sheet — see the iPhone price list.',
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="iphone-installment-plan.pdf"');
+    return res.end(pdf);
+  } catch (err) {
+    console.error('iPhone plan sheet error:', err.message);
     return res.status(500).json({ success: false, message: 'Could not generate the sheet.' });
   }
 });

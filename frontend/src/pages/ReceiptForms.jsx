@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer, FiBatteryCharging, FiZap, FiSun, FiAward, FiSmartphone } from 'react-icons/fi'
-import { getBlankReceiptForm, getFilledReceiptForm, getInstallmentPlanSheet, getPriceSheet, getAcceptanceLetter, getPhonePlanSheet } from '../api/forms'
+import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer, FiBatteryCharging, FiZap, FiSun, FiAward, FiSmartphone, FiTag } from 'react-icons/fi'
+import { getBlankReceiptForm, getFilledReceiptForm, getInstallmentPlanSheet, getPriceSheet, getAcceptanceLetter, getPhonePlanSheet, getIphonePlanSheet } from '../api/forms'
 import { getProducts } from '../api/products'
 import { openPdfInNewTab } from '../utils/openPdf'
 import { formatCurrency, formatDate } from '../utils/helpers'
@@ -215,6 +215,17 @@ export default function ReceiptForms() {
       toast.error(err.message || 'Could not generate the letter.')
     } finally {
       setLetterBusy(false)
+    }
+  }
+
+  const printIphonePlan = async () => {
+    setPlanBusy('iphone')
+    try {
+      await openPdfInNewTab(() => getIphonePlanSheet(), 'iphone-installment-plan.pdf')
+    } catch (err) {
+      toast.error(err.message || 'Could not generate the sheet.')
+    } finally {
+      setPlanBusy('')
     }
   }
 
@@ -546,17 +557,60 @@ export default function ReceiptForms() {
         </div>
       </div>
 
-      {/* Phone installment sheet, built from typed-in prices rather than a
-          fixed offer list — phone prices change too often to hold in code. */}
+      {/* The standing iPhone offer: priced once in config, printed as a table
+          because thirty-three models a page each is nobody's handout. */}
+      <div className="mt-4 bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-bold text-gray-800 text-sm">iPhone Installment Plan</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Every model on installment — cash price, total, deposit, and what it costs
+              over 3 months or 12 weeks. Half the total is the deposit. Two A4 sheets.
+            </p>
+          </div>
+          <button
+            onClick={printIphonePlan}
+            disabled={!!planBusy}
+            className="flex items-center gap-2 px-4 py-2.5 border border-orange-300 hover:bg-orange-50 disabled:opacity-60 text-orange-700 rounded-xl font-bold text-sm transition-colors flex-shrink-0"
+          >
+            <FiSmartphone size={16} />
+            {planBusy === 'iphone' ? 'Preparing…' : 'Print'}
+          </button>
+        </div>
+      </div>
+
+      {/* Outright prices, the iPhone 7 included — it is cash only. */}
+      <div className="mt-4 bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-bold text-gray-800 text-sm">iPhone Price List</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Every model and what it costs paid outright, including the iPhone 7 which is
+              not sold on installment. Prices only — no deposit or schedule on this sheet.
+            </p>
+          </div>
+          <button
+            onClick={() => printPriceSheet('iphones')}
+            disabled={!!planBusy}
+            className="flex items-center gap-2 px-4 py-2.5 border border-orange-300 hover:bg-orange-50 disabled:opacity-60 text-orange-700 rounded-xl font-bold text-sm transition-colors flex-shrink-0"
+          >
+            <FiTag size={16} />
+            {planBusy === 'iphones' ? 'Preparing…' : 'Print'}
+          </button>
+        </div>
+      </div>
+
+      {/* A sheet for a phone the standard list does not cover. */}
       <div className="mt-4 bg-white rounded-xl border border-gray-200 p-5">
         <div className="flex items-start gap-3 mb-4">
           <FiSmartphone className="text-orange-500 flex-shrink-0 mt-0.5" size={18} />
           <div>
-            <h3 className="font-bold text-gray-800 text-sm">iPhone Installment Plan</h3>
+            <h3 className="font-bold text-gray-800 text-sm">Custom Phone Installment Sheet</h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              Enter each phone with its total price and down payment. The weekly and
-              monthly payments are worked out from the balance over the term below, so
-              the schedule on the sheet always clears exactly what is owed.
+              For a phone that is not on the standard iPhone sheet above, or a one-off
+              deal. Enter the total price and down payment; the weekly and monthly
+              payments are worked out from the balance over the term below, so the
+              schedule always clears exactly what is owed.
             </p>
           </div>
         </div>

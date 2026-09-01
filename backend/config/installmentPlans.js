@@ -162,12 +162,22 @@ const SOLAR_SYSTEM_PRICES = [
   { name: '30KW Solar Power', price: 308000 },
 ];
 
+const { IPHONE_PRICES } = require('./iphonePlans');
+
 const PRICE_LISTS = {
   'solar-systems': {
     title: 'SOLAR POWER SYSTEM',
     subtitle: 'Price list for solar systems',
     filename: 'solar-system-prices.pdf',
     items: SOLAR_SYSTEM_PRICES,
+  },
+  // Every iPhone at the price it sells for outright — the iPhone 7 included,
+  // which is cash only and appears nowhere on the installment sheet.
+  iphones: {
+    title: 'IPHONE PRICE LIST',
+    subtitle: 'Outright purchase prices',
+    filename: 'iphone-prices.pdf',
+    items: IPHONE_PRICES,
   },
 };
 

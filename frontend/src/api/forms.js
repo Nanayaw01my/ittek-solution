@@ -12,6 +12,9 @@ export const getInstallmentPlanSheet = (params) =>
 export const getPriceSheet = (params) =>
   api.get('/forms/price-sheet', { params, responseType: 'blob' })
 
+// The standing iPhone offer, priced in config rather than typed in.
+export const getIphonePlanSheet = () => api.get('/forms/iphone-plan', { responseType: 'blob' })
+
 export const getPhonePlanSheet = (data) =>
   api.post('/forms/phone-plan', data, { responseType: 'blob' })
 
