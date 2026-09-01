@@ -2,7 +2,7 @@ const Sale = require('../models/Sale');
 const Debt = require('../models/Debt');
 const Product = require('../models/Product');
 const Notification = require('../models/Notification');
-const { generateInvoiceNo } = require('../utils/generateInvoice');
+const { createSaleWithInvoice } = require('../utils/generateInvoice');
 const { buildSaleItems, deductStock, validatePayments } = require('../utils/saleHelpers');
 const { normaliseGhanaPhone } = require('../utils/phone');
 const loyalty = require('../utils/loyalty');
@@ -48,7 +48,6 @@ const processSingleSale = async (type, payload, userId, username) => {
   const shortfalls = built.shortfalls || [];
 
   const { subtotal, cart_total } = calcTotals(items, discount, discount_type);
-  const invoice_no = await generateInvoiceNo();
 
   if (type === 'short_payment') {
     if (!customer_name) throw new Error('Customer name required for short payment');
@@ -58,8 +57,8 @@ const processSingleSale = async (type, payload, userId, username) => {
     const tender = validatePayments(payments, paidAmount, payment_method || 'cash');
     if (tender.error) throw new Error(tender.error);
 
-    const sale = await Sale.create({
-      invoice_no, client_ref: client_ref || undefined,
+    const sale = await createSaleWithInvoice({
+      client_ref: client_ref || undefined,
       user_id: userId, customer_name, customer_phone,
       subtotal, discount, discount_type,
       total_amount: paidAmount, cart_total, debt_amount: debtAmount,
@@ -67,6 +66,7 @@ const processSingleSale = async (type, payload, userId, username) => {
       loyalty_phone: normaliseGhanaPhone(customer_phone) || undefined,
       items,
     });
+    const invoice_no = sale.invoice_no;
 
     await deductStock(items);
 
@@ -88,8 +88,8 @@ const processSingleSale = async (type, payload, userId, username) => {
   const tender = validatePayments(payments, cart_total, payment_method || 'cash');
   if (tender.error) throw new Error(tender.error);
 
-  const sale = await Sale.create({
-    invoice_no, client_ref: client_ref || undefined,
+  const sale = await createSaleWithInvoice({
+    client_ref: client_ref || undefined,
     user_id: userId, customer_name, customer_phone,
     subtotal, discount, discount_type,
     total_amount: cart_total, cart_total, debt_amount: 0,
@@ -97,6 +97,7 @@ const processSingleSale = async (type, payload, userId, username) => {
     loyalty_phone: normaliseGhanaPhone(customer_phone) || undefined,
     items,
   });
+  const invoice_no = sale.invoice_no;
 
   await deductStock(items);
 

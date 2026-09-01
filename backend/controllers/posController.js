@@ -4,7 +4,7 @@ const Debt = require('../models/Debt');
 const Product = require('../models/Product');
 const Notification = require('../models/Notification');
 const Settings = require('../models/Settings');
-const { generateInvoiceNo } = require('../utils/generateInvoice');
+const { createSaleWithInvoice } = require('../utils/generateInvoice');
 const { queueEmail, templates } = require('../utils/email');
 const { generateReceipt } = require('../utils/pdfGenerator');
 const { withReceiptQr, buildReceiptUrl, generateReceiptQrBuffer } = require('../utils/receipt');
@@ -93,12 +93,11 @@ const processSale = async (req, res) => {
       return res.status(400).json({ success: false, message: tender.error });
     }
 
-    const invoice_no = await generateInvoiceNo();
     const display = currency ? await fromBase(cart_total, currency) : null;
 
-    // Create sale
-    const sale = await Sale.create({
-      invoice_no,
+    // The invoice number is allocated by the writer, which retries if another
+    // till takes the number first.
+    const sale = await createSaleWithInvoice({
       client_ref: client_ref || undefined,
       user_id: req.user._id,
       customer_name,
@@ -119,6 +118,7 @@ const processSale = async (req, res) => {
       loyalty_discount: loyaltyDiscount,
       items,
     });
+    const invoice_no = sale.invoice_no;
 
     await deductStock(items);
 
@@ -239,11 +239,10 @@ const processShortPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: tender.error });
     }
 
-    const invoice_no = await generateInvoiceNo();
+
 
     // Create sale
-    const sale = await Sale.create({
-      invoice_no,
+    const sale = await createSaleWithInvoice({
       user_id: req.user._id,
       customer_name,
       customer_phone,
@@ -259,6 +258,7 @@ const processShortPayment = async (req, res) => {
       loyalty_phone: normaliseGhanaPhone(customer_phone) || undefined,
       items,
     });
+    const invoice_no = sale.invoice_no;
 
     await deductStock(items);
 
