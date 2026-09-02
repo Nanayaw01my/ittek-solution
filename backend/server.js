@@ -7,6 +7,7 @@ const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
 
 const connectDB = require('./config/db');
 const { startSchedulers } = require('./utils/scheduler');
@@ -119,15 +120,68 @@ app.use('/api', cors(corsDelegate));
 
 // ─── STEP 5: RATE LIMITING — scoped to /api only ────────────────────────────
 
-const limiter = rateLimit({
+/**
+ * Two limits, because the two risks are different.
+ *
+ * The shop sits behind one router, so every till, phone and back-office
+ * machine reaches this server from the SAME public address. A single limit
+ * keyed on that address is not "200 requests per user" — it is 200 requests
+ * for the whole shop, shared. One dashboard tab spends about fifteen a minute
+ * on its own, so a normal morning exhausted it and then every request failed,
+ * including saving an edit to a product. That is not protection; it is the
+ * system refusing to let the business work.
+ *
+ * So ordinary traffic is counted per signed-in session and set high enough
+ * that only a runaway loop reaches it, while sign-in attempts stay counted per
+ * address and stay strict — guessing passwords is the thing a limit here is
+ * actually for.
+ */
+
+// A session's own bucket. The token identifies the device that signed in;
+// falling back to the address covers requests made before signing in.
+const perSessionKey = (req) => {
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) {
+    // The token itself is never stored — only a short fingerprint of it, which
+    // is enough to tell one session's traffic from another's.
+    return 'session:' + crypto.createHash('sha256').update(auth.slice(7)).digest('hex').slice(0, 32);
+  }
+  return 'ip:' + (req.ip || 'unknown');
+};
+
+const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 3000,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, message: 'Too many requests. Please try again in 15 minutes.' },
+  keyGenerator: perSessionKey,
+  // The key is a session fingerprint, not an address, so the library's
+  // IPv6-shape check does not apply to it.
+  validate: { ip: false },
+  message: {
+    success: false,
+    message: 'This device has made a great many requests. Please wait a few minutes and try again.',
+  },
 });
 
-app.use('/api', limiter);
+// Brute force is what a limit protects against here, so this one stays tight
+// and stays keyed on where the attempts are coming from.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,   // only failed attempts count
+  message: {
+    success: false,
+    message: 'Too many sign-in attempts. Please wait 15 minutes and try again.',
+  },
+});
+
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
+app.use('/api', apiLimiter);
 
 // ─── STEP 6: BODY PARSING ─────────────────────────────────────────────────────
 
