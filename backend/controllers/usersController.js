@@ -91,7 +91,18 @@ const createUser = async (req, res) => {
   } catch (err) {
     console.error('Create user error:', err.message);
     if (err.code === 11000) {
-      return res.status(409).json({ success: false, message: 'Username or email already exists.' });
+      // Name the field the database actually rejected. "Username or email"
+      // sent people hunting for a clash that was not there — the real cause
+      // was an index that treated two users with no email as the same user.
+      const field = Object.keys(err.keyPattern || err.keyValue || {})[0];
+      const value = (err.keyValue || {})[field];
+      const label = field === 'username' ? 'That username' : field === 'email' ? 'That email address' : 'That value';
+      return res.status(409).json({
+        success: false,
+        message: value
+          ? `${label} (${value}) is already taken.`
+          : `${label} is already taken.`,
+      });
     }
     return res.status(500).json({ success: false, message: 'Server error.' });
   }

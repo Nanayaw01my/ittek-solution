@@ -2,6 +2,23 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+/**
+ * Email is optional, so its uniqueness has to be stated carefully.
+ *
+ * A plain unique index counts a missing field as null and treats every such
+ * document as holding the same value — so the first user without an email is
+ * accepted and the second is rejected as a duplicate. That is what "Username
+ * or email already exists" was: not a name clash at all, just a second user
+ * created without an email address.
+ *
+ * `sparse` fixes the missing case but not a stored null, and it does not
+ * rebuild an index that already exists in the database. A partial index is the
+ * exact statement of the rule: only documents whose email is actually a string
+ * are indexed, and among those it must be unique.
+ */
+const EMAIL_INDEX_NAME = 'email_unique_when_set';
+const EMAIL_PARTIAL_FILTER = { email: { $type: 'string' } };
+
 const UserSchema = new mongoose.Schema(
   {
     username: {
@@ -14,9 +31,9 @@ const UserSchema = new mongoose.Schema(
       maxlength: [50, 'Username cannot exceed 50 characters'],
     },
     email: {
+      // Optional. Uniqueness is declared as a partial index below rather than
+      // here — see the note on that index.
       type: String,
-      unique: true,
-      sparse: true,
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email'],
@@ -110,4 +127,36 @@ UserSchema.methods.generateJWT = function () {
   );
 };
 
-module.exports = mongoose.model('User', UserSchema);
+UserSchema.index(
+  { email: 1 },
+  { unique: true, partialFilterExpression: EMAIL_PARTIAL_FILTER, name: EMAIL_INDEX_NAME },
+);
+
+const User = mongoose.model('User', UserSchema);
+
+/**
+ * Replace an older email index with the partial one.
+ *
+ * Changing the schema does not touch an index the database already has, so a
+ * deployment that once created a plain or sparse unique index keeps it — and
+ * keeps refusing the second user without an email. Run once at startup.
+ */
+User.ensureEmailIndex = async () => {
+  const coll = User.collection;
+  const existing = await coll.indexes();
+  const emailIndex = existing.find((i) => i.key && i.key.email === 1 && Object.keys(i.key).length === 1);
+
+  const alreadyRight = emailIndex
+    && emailIndex.unique
+    && JSON.stringify(emailIndex.partialFilterExpression || null) === JSON.stringify(EMAIL_PARTIAL_FILTER);
+  if (alreadyRight) return { changed: false };
+
+  if (emailIndex) await coll.dropIndex(emailIndex.name);
+  await coll.createIndex(
+    { email: 1 },
+    { unique: true, partialFilterExpression: EMAIL_PARTIAL_FILTER, name: EMAIL_INDEX_NAME },
+  );
+  return { changed: true, replaced: emailIndex?.name || null };
+};
+
+module.exports = User;

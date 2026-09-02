@@ -360,6 +360,16 @@ const ensureSuperAdmin = async () => {
         console.log(`Corrected seeded company phone to ${COMPANY_DEFAULTS.company_phone}`);
       }
     }
+    // Email is optional, and an older deployment may still carry an index that
+    // does not say so — which rejects the second user created without one.
+    try {
+      const result = await User.ensureEmailIndex();
+      if (result.changed) {
+        console.log(`Rebuilt the users email index${result.replaced ? ` (replaced ${result.replaced})` : ''}`);
+      }
+    } catch (indexErr) {
+      console.error('Could not rebuild the users email index:', indexErr.message);
+    }
   } catch (error) {
     console.error('Super admin init error:', error.message);
   }
