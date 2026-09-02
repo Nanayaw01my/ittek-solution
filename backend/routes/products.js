@@ -8,7 +8,7 @@ const multer = require('multer');
 const {
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
   getLowStock, getByBarcode, searchProducts, bulkImport, getProductSummary,
-  getOfflineCatalogue,
+  getOfflineCatalogue, getDuplicateProducts, mergeDuplicateProducts,
 } = require('../controllers/productsController');
 const { previewImport, commitImport } = require('../controllers/productImportController');
 
@@ -37,6 +37,19 @@ router.post(
 // The whole catalogue for the till to hold offline. Above '/:id', or the path
 // would be read as a product id.
 router.get('/offline-catalogue', authenticate, getOfflineCatalogue);
+
+// Finding and merging duplicates changes what the catalogue says the shop
+// holds, so it sits with the owners. Above '/:id' or the path is read as an id.
+router.get('/duplicates', authenticate, requireLevel(3), getDuplicateProducts);
+router.post(
+  '/merge-duplicates',
+  authenticate,
+  requireLevel(3),
+  auditLog('MERGE_DUPLICATE_PRODUCTS', (req) => ({
+    keep: req.body.keep_id, retired: (req.body.remove_ids || []).length,
+  })),
+  mergeDuplicateProducts
+);
 
 // Before '/:id', or the summary path would be read as a product id.
 router.get('/summary', authenticate, getProductSummary);

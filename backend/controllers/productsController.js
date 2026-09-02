@@ -56,6 +56,13 @@ const categoryRefusal = (user, categoryId) => {
  * screen always describe exactly the rows being shown — search a term and the
  * totals follow it.
  */
+/**
+ * Match a product name exactly, ignoring case and surrounding spaces.
+ * Escaped, because a name like "6mm (per roll)" is itself a valid regex.
+ */
+const exactNameRegex = (name) =>
+  new RegExp('^' + String(name).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i');
+
 const buildProductFilter = (req) => {
   const { search, category, low_stock, view } = req.query;
   const filter = { is_active: true };
@@ -132,9 +139,7 @@ const createProduct = async (req, res) => {
     if (name) {
       const existing = await Product.findOne({
         is_active: true,
-        // Anchored and escaped: a name like "6mm (per roll)" is a valid regex
-        // that would otherwise match the wrong things — or nothing at all.
-        name: new RegExp('^' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i'),
+        name: exactNameRegex(name),
       }).select('name quantity');
 
       if (existing) {
@@ -366,9 +371,25 @@ const bulkImport = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Provide an array of products.' });
     }
 
-    const results = { created: 0, failed: 0, errors: [] };
+    const results = { created: 0, skipped: 0, failed: 0, errors: [] };
     for (const item of items) {
       try {
+        // The same check the single-product form and the file import make.
+        // Without it this route was a way into the catalogue that could add a
+        // product that was already there.
+        const name = String(item?.name || '').trim();
+        if (!name) {
+          results.skipped++;
+          results.errors.push({ item: '(no name)', error: 'A product needs a name.' });
+          continue;
+        }
+        const clash = await Product.findOne({ is_active: true, name: exactNameRegex(name) }, '_id');
+        if (clash) {
+          results.skipped++;
+          results.errors.push({ item: name, error: 'Already in the catalogue' });
+          continue;
+        }
+
         await Product.create(item);
         results.created++;
       } catch (err) {
@@ -439,7 +460,139 @@ const getOfflineCatalogue = async (req, res) => {
   }
 };
 
+
+/**
+ * The key two product names are the same under.
+ *
+ * Case and spacing are ignored, so "570W Panel", "570w  panel" and
+ * "570W Panel " are one product. The add-product check only ever compared a
+ * trimmed new name against whatever was stored, so a record saved years ago
+ * with a trailing space was invisible to it and a second copy went in.
+ */
+const nameKey = (name) => String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+/**
+ * GET /api/products/duplicates
+ *
+ * Active products that share a name, grouped. Read-only — it says what is
+ * wrong and leaves the fixing to a person, because which record to keep is a
+ * judgement about which one the shop has been counting against.
+ */
+const getDuplicateProducts = async (req, res) => {
+  try {
+    const products = await Product.find({ is_active: true })
+      .select('name barcode quantity cost_price selling_price category_id createdAt')
+      .populate('category_id', 'name')
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const groups = new Map();
+    products.forEach((p) => {
+      const key = nameKey(p.name);
+      if (!key) return;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push({
+        _id: p._id,
+        name: p.name,
+        barcode: p.barcode || '',
+        quantity: p.quantity || 0,
+        cost_price: p.cost_price,
+        selling_price: p.selling_price,
+        category: p.category_id?.name || '',
+        createdAt: p.createdAt,
+      });
+    });
+
+    const duplicates = [...groups.entries()]
+      .filter(([, list]) => list.length > 1)
+      .map(([key, list]) => ({
+        key,
+        name: list[0].name,
+        count: list.length,
+        total_quantity: list.reduce((s, x) => s + (x.quantity || 0), 0),
+        products: list,
+      }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        groups: duplicates,
+        group_count: duplicates.length,
+        extra_records: duplicates.reduce((s, g) => s + g.count - 1, 0),
+      },
+    });
+  } catch (err) {
+    console.error('Duplicate products error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * POST /api/products/merge-duplicates  { keep_id, remove_ids, move_stock }
+ *
+ * Keeps one record and retires the others.
+ *
+ * The retired ones are deactivated, never erased: past sales point at them,
+ * and deleting them outright would put holes in the sales history. With
+ * `move_stock` their quantities are added to the kept product first, which is
+ * usually right — the stock is real and sitting on one shelf, split across two
+ * records only because the catalogue had it twice.
+ */
+const mergeDuplicateProducts = async (req, res) => {
+  try {
+    const { keep_id, remove_ids, move_stock = true } = req.body || {};
+    const removeIds = (Array.isArray(remove_ids) ? remove_ids : []).filter((id) => String(id) !== String(keep_id));
+
+    if (!keep_id || removeIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Choose the product to keep and at least one to retire.',
+      });
+    }
+
+    const keep = await Product.findById(keep_id);
+    if (!keep || !keep.is_active) {
+      return res.status(404).json({ success: false, message: 'The product to keep was not found.' });
+    }
+
+    const removing = await Product.find({ _id: { $in: removeIds }, is_active: true });
+    if (removing.length === 0) {
+      return res.status(404).json({ success: false, message: 'No matching products to retire.' });
+    }
+
+    let moved = 0;
+    if (move_stock) {
+      moved = removing.reduce((s, p) => s + (p.quantity || 0), 0);
+      if (moved > 0) {
+        // Atomic, and no validation on a record that is not being edited here.
+        await Product.findByIdAndUpdate(keep._id, { $inc: { quantity: moved } });
+      }
+    }
+
+    await Product.updateMany(
+      { _id: { $in: removing.map((p) => p._id) } },
+      { $set: { is_active: false, quantity: 0 } },
+    );
+
+    const updated = await Product.findById(keep._id).select('name quantity').lean();
+
+    return res.status(200).json({
+      success: true,
+      message: `${removing.length} duplicate record${removing.length === 1 ? '' : 's'} retired.`
+        + (move_stock && moved > 0
+          ? ` ${moved} unit${moved === 1 ? '' : 's'} moved into "${updated.name}", now ${updated.quantity} in stock.`
+          : ''),
+      data: { kept: updated, retired: removing.length, moved },
+    });
+  } catch (err) {
+    console.error('Merge duplicates error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 module.exports = {
+  getDuplicateProducts, mergeDuplicateProducts,
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
   getLowStock, getByBarcode, searchProducts, bulkImport, getProductSummary,
   getOfflineCatalogue,

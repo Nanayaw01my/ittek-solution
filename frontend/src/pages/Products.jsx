@@ -2,9 +2,9 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload, FiRefreshCw } from 'react-icons/fi'
+import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload, FiRefreshCw, FiCopy } from 'react-icons/fi'
 import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary } from '../api/products'
-import { formatCurrency } from '../utils/helpers'
+import { formatCurrency, getRoleLevel } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
 import Table from '../components/Table'
@@ -14,6 +14,7 @@ import ImageUpload from '../components/ImageUpload'
 import VariantEditor from '../components/VariantEditor'
 import useAuthStore from '../store/authStore'
 import ProductImportModal from '../components/ProductImportModal'
+import DuplicateProductsModal from '../components/DuplicateProductsModal'
 import { getMe } from '../api/auth'
 import { effectiveMode } from '../config/pageAccess'
 
@@ -242,6 +243,7 @@ export default function Products() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [stockTarget, setStockTarget] = useState(null)
   const [showImport, setShowImport] = useState(false)
+  const [showDuplicates, setShowDuplicates] = useState(false)
   const [page, setPage] = useState(1)
 
   const user = useAuthStore(s => s.user)
@@ -252,6 +254,7 @@ export default function Products() {
   // 'inventory' means the CEO granted this user the Products page in its
   // limited form: add products and correct stock, never see the money.
   const inventoryOnly = effectiveMode(user, 'products') === 'inventory'
+  const userLevel = getRoleLevel(user?.role)
 
   // The stored user is only refreshed at login, so a manager assigned a
   // category mid-shift would see an empty picker until they logged out. Re-read
@@ -457,6 +460,17 @@ export default function Products() {
                 <FiUpload size={16} /> Import
               </button>
             )}
+            {/* Merging changes what the catalogue says the shop holds, so it
+                follows the same rights the server enforces. */}
+            {userLevel >= 3 && (
+              <button
+                onClick={() => setShowDuplicates(true)}
+                title="Find products that are in the catalogue more than once"
+                className="flex items-center gap-2 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-semibold text-sm transition-colors"
+              >
+                <FiCopy size={16} /> <span className="hidden sm:inline">Duplicates</span>
+              </button>
+            )}
             <button
               onClick={() => { setEditProduct(null); setShowModal(true) }}
               className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
@@ -600,6 +614,11 @@ export default function Products() {
           }}
         />
       </Modal>
+
+      <DuplicateProductsModal
+        isOpen={showDuplicates}
+        onClose={() => setShowDuplicates(false)}
+      />
 
       {/* Import from a file */}
       <Modal
