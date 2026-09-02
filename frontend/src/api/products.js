@@ -33,5 +33,6 @@ export const commitProductImport = (rows) => api.post('/products/import/commit',
 // Active products sharing a name, and the merge that retires the extras.
 export const getDuplicateProducts = () => api.get('/products/duplicates')
 export const mergeDuplicateProducts = (data) => api.post('/products/merge-duplicates', data)
+export const autoMergeDuplicates = () => api.post('/products/merge-duplicates/auto')
 
 export const getProductSummary = (params) => api.get('/products/summary', { params })

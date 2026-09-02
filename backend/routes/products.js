@@ -8,7 +8,7 @@ const multer = require('multer');
 const {
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
   getLowStock, getByBarcode, searchProducts, bulkImport, getProductSummary,
-  getOfflineCatalogue, getDuplicateProducts, mergeDuplicateProducts,
+  getOfflineCatalogue, getDuplicateProducts, mergeDuplicateProducts, autoMergeDuplicates,
 } = require('../controllers/productsController');
 const { previewImport, commitImport } = require('../controllers/productImportController');
 
@@ -49,6 +49,13 @@ router.post(
     keep: req.body.keep_id, retired: (req.body.remove_ids || []).length,
   })),
   mergeDuplicateProducts
+);
+router.post(
+  '/merge-duplicates/auto',
+  authenticate,
+  requireLevel(3),
+  auditLog('AUTO_MERGE_DUPLICATE_PRODUCTS'),
+  autoMergeDuplicates
 );
 
 // Before '/:id', or the summary path would be read as a product id.

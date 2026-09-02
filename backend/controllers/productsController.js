@@ -591,8 +591,84 @@ const mergeDuplicateProducts = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/products/merge-duplicates/auto
+ *
+ * Merge every duplicate group in one go, keeping the record that was created
+ * first and adding the others' stock into it.
+ *
+ * Oldest-wins is the rule because that record is the one the shop has been
+ * selling and counting against for longest, and the one most of the sales
+ * history points at. The alternatives — most stock, highest price — pick a
+ * record on a number that changes, which is no basis for deciding which copy
+ * of a product is the real one.
+ *
+ * Nothing is erased. The retired records are deactivated, exactly as the
+ * one-at-a-time merge does, so the sales history stays intact.
+ */
+const autoMergeDuplicates = async (req, res) => {
+  try {
+    const products = await Product.find({ is_active: true })
+      .select('name quantity createdAt')
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const groups = new Map();
+    products.forEach((p) => {
+      const key = nameKey(p.name);
+      if (!key) return;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    });
+
+    const merged = [];
+    for (const [, list] of groups) {
+      if (list.length < 2) continue;
+
+      // Sorted oldest-first by the query above, so the first is the keeper.
+      const [keep, ...rest] = list;
+      const moved = rest.reduce((sum, p) => sum + (p.quantity || 0), 0);
+
+      // Take the figure the database ended up with rather than adding to the
+      // one read a moment ago — that read is already stale by the time it is
+      // used, and the number goes in front of the owner.
+      let after = keep;
+      if (moved > 0) {
+        after = await Product.findByIdAndUpdate(
+          keep._id, { $inc: { quantity: moved } }, { new: true },
+        );
+      }
+      await Product.updateMany(
+        { _id: { $in: rest.map((p) => p._id) } },
+        { $set: { is_active: false, quantity: 0 } },
+      );
+
+      merged.push({
+        name: keep.name,
+        retired: rest.length,
+        moved,
+        quantity_now: after?.quantity ?? keep.quantity ?? 0,
+      });
+    }
+
+    const retired = merged.reduce((s, m) => s + m.retired, 0);
+
+    return res.status(200).json({
+      success: true,
+      message: merged.length === 0
+        ? 'No duplicates to merge.'
+        : `${merged.length} product${merged.length === 1 ? '' : 's'} merged, `
+          + `${retired} duplicate record${retired === 1 ? '' : 's'} retired.`,
+      data: { groups_merged: merged.length, retired, details: merged },
+    });
+  } catch (err) {
+    console.error('Auto-merge duplicates error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 module.exports = {
-  getDuplicateProducts, mergeDuplicateProducts,
+  getDuplicateProducts, mergeDuplicateProducts, autoMergeDuplicates,
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
   getLowStock, getByBarcode, searchProducts, bulkImport, getProductSummary,
   getOfflineCatalogue,

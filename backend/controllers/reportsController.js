@@ -721,10 +721,48 @@ const exportReportPdf = async (req, res) => {
         ],
         note: 'Stock on hand as at ' + new Date().toLocaleString('en-GB') + '.',
       };
+    } else if (reportType === 'stock-count') {
+      // A sheet to carry round the shop and write on. Deliberately carries no
+      // money: it goes onto the shop floor, and a counter does not need the
+      // shop's cost prices in their hand to count boxes.
+      const products = await Product.find({ is_active: true })
+        .populate('category_id', 'name')
+        .sort({ name: 1 })
+        .lean();
+
+      const rows = products.map((p) => ({
+        name: p.name,
+        category: p.category_id?.name || 'Uncategorised',
+        barcode: p.barcode || '',
+        quantity: p.quantity || 0,
+      }));
+
+      spec = {
+        title: 'STOCK COUNT SHEET',
+        subtitle: 'Count what is on the shelf and write it in the blank column.',
+        columns: [
+          { key: 'name', label: 'PRODUCT', weight: 4 },
+          { key: 'category', label: 'CATEGORY', weight: 2 },
+          { key: 'barcode', label: 'BARCODE', weight: 1.8 },
+          { key: 'quantity', label: 'IN SYSTEM', weight: 1.2, align: 'right', format: plain, bold: true },
+          { key: 'counted', label: 'COUNTED', weight: 1.6, blank: true },
+          { key: 'difference', label: 'DIFFERENCE', weight: 1.6, blank: true },
+        ],
+        rows,
+        // Room to write, and ruled columns so a pencil figure stays in its box.
+        rowHeight: 24,
+        grid: true,
+        summary: [
+          { label: 'Products to count', value: plain(rows.length) },
+          { label: 'Units in system', value: plain(rows.reduce((s, r) => s + r.quantity, 0)) },
+        ],
+        note: 'Counted by ______________________   Checked by ______________________   Date __________',
+      };
     } else {
       return res.status(404).json({
         success: false,
-        message: 'Unknown report. Try one of: daily-sales, sales-by-user, top-products, profit-loss, debtors, stock-valuation.',
+        message: 'Unknown report. Try one of: daily-sales, sales-by-user, top-products, '
+          + 'profit-loss, debtors, stock-valuation, stock-count.',
       });
     }
 
@@ -737,6 +775,8 @@ const exportReportPdf = async (req, res) => {
         phone: settings.company_phone,
       },
       subtitle: spec.subtitle || `Period: ${period}`,
+      rowHeight: spec.rowHeight,
+      grid: spec.grid,
       ...spec,
     });
 

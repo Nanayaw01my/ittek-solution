@@ -268,7 +268,11 @@ function StockValuationTab() {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-bold text-gray-800">Stock Valuation</h3>
-        <ExportBtn type="stock-valuation" params={{}} />
+        <div className="flex gap-2">
+          <ExportBtn type="stock-valuation" params={{}} />
+          {/* The sheet that goes round the shop with a pen. */}
+          <ExportBtn type="stock-count" params={{}} label="Count Sheet" />
+        </div>
       </div>
       {data?.total_cost_value !== undefined && (
         <div className="grid grid-cols-2 gap-3">

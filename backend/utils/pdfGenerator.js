@@ -1775,7 +1775,12 @@ const generateTableReport = async (options = {}) => {
         return s + '…';
       };
 
-      attachWatermark(doc, logoBuf, { width: landscape ? 300 : 330 });
+      // Fainter on a sheet meant to be written on — a pencil figure over a
+      // strong watermark is hard to read back.
+      attachWatermark(doc, logoBuf, {
+        width: landscape ? 300 : 330,
+        opacity: options.grid ? 0.05 : 0.13,
+      });
 
       const drawHeader = () => {
         let hy = 40;
@@ -1838,7 +1843,11 @@ const generateTableReport = async (options = {}) => {
       };
 
       const HEAD_H = 22;
-      const ROW_H = 17;
+      // Taller rows when the sheet is meant to be written on by hand.
+      const ROW_H = options.rowHeight || 17;
+      // Vertical rules between columns. Without them a hand-written figure
+      // drifts into the next column and the sheet is hard to read back.
+      const grid = !!options.grid;
 
       const drawTableHead = (y) => {
         doc.rect(ML, y, W, HEAD_H).fill(ORANGE);
@@ -1847,6 +1856,7 @@ const generateTableReport = async (options = {}) => {
           doc.fontSize(7).text(fit(c.label, widths[i] - 10, 7), colX(i) + 5, y + 7.5,
             { width: widths[i] - 10, align: c.align || 'left', lineBreak: false });
         });
+        reset();
         reset();
         return y + HEAD_H;
       };
@@ -1876,12 +1886,24 @@ const generateTableReport = async (options = {}) => {
           y = drawTableHead(drawHeader());
           tableTop = y;
         }
-        if (ri % 2 === 1) { doc.rect(ML, y, W, ROW_H).fill('#faf6f2'); reset(); }
+        // Zebra striping is for reading, not for writing on: a shaded row
+        // under a pencil figure is harder to read back than a plain one.
+        if (ri % 2 === 1 && !grid) { doc.rect(ML, y, W, ROW_H).fill('#faf6f2'); reset(); }
 
         columns.forEach((c, i) => {
+          if (grid && i > 0) {
+            doc.moveTo(colX(i), y).lineTo(colX(i), y + ROW_H)
+              .lineWidth(0.3).strokeColor('#e0e0e0').stroke();
+            reset();
+          }
+          // A column left blank on purpose — somewhere to write the counted
+          // figure. Nothing is printed in it.
+          if (c.blank) return;
+
           const raw = c.format ? c.format(row[c.key], row) : row[c.key];
+          const ty = y + (ROW_H - 9) / 2;
           doc.fontSize(7.5).font(c.bold ? 'Helvetica-Bold' : 'Helvetica').fillColor('#111111')
-            .text(fit(raw ?? '', widths[i] - 10, 7.5), colX(i) + 5, y + 5,
+            .text(fit(raw ?? '', widths[i] - 10, 7.5), colX(i) + 5, ty,
               { width: widths[i] - 10, align: c.align || 'left', lineBreak: false });
         });
 
