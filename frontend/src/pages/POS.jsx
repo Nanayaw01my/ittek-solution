@@ -146,11 +146,11 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
             <p className="font-black text-base">{companyName || 'DAN & DOR SOLAR COMPANY LIMITED'}</p>
             <p className="text-xs text-gray-500">{companyAddress || 'Bogoso, Western Region'}</p>
             <p className="text-xs text-gray-500">{companyPhone ? `Tel: ${companyPhone}` : ''}</p>
-            {saleData.offline && (
-              <p className="text-xs font-bold text-amber-600 mt-1 border border-amber-300 rounded px-2 py-0.5 inline-block">
-                OFFLINE — Pending Sync
-              </p>
-            )}
+            {/* Nothing here marks the sale as offline.
+                The customer's copy is a record of what they bought and what
+                they paid — whether the shop's connection was up at the time is
+                the shop's business, and staff already see it on the banner and
+                in the queue. */}
           </div>
 
           {/* Invoice info */}

@@ -191,8 +191,14 @@ const OFFLINE_SEQ_KEY = 'ittek_offline_invoice_seq'
 
 /**
  * A readable placeholder in the same shape as a real invoice number:
- * OFFLINE-20260811-0001. A raw timestamp is unreadable and impossible for
- * staff to quote over the phone.
+ * POS-20260811-0001. A raw timestamp is unreadable and impossible for staff to
+ * quote over the phone.
+ *
+ * It used to read OFFLINE-… , which printed on the customer's receipt and told
+ * them about the state of the shop's internet. A receipt is a record of what
+ * someone bought and what they paid; the shop's connection is the shop's
+ * business. The POS- prefix keeps it plainly distinct from the server's INV-
+ * series, so a provisional number is still obvious in the records.
  *
  * The server issues the real number on sync; this only identifies the paper
  * receipt in the meantime.
@@ -206,5 +212,5 @@ export const nextOfflineInvoiceNo = () => {
     seq = stored.date === datePart ? (stored.seq || 0) + 1 : 1
     localStorage.setItem(OFFLINE_SEQ_KEY, JSON.stringify({ date: datePart, seq }))
   } catch {}
-  return `OFFLINE-${datePart}-${String(seq).padStart(4, '0')}`
+  return `POS-${datePart}-${String(seq).padStart(4, '0')}`
 }
