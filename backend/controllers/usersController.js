@@ -34,6 +34,22 @@ const getUsers = async (req, res) => {
 };
 
 /**
+ * Name the field the database rejected, and its value where there is one.
+ *
+ * "Username or email already exists" sent people hunting for a clash that was
+ * not there — the real cause was an index treating two users with no email as
+ * the same user. An error about a unique field should say which field.
+ */
+const duplicateMessage = (err) => {
+  const field = Object.keys(err.keyPattern || err.keyValue || {})[0];
+  const value = (err.keyValue || {})[field];
+  const label = field === 'username' ? 'That username'
+    : field === 'email' ? 'That email address'
+    : 'That value';
+  return value ? `${label} (${value}) is already taken.` : `${label} is already taken.`;
+};
+
+/**
  * POST /api/users
  */
 const createUser = async (req, res) => {
@@ -91,18 +107,7 @@ const createUser = async (req, res) => {
   } catch (err) {
     console.error('Create user error:', err.message);
     if (err.code === 11000) {
-      // Name the field the database actually rejected. "Username or email"
-      // sent people hunting for a clash that was not there — the real cause
-      // was an index that treated two users with no email as the same user.
-      const field = Object.keys(err.keyPattern || err.keyValue || {})[0];
-      const value = (err.keyValue || {})[field];
-      const label = field === 'username' ? 'That username' : field === 'email' ? 'That email address' : 'That value';
-      return res.status(409).json({
-        success: false,
-        message: value
-          ? `${label} (${value}) is already taken.`
-          : `${label} is already taken.`,
-      });
+      return res.status(409).json({ success: false, message: duplicateMessage(err) });
     }
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
@@ -146,7 +151,21 @@ const updateUser = async (req, res) => {
     }
 
     if (username) user.username = username;
-    if (email) user.email = email;
+
+    // Email is optional and clearable. Sending it empty removes it, and the
+    // field is unset rather than stored as an empty string: an empty string is
+    // a value like any other, so two users holding one would collide on the
+    // uniqueness rule exactly as two nulls used to.
+    if (email !== undefined) {
+      const trimmed = String(email).trim();
+      if (trimmed) {
+        user.email = trimmed.toLowerCase();
+      } else {
+        user.email = undefined;
+        user.markModified('email');
+      }
+    }
+
     if (role) user.role = role;
     if (avatar_url !== undefined) user.avatar_url = avatar_url;
 
@@ -171,6 +190,9 @@ const updateUser = async (req, res) => {
     return res.status(200).json({ success: true, message: 'User updated.', data: user });
   } catch (err) {
     console.error('Update user error:', err.message);
+    if (err.code === 11000) {
+      return res.status(409).json({ success: false, message: duplicateMessage(err) });
+    }
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
