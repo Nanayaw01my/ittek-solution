@@ -1,13 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
+const { requireLevel } = require('../middleware/rbac');
 const Settings = require('../models/Settings');
+
 const {
   generateBlankReceiptForm, generateInstallmentPlanSheet, generateInstallmentTable,
   generateFixedPriceList, generateAcceptanceLetter,
 } = require('../utils/pdfGenerator');
 const { PLAN_SETS, PRICE_LISTS } = require('../config/installmentPlans');
 const { IPHONE_PACKAGES } = require('../config/iphonePlans');
+
+/**
+ * Every sheet on this router is Manager and above.
+ *
+ * These are the shop's stationery and its price lists — blank receipt pads,
+ * installment terms, the iPhone catalogue, acceptance letters. A Sales user
+ * sells at the till; handing out the shop's offer sheets is not part of that,
+ * and the screen is hidden from them, so the server says the same.
+ */
+router.use(authenticate, requireLevel(2));
 
 /** Shared by both routes below. */
 const buildForm = async (opts) => {
@@ -26,11 +38,10 @@ const buildForm = async (opts) => {
 /**
  * GET /api/forms/blank-receipt?rows=17&copies=1
  *
- * A blank receipt form to write on by hand. It carries no sale data, so any
- * signed-in staff member can print one — that is the point of it: something to
- * fall back on when the counter printer or the power is down.
+ * A blank receipt form to write on by hand. It carries no sale data — it is
+ * something to fall back on when the counter printer or the power is down.
  */
-router.get('/blank-receipt', authenticate, async (req, res) => {
+router.get('/blank-receipt', async (req, res) => {
   try {
     const pdf = await buildForm({ rows: req.query.rows, copies: req.query.copies });
 
@@ -54,7 +65,7 @@ router.get('/blank-receipt', authenticate, async (req, res) => {
  * point is writing a quote or a receipt by hand at a price that may not match
  * the shelf.
  */
-router.post('/receipt', authenticate, async (req, res) => {
+router.post('/receipt', async (req, res) => {
   try {
     const { rows, copies, items, customer, receiptNo, date, discount } = req.body || {};
 
@@ -90,8 +101,7 @@ router.post('/receipt', authenticate, async (req, res) => {
  *
  * The installment offer sheets: every package with its terms, its ready cash
  * price where there is one, and what is in the box. A comparison page followed
- * by a page per plan. The same sheet for everyone, so any signed-in staff
- * member can print one at the counter.
+ * by a page per plan.
  *
  * ?layout=combined  just the comparison page
  * ?layout=separate  just the page-per-plan sheets
@@ -142,9 +152,9 @@ const printPlanSheet = async (req, res) => {
   }
 };
 
-router.get('/installment-plan', authenticate, printPlanSheet);
+router.get('/installment-plan', printPlanSheet);
 // The original path, from before there was more than one kind of plan.
-router.get('/freezer-plan', authenticate, (req, res) => {
+router.get('/freezer-plan', (req, res) => {
   req.query.set = req.query.set || 'freezer';
   return printPlanSheet(req, res);
 });
@@ -156,7 +166,7 @@ router.get('/freezer-plan', authenticate, (req, res) => {
  * schedule, no late-payment term — this is not an installment sheet and must
  * not read like one.
  */
-router.get('/price-sheet', authenticate, async (req, res) => {
+router.get('/price-sheet', async (req, res) => {
   try {
     const setKey = String(req.query.set || 'solar-systems').toLowerCase();
     const list = PRICE_LISTS[setKey];
@@ -198,7 +208,7 @@ router.get('/price-sheet', authenticate, async (req, res) => {
  * Printed as a table rather than a page per model — thirty-three phones would
  * otherwise be a thirty-three page handout.
  */
-router.get('/iphone-plan', authenticate, async (req, res) => {
+router.get('/iphone-plan', async (req, res) => {
   try {
     const settings = (await Settings.findOne().lean()) || {};
     const pdf = await generateInstallmentTable({
@@ -237,7 +247,7 @@ router.get('/iphone-plan', authenticate, async (req, res) => {
  * balance exactly, and the one place that can be guaranteed is the place that
  * prints it.
  */
-router.post('/phone-plan', authenticate, async (req, res) => {
+router.post('/phone-plan', async (req, res) => {
   try {
     const body = req.body || {};
     const months = Math.min(24, Math.max(1, Number(body.months) || 3));
@@ -314,7 +324,7 @@ router.post('/phone-plan', authenticate, async (req, res) => {
  * internship. Only the name is required; every other field simply shapes the
  * sentences, so a letter written with half the details still reads properly.
  */
-router.post('/acceptance-letter', authenticate, async (req, res) => {
+router.post('/acceptance-letter', async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim();
     if (!name) {

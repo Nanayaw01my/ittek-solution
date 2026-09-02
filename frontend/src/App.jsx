@@ -104,7 +104,7 @@ export default function App() {
         <Route path="debts" element={<ProtectedRoute minLevel={2} page="debts"><Debts /></ProtectedRoute>} />
         <Route path="stock-requests" element={<ProtectedRoute minLevel={2} page="stock-requests"><StockRequests /></ProtectedRoute>} />
         <Route path="credit-agreements" element={<ProtectedRoute minLevel={2} page="credit-agreements"><CreditAgreements /></ProtectedRoute>} />
-        <Route path="layaways" element={<ProtectedRoute minLevel={1}><Layaways /></ProtectedRoute>} />
+        <Route path="layaways" element={<ProtectedRoute minLevel={2}><Layaways /></ProtectedRoute>} />
         {/* Staff conduct alerts — owners only; they name individual staff */}
         <Route path="fraud-alerts" element={<ProtectedRoute minLevel={3}><FraudAlerts /></ProtectedRoute>} />
 
@@ -197,7 +197,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="receipt-forms" element={<ProtectedRoute minLevel={1}><ReceiptForms /></ProtectedRoute>} />
+        <Route path="receipt-forms" element={<ProtectedRoute minLevel={2}><ReceiptForms /></ProtectedRoute>} />
         <Route
           path="delete-records"
           element={
