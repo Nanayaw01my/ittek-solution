@@ -1730,6 +1730,275 @@ const generateFixedPriceList = async (options = {}) => {
  *   summary: [{ label, value }] — printed above the table
  * @returns {Promise<Buffer>}
  */
+/**
+ * The end-of-day sheet (A4): everything sold and refunded on one date, set out
+ * under the person who did it.
+ *
+ * Written for closing up. The owner wants to see each till's takings against
+ * the person who took them, what actually left the shop, and what went back —
+ * so the sales are itemised under the cashier who rang them, and the refunds
+ * name both who asked and who approved.
+ *
+ * @param {Object} options - { logoUrl, company, date, sellers, refunds, totals }
+ * @returns {Promise<Buffer>}
+ */
+const generateDayEndReport = async (options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+  const sellers = options.sellers || [];
+  const refunds = options.refunds || [];
+  const totals = options.totals || {};
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, bottom: 40, left: 40, right: 40 } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 40;
+      const W = 515;
+      const ORANGE = '#e86b00';
+      const LGRAY = '#777777';
+      const PAGE_BOTTOM = 842;
+      const FOOTER_TOP = PAGE_BOTTOM - 40 - 78;
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+      const companyAddress = company.address || 'Bogoso, Western Region';
+      const companyPhone = company.phone || '+233 595413632';
+
+      const gh = (n) => 'GHC' + Number(n || 0).toLocaleString('en-GB', {
+        minimumFractionDigits: 2, maximumFractionDigits: 2,
+      });
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+      const fit = (text, width, size) => {
+        let t = String(text ?? '');
+        doc.fontSize(size);
+        if (doc.widthOfString(t) <= width) return t;
+        while (t.length > 1 && doc.widthOfString(t + '…') > width) t = t.slice(0, -1);
+        return t + '…';
+      };
+
+      attachWatermark(doc, logoBuf);
+
+      const drawHeader = () => {
+        let hy = 40;
+        if (logoBuf) {
+          try { doc.image(logoBuf, ML, hy, { width: 44 }); } catch { /* keep the gap */ }
+        }
+        doc.fontSize(13).font('Helvetica-Bold').fillColor('#111111')
+          .text(companyName, ML + 54, hy + 1, { width: W - 54 });
+        doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
+          .text([companyAddress, companyPhone && 'Tel: ' + companyPhone].filter(Boolean).join('  |  '),
+            ML + 54, hy + 17, { width: W - 54 });
+        reset();
+
+        hy += 46;
+        doc.moveTo(ML, hy).lineTo(ML + W, hy).lineWidth(1.5).strokeColor(ORANGE).stroke();
+        reset();
+
+        hy += 9;
+        doc.fontSize(15).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('END OF DAY REPORT', ML, hy, { width: W });
+        doc.fontSize(9).font('Helvetica').fillColor('#555555')
+          .text(options.date || '', ML, hy + 19, { width: W });
+        doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+          .text('Printed ' + new Date().toLocaleString('en-GB'), ML, hy + 32, { width: W });
+        reset();
+        return hy + 50;
+      };
+
+      const drawFooter = () => {
+        doc.moveTo(ML, FOOTER_TOP).lineTo(ML + W, FOOTER_TOP).lineWidth(0.5).strokeColor('#dddddd').stroke();
+        reset();
+        doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
+          .text('Figures are taken from the system records for the day named above.',
+            ML, FOOTER_TOP + 8, { width: W, align: 'center' });
+
+        const sigW = (W - 40) / 3;
+        ['CASHIER', 'MANAGER', 'CEO'].forEach((lbl, i) => {
+          const sx = ML + i * (sigW + 20);
+          doc.moveTo(sx, FOOTER_TOP + 52).lineTo(sx + sigW, FOOTER_TOP + 52)
+            .lineWidth(0.6).strokeColor('#999999').stroke();
+          doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
+            .text(lbl, sx, FOOTER_TOP + 56, { width: sigW, align: 'center' });
+          reset();
+        });
+      };
+
+      let y = drawHeader();
+
+      /** Start a fresh page when `needed` points will not fit above the footer. */
+      const room = (needed) => {
+        if (y + needed <= FOOTER_TOP - 6) return;
+        drawFooter();
+        doc.addPage();          // pageAdded redraws the watermark
+        y = drawHeader();
+      };
+
+      // ── The day in figures ────────────────────────────────────────────────
+      const boxes = [
+        { label: 'SALES', value: String(totals.sale_count || 0) },
+        { label: 'TAKINGS', value: gh(totals.sales_total) },
+        { label: 'REFUNDS', value: gh(totals.refunds_total) },
+        { label: 'NET', value: gh((totals.sales_total || 0) - (totals.refunds_total || 0)) },
+      ];
+      const boxW = (W - 3 * 8) / 4;
+      boxes.forEach((b, i) => {
+        const bx = ML + i * (boxW + 8);
+        doc.roundedRect(bx, y, boxW, 40, 3).fill('#fdf2e9');
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#b34700')
+          .text(b.label, bx + 8, y + 8, { width: boxW - 16, lineBreak: false });
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#111111')
+          .text(fit(b.value, boxW - 16, 11), bx + 8, y + 20, { width: boxW - 16, lineBreak: false });
+        reset();
+      });
+      y += 54;
+
+      const sectionHeading = (text) => {
+        room(28);
+        doc.rect(ML, y, W, 18).fill(ORANGE);
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#ffffff')
+          .text(text, ML + 8, y + 5.5, { width: W - 16, lineBreak: false });
+        reset();
+        y += 24;
+      };
+
+      // ── Sales, grouped by whoever rang them up ────────────────────────────
+      sectionHeading('SALES BY USER');
+
+      if (sellers.length === 0) {
+        doc.fontSize(9).font('Helvetica-Oblique').fillColor(LGRAY)
+          .text('No sales recorded for this day.', ML, y + 4, { width: W, align: 'center' });
+        reset();
+        y += 26;
+      }
+
+      sellers.forEach((seller) => {
+        room(40);
+        doc.rect(ML, y, W, 17).fill('#f3f3f3');
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#111111')
+          .text(fit(seller.username || 'Unknown user', W - 200, 8.5), ML + 8, y + 4.5, { lineBreak: false });
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#111111')
+          .text(`${seller.count} sale${seller.count === 1 ? '' : 's'}   ${gh(seller.total)}`,
+            ML + W - 208, y + 4.5, { width: 200, align: 'right', lineBreak: false });
+        reset();
+        y += 21;
+
+        seller.sales.forEach((sale) => {
+          const itemsLine = (sale.items || [])
+            .map((i) => `${i.product_name}${i.quantity > 1 ? ` x${i.quantity}` : ''}`)
+            .join(', ');
+          const needed = itemsLine ? 24 : 14;
+          room(needed);
+
+          doc.fontSize(7.5).font('Helvetica').fillColor('#555555')
+            .text(sale.time || '', ML + 8, y, { width: 34, lineBreak: false });
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#111111')
+            .text(fit(sale.invoice_no || '', 96, 7.5), ML + 44, y, { lineBreak: false });
+          doc.fontSize(7.5).font('Helvetica').fillColor('#333333')
+            .text(fit(sale.customer_name || 'Walk-in', 150, 7.5), ML + 146, y, { lineBreak: false });
+          doc.fontSize(8).font('Helvetica-Bold').fillColor('#111111')
+            .text(gh(sale.amount), ML + W - 108, y - 0.5, { width: 100, align: 'right', lineBreak: false });
+          reset();
+          y += 10;
+
+          if (itemsLine) {
+            doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
+              .text(fit(itemsLine, W - 60, 7), ML + 44, y, { lineBreak: false });
+            reset();
+            y += 10;
+          }
+
+          doc.moveTo(ML + 8, y + 1).lineTo(ML + W - 8, y + 1)
+            .lineWidth(0.3).strokeColor('#eeeeee').stroke();
+          reset();
+          y += 4;
+        });
+
+        y += 6;
+      });
+
+      // ── Refunds ───────────────────────────────────────────────────────────
+      y += 4;
+      sectionHeading('REFUNDS');
+
+      if (refunds.length === 0) {
+        doc.fontSize(9).font('Helvetica-Oblique').fillColor(LGRAY)
+          .text('No refunds recorded for this day.', ML, y + 4, { width: W, align: 'center' });
+        reset();
+        y += 26;
+      }
+
+      refunds.forEach((r) => {
+        const itemsLine = (r.items || [])
+          .map((i) => `${i.product_name}${i.quantity > 1 ? ` x${i.quantity}` : ''}`)
+          .join(', ');
+        room(itemsLine ? 34 : 24);
+
+        doc.fontSize(7.5).font('Helvetica').fillColor('#555555')
+          .text(r.time || '', ML + 8, y, { width: 34, lineBreak: false });
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#111111')
+          .text(fit(r.invoice_ref || '—', 96, 7.5), ML + 44, y, { lineBreak: false });
+        doc.fontSize(7.5).font('Helvetica').fillColor('#333333')
+          .text(fit(r.customer_name || '', 150, 7.5), ML + 146, y, { lineBreak: false });
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#b3261e')
+          .text('-' + gh(r.amount), ML + W - 108, y - 0.5, { width: 100, align: 'right', lineBreak: false });
+        reset();
+        y += 10;
+
+        // Both names, because a refund is two decisions: asking and allowing.
+        doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
+          .text(fit(`Refunded by ${r.refunded_by || 'unknown'}`
+            + (r.approved_by ? `  ·  approved by ${r.approved_by}` : '  ·  not yet approved')
+            + (r.reason ? `  ·  ${r.reason}` : ''), W - 60, 7),
+            ML + 44, y, { lineBreak: false });
+        reset();
+        y += 10;
+
+        if (itemsLine) {
+          doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
+            .text(fit(itemsLine, W - 60, 7), ML + 44, y, { lineBreak: false });
+          reset();
+          y += 10;
+        }
+
+        doc.moveTo(ML + 8, y + 1).lineTo(ML + W - 8, y + 1)
+          .lineWidth(0.3).strokeColor('#eeeeee').stroke();
+        reset();
+        y += 4;
+      });
+
+      // ── What the day came to ──────────────────────────────────────────────
+      room(64);
+      y += 6;
+      doc.roundedRect(ML, y, W, 52, 3).lineWidth(0.8).strokeColor(ORANGE).stroke();
+      const line = (label, value, ly, strong, colour) => {
+        doc.fontSize(strong ? 9 : 8).font(strong ? 'Helvetica-Bold' : 'Helvetica')
+          .fillColor(strong ? '#111111' : '#555555')
+          .text(label, ML + 12, ly, { lineBreak: false });
+        doc.fontSize(strong ? 10 : 8.5).font('Helvetica-Bold').fillColor(colour || '#111111')
+          .text(value, ML + W - 162, ly - 1, { width: 150, align: 'right', lineBreak: false });
+        reset();
+      };
+      line('Total sales for the day', gh(totals.sales_total), y + 10);
+      line('Less refunds', '-' + gh(totals.refunds_total), y + 24, false, '#b3261e');
+      doc.moveTo(ML + 12, y + 35).lineTo(ML + W - 12, y + 35)
+        .lineWidth(0.5).strokeColor('#dddddd').stroke();
+      reset();
+      line('NET TAKINGS', gh((totals.sales_total || 0) - (totals.refunds_total || 0)), y + 40, true);
+      y += 60;
+
+      drawFooter();
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
+
 const generateTableReport = async (options = {}) => {
   const logoBuf = await fetchBuf(options.logoUrl || null);
   const columns = options.columns || [];
@@ -2309,6 +2578,7 @@ module.exports = {
   generateReceipt, generateCreditAgreement, generateLayawayAgreement,
   generatePriceList, generateReport, generateBlankReceiptForm,
   generateInstallmentPlanSheet, generateInstallmentTable, generateTableReport,
+  generateDayEndReport,
   generateFixedPriceList, generateAcceptanceLetter,
   // The original name, kept so nothing that imports it breaks.
   generateFreezerOfferSheet: generateInstallmentPlanSheet,

@@ -16,6 +16,10 @@ export const getCashFlow = (params) => api.get('/reports/cash-flow', { params })
 export const exportReportPdf = (type, params) =>
   api.get(`/reports/export/pdf/${type}`, { params, responseType: 'blob' })
 
+// The closing sheet: everything sold and refunded on one day, by whom.
+export const getDayEndReport = (date) =>
+  api.get('/reports/day-end', { params: { date }, responseType: 'blob' })
+
 /** Printable price list — selling prices only, safe to hand to a customer. */
 export const getPriceList = (params) =>
   api.get('/reports/price-list', { params, responseType: 'blob' })

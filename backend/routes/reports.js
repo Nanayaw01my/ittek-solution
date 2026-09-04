@@ -7,6 +7,7 @@ const {
   getPriceList, getSalesTrend,
   getDailySales, getSalesByUser, getTopProducts, getProfitLoss,
   getDebtors, getStockValuation, getExpenseBreakdown, exportData, exportReportPdf,
+  getDayEndReport,
   getFinancialOverview, getCashFlow,
 } = require('../controllers/reportsController');
 
@@ -37,5 +38,7 @@ router.get('/cash-flow', requirePage('financial'), getCashFlow);
 router.get('/export/excel/:reportType', exportData);
 // Any report as a printable A4 PDF.
 router.get('/export/pdf/:reportType', exportReportPdf);
+// The closing sheet names each cashier against their takings — owners only.
+router.get('/day-end', authenticate, requireLevel(3), getDayEndReport);
 
 module.exports = router;

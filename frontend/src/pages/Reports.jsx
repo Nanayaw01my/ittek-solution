@@ -1,15 +1,15 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { FiPrinter, FiFileText } from 'react-icons/fi'
+import { FiPrinter, FiFileText, FiTag, FiSunset } from 'react-icons/fi'
 import {
   getDailySalesReport, getSalesByUserReport, getTopProductsReport,
   getProfitLossReport, getDebtorsReport, getStockValuationReport, exportReportPdf
 } from '../api/reports'
-import { formatCurrency, formatDate } from '../utils/helpers'
+import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
+import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
-import { FiTag } from 'react-icons/fi'
-import { getPriceList } from '../api/reports'
+import { getPriceList, getDayEndReport } from '../api/reports'
 import { openPdfInNewTab } from '../utils/openPdf'
 import DateRangePicker from '../components/DateRangePicker'
 import Table from '../components/Table'
@@ -297,6 +297,24 @@ export default function Reports() {
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [priceListLoading, setPriceListLoading] = useState(false)
 
+  // The closing sheet. Its own date, defaulting to today, because it is run
+  // at the end of a day rather than over the range the tabs are showing.
+  const { user } = useAuthStore()
+  const isOwner = getRoleLevel(user?.role) >= 3
+  const [dayEndDate, setDayEndDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [dayEndLoading, setDayEndLoading] = useState(false)
+
+  const handleDayEnd = async () => {
+    setDayEndLoading(true)
+    try {
+      await openPdfInNewTab(() => getDayEndReport(dayEndDate), `day-end-${dayEndDate}.pdf`)
+    } catch (err) {
+      toast.error(err.message || 'Could not generate the report.')
+    } finally {
+      setDayEndLoading(false)
+    }
+  }
+
   /**
    * Open the price list in a new tab for printing or saving.
    * openPdfInNewTab must be called synchronously here — it opens the tab
@@ -341,6 +359,42 @@ export default function Reports() {
           </div>
         }
       />
+
+      {/* Closing up: one day, every sale and refund, named against whoever
+          handled it. Set apart from the tabs because it is a different job —
+          the tabs analyse a range, this one closes a day. */}
+      {isOwner && (
+        <div className="bg-white rounded-xl border border-orange-200 p-4 mb-5">
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between">
+            <div className="flex items-start gap-3">
+              <FiSunset className="text-orange-500 flex-shrink-0 mt-0.5" size={18} />
+              <div>
+                <h3 className="font-bold text-gray-800 text-sm">End of Day Report</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Every sale and refund for one day on A4, grouped under the user who
+                  handled it, with the day's totals and signature lines.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-shrink-0">
+              <input
+                type="date"
+                value={dayEndDate}
+                onChange={e => setDayEndDate(e.target.value)}
+                max={format(new Date(), 'yyyy-MM-dd')}
+                className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              <button
+                onClick={handleDayEnd}
+                disabled={dayEndLoading}
+                className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors"
+              >
+                <FiPrinter size={15} /> {dayEndLoading ? 'Preparing…' : 'Print'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Date picker + tabs */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5">

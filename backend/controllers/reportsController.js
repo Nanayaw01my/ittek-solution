@@ -8,7 +8,7 @@ const WorkerPayment = require('../models/WorkerPayment');
 const Purchase = require('../models/Purchase');
 const Refund = require('../models/Refund');
 const Layaway = require('../models/Layaway');
-const { generateReport, generatePriceList, generateTableReport } = require('../utils/pdfGenerator');
+const { generateReport, generatePriceList, generateTableReport, generateDayEndReport } = require('../utils/pdfGenerator');
 const Settings = require('../models/Settings');
 
 /**
@@ -1036,8 +1036,113 @@ const getPriceList = async (req, res) => {
   }
 };
 
+
+/**
+ * GET /api/reports/day-end?date=YYYY-MM-DD
+ *
+ * The sheet printed at closing: every sale and every refund for one day, set
+ * out under the person responsible for it.
+ *
+ * Owners only. It names each cashier against their takings, which is the point
+ * of it and also why it is not for the shop floor.
+ */
+const getDayEndReport = async (req, res) => {
+  try {
+    const asked = req.query.date ? new Date(req.query.date) : new Date();
+    if (Number.isNaN(asked.getTime())) {
+      return res.status(400).json({ success: false, message: 'That date could not be read.' });
+    }
+    const dayStart = new Date(asked.getFullYear(), asked.getMonth(), asked.getDate());
+    const dayEnd = new Date(asked.getFullYear(), asked.getMonth(), asked.getDate(), 23, 59, 59, 999);
+
+    const [sales, refunds, settings] = await Promise.all([
+      Sale.find({ sale_date: { $gte: dayStart, $lte: dayEnd } })
+        .populate('user_id', 'username')
+        .sort({ sale_date: 1 })
+        .lean(),
+      // Every refund raised on the day, approved or not — a request still
+      // waiting is part of what happened and the owner is the one who decides.
+      Refund.find({ refund_date: { $gte: dayStart, $lte: dayEnd } })
+        .populate('processed_by', 'username')
+        .populate('requested_by', 'username')
+        .populate('approved_by', 'username')
+        .sort({ refund_date: 1 })
+        .lean(),
+      Settings.findOne().lean(),
+    ]);
+
+    const hhmm = (d) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+    // Group the sales under whoever rang them up.
+    const byUser = new Map();
+    sales.forEach((sale) => {
+      const name = sale.user_id?.username || 'Unknown user';
+      if (!byUser.has(name)) byUser.set(name, { username: name, count: 0, total: 0, sales: [] });
+      const bucket = byUser.get(name);
+      bucket.count += 1;
+      bucket.total += sale.total_amount || 0;
+      bucket.sales.push({
+        time: hhmm(sale.sale_date),
+        invoice_no: sale.invoice_no,
+        customer_name: sale.customer_name,
+        amount: sale.total_amount || 0,
+        items: (sale.items || []).map((i) => ({
+          product_name: i.variant_name ? `${i.product_name} (${i.variant_name})` : i.product_name,
+          quantity: i.quantity,
+        })),
+      });
+    });
+
+    const sellers = [...byUser.values()].sort((a, b) => b.total - a.total);
+
+    const refundRows = refunds.map((r) => ({
+      time: hhmm(r.refund_date),
+      invoice_ref: r.invoice_ref,
+      customer_name: r.customer_name,
+      amount: r.refund_amount || 0,
+      reason: r.reason,
+      refunded_by: r.requested_by?.username || r.processed_by?.username || null,
+      approved_by: r.status === 'approved' ? (r.approved_by?.username || 'unknown') : null,
+      items: (r.items || []).map((i) => ({ product_name: i.product_name, quantity: i.quantity })),
+    }));
+
+    // Only an approved refund has actually given money back, so only those come
+    // off the day's takings. A pending one is listed but not deducted.
+    const refundsTotal = refunds
+      .filter((r) => r.status === 'approved')
+      .reduce((sum, r) => sum + (r.refund_amount || 0), 0);
+
+    const pdf = await generateDayEndReport({
+      logoUrl: settings?.logo_url,
+      company: {
+        name: settings?.company_name,
+        address: settings?.company_address,
+        phone: settings?.company_phone,
+      },
+      date: dayStart.toLocaleDateString('en-GB', {
+        weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+      }),
+      sellers,
+      refunds: refundRows,
+      totals: {
+        sale_count: sales.length,
+        sales_total: sales.reduce((sum, s) => sum + (s.total_amount || 0), 0),
+        refunds_total: refundsTotal,
+      },
+    });
+
+    const stamp = dayStart.toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="day-end-${stamp}.pdf"`);
+    return res.end(pdf);
+  } catch (err) {
+    console.error('Day end report error:', err.message);
+    return res.status(500).json({ success: false, message: 'Could not generate the report.' });
+  }
+};
+
 module.exports = {
-  exportReportPdf,
+  exportReportPdf, getDayEndReport,
   getPriceList,
   getDashboardStats, getSalesTrend,
   getDailySales, getSalesByUser, getTopProducts, getProfitLoss,
