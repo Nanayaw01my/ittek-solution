@@ -10,16 +10,27 @@ import { formatCurrency, formatDate } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 
 /**
- * Receipt forms — stationery, not records.
+ * Everything the shop prints on paper: receipt pads, the price and installment
+ * sheets handed to customers, and the letters a student on attachment needs.
  *
- * Two ways to use the same sheet:
- *   • print it empty and write on it (power out, counter printer down)
- *   • add products first and print it filled in, leaving the rest blank
- *
- * Neither records a sale or moves stock. That is deliberate: this prints paper.
- * A sale that needs to count goes through the POS.
+ * Nothing here records a sale or moves stock. That is deliberate — this page
+ * prints paper. A sale that needs to count goes through the POS.
  */
+
+/**
+ * The three kinds of thing this page prints. Grouped because it had grown into
+ * one long scroll of a dozen unrelated cards — a blank receipt pad and a
+ * student's certificate have nothing to do with each other, and hunting past
+ * one to reach the other is how people conclude a feature is missing.
+ */
+const SECTIONS = [
+  { key: 'receipts', label: 'Receipts', blurb: 'Blank pads to write on, or a receipt filled in from the catalogue.' },
+  { key: 'prices', label: 'Prices & Plans', blurb: 'What things cost and what they cost on installment — sheets to hand a customer.' },
+  { key: 'letters', label: 'Letters & Certificates', blurb: 'The documents a student on attachment or internship needs.' },
+]
+
 export default function ReceiptForms() {
+  const [section, setSection] = useState('receipts')
   const [rows, setRows] = useState(17)
   const [copies, setCopies] = useState(5)
   const [busy, setBusy] = useState(false)
@@ -293,10 +304,27 @@ export default function ReceiptForms() {
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
       <PageHeader
-        title="Receipt Forms"
-        subtitle="Print a blank receipt to fill in by hand, or add products first"
+        title="Documents"
+        subtitle="Everything the shop prints on paper"
       />
 
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-3">
+        {SECTIONS.map(sec => (
+          <button
+            key={sec.key}
+            onClick={() => setSection(sec.key)}
+            className={`flex-1 px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors
+              ${section === sec.key ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
+          >
+            {sec.label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-gray-500 mb-5 px-1">
+        {SECTIONS.find(sec => sec.key === section)?.blurb}
+      </p>
+
+      {section === 'receipts' && (
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-5">
         <div className="flex gap-3 p-3 bg-orange-50 border border-orange-200 rounded-xl">
           <FiFileText className="text-orange-500 flex-shrink-0 mt-0.5" size={18} />
@@ -520,7 +548,9 @@ export default function ReceiptForms() {
           Opens in a new tab — print it from there on your A4 printer.
         </p>
       </div>
+      )}
 
+      {section === 'prices' && (<>
       {/* Fixed offer sheets rather than forms: the installment packages, their
           terms and their cash prices, for handing to a customer. */}
       {[
@@ -760,8 +790,10 @@ export default function ReceiptForms() {
         </button>
       </div>
 
-      {/* Acceptance letter for a student on attachment or internship. */}
-      <div className="mt-4 bg-white rounded-xl border border-gray-200 p-5">
+      </>)}
+
+      {section === 'letters' && (
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
         <div className="flex items-start gap-3 mb-4">
           <FiAward className="text-orange-500 flex-shrink-0 mt-0.5" size={18} />
           <div>
@@ -910,6 +942,7 @@ export default function ReceiptForms() {
           {letterBusy ? 'Preparing…' : doc.action}
         </button>
       </div>
+      )}
     </div>
   )
 }

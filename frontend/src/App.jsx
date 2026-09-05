@@ -197,7 +197,10 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="receipt-forms" element={<ProtectedRoute minLevel={2}><ReceiptForms /></ProtectedRoute>} />
+        <Route path="documents" element={<ProtectedRoute minLevel={2}><ReceiptForms /></ProtectedRoute>} />
+        {/* The page was called Receipt Forms before it grew past receipts.
+            Anyone with the old address bookmarked still lands in the right place. */}
+        <Route path="receipt-forms" element={<Navigate to="/documents" replace />} />
         <Route
           path="delete-records"
           element={
