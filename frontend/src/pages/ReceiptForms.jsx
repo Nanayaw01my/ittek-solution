@@ -2,7 +2,8 @@ import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer, FiBatteryCharging, FiZap, FiSun, FiAward, FiSmartphone, FiTag } from 'react-icons/fi'
-import { getBlankReceiptForm, getFilledReceiptForm, getInstallmentPlanSheet, getPriceSheet, getAcceptanceLetter, getPhonePlanSheet, getIphonePlanSheet } from '../api/forms'
+import { getBlankReceiptForm, getFilledReceiptForm, getInstallmentPlanSheet, getPriceSheet, getAcceptanceLetter, getCompletionLetter, getInternshipCertificate,
+  getPhonePlanSheet, getIphonePlanSheet } from '../api/forms'
 import { getProducts } from '../api/products'
 import { openPdfInNewTab } from '../utils/openPdf'
 import { formatCurrency, formatDate } from '../utils/helpers'
@@ -36,8 +37,43 @@ export default function ReceiptForms() {
     name: '', title: '', institution: '', programme: '',
     kind: 'attachment', startDate: '', endDate: '', department: '',
     addressee: '', signatoryName: '',
+    // Completion letter only.
+    conduct: '', remarks: '',
+    // Certificate only.
+    certificateNo: '', secondSignatoryName: '',
   })
   const [letterBusy, setLetterBusy] = useState(false)
+
+  /**
+   * Which of the three documents to print. They ask for the same details, so
+   * one form serves all three rather than three forms side by side asking the
+   * same questions.
+   */
+  const [docType, setDocType] = useState('acceptance')
+  const DOCS = {
+    acceptance: {
+      label: 'Acceptance letter',
+      blurb: 'Confirms the person has been accepted to do their attachment or internship here.',
+      action: 'Print acceptance letter',
+      api: getAcceptanceLetter,
+      file: 'acceptance-letter.pdf',
+    },
+    completion: {
+      label: 'Completion letter',
+      blurb: 'Confirms they came, for how long, and how they did. This is what a school files.',
+      action: 'Print completion letter',
+      api: getCompletionLetter,
+      file: 'completion-letter.pdf',
+    },
+    certificate: {
+      label: 'Certificate',
+      blurb: 'The certificate the student keeps — landscape, with the name set large.',
+      action: 'Print certificate',
+      api: getInternshipCertificate,
+      file: 'certificate.pdf',
+    },
+  }
+  const doc = DOCS[docType]
 
   // Phone installment sheet. The solar packages are fixed offers held in a
   // config file; phone prices move too often for that, so the models and
@@ -202,14 +238,14 @@ export default function ReceiptForms() {
     setLetterBusy(true)
     try {
       await openPdfInNewTab(
-        () => getAcceptanceLetter({
+        () => doc.api({
           ...letter,
           name: letter.name.trim(),
           // A blank date would otherwise print as an empty gap mid-sentence.
           startDate: letter.startDate ? formatDate(letter.startDate) : undefined,
           endDate: letter.endDate ? formatDate(letter.endDate) : undefined,
         }),
-        'acceptance-letter.pdf'
+        doc.file
       )
     } catch (err) {
       toast.error(err.message || 'Could not generate the letter.')
@@ -729,13 +765,25 @@ export default function ReceiptForms() {
         <div className="flex items-start gap-3 mb-4">
           <FiAward className="text-orange-500 flex-shrink-0 mt-0.5" size={18} />
           <div>
-            <h3 className="font-bold text-gray-800 text-sm">Attachment / Internship Acceptance Letter</h3>
+            <h3 className="font-bold text-gray-800 text-sm">Attachment / Internship Documents</h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              Confirms that the person named has been accepted to do their attachment or
-              internship here. Only the name is required — the letter is written from
-              whatever you fill in.
+              {doc.blurb} Only the name is required — the rest is written from whatever
+              you fill in.
             </p>
           </div>
+        </div>
+
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-3">
+          {Object.entries(DOCS).map(([key, d]) => (
+            <button
+              key={key}
+              onClick={() => setDocType(key)}
+              className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors
+                ${docType === key ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
+            >
+              {d.label}
+            </button>
+          ))}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -806,12 +854,51 @@ export default function ReceiptForms() {
             placeholder="Who signs it"
             className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
           />
-          <input
-            value={letter.addressee}
-            onChange={e => setLetter({ ...letter, addressee: e.target.value })}
-            placeholder="Addressed to (default: To Whom It May Concern)"
-            className="sm:col-span-3 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-          />
+          {/* A certificate is not addressed to anyone — it is handed over. */}
+          {docType !== 'certificate' && (
+            <input
+              value={letter.addressee}
+              onChange={e => setLetter({ ...letter, addressee: e.target.value })}
+              placeholder="Addressed to (default: To Whom It May Concern)"
+              className="sm:col-span-3 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          )}
+
+          {/* How they did — only the completion letter says this. */}
+          {docType === 'completion' && (
+            <>
+              <input
+                value={letter.conduct}
+                onChange={e => setLetter({ ...letter, conduct: e.target.value })}
+                placeholder="How they conducted themselves, e.g. punctual and hardworking"
+                className="sm:col-span-3 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              <textarea
+                value={letter.remarks}
+                onChange={e => setLetter({ ...letter, remarks: e.target.value })}
+                placeholder="Anything else worth saying about their work (optional)"
+                rows={2}
+                className="sm:col-span-3 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </>
+          )}
+
+          {docType === 'certificate' && (
+            <>
+              <input
+                value={letter.certificateNo}
+                onChange={e => setLetter({ ...letter, certificateNo: e.target.value })}
+                placeholder="Certificate number (optional)"
+                className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              <input
+                value={letter.secondSignatoryName}
+                onChange={e => setLetter({ ...letter, secondSignatoryName: e.target.value })}
+                placeholder="Second signatory (optional)"
+                className="sm:col-span-2 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </>
+          )}
         </div>
 
         <button
@@ -820,7 +907,7 @@ export default function ReceiptForms() {
           className="mt-4 w-full flex items-center justify-center gap-2 py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
         >
           <FiPrinter size={16} />
-          {letterBusy ? 'Preparing…' : 'Print acceptance letter'}
+          {letterBusy ? 'Preparing…' : doc.action}
         </button>
       </div>
     </div>

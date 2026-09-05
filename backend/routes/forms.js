@@ -7,6 +7,7 @@ const Settings = require('../models/Settings');
 const {
   generateBlankReceiptForm, generateInstallmentPlanSheet, generateInstallmentTable,
   generateFixedPriceList, generateAcceptanceLetter,
+  generateCompletionLetter, generateInternshipCertificate,
 } = require('../utils/pdfGenerator');
 const { PLAN_SETS, PRICE_LISTS } = require('../config/installmentPlans');
 const { IPHONE_PACKAGES } = require('../config/iphonePlans');
@@ -362,5 +363,51 @@ router.post('/acceptance-letter', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Could not generate the letter.' });
   }
 });
+
+/**
+ * The three documents that follow a student through an attachment:
+ * the acceptance letter before, the completion letter after, and the
+ * certificate they keep. They take the same details, so they are built the
+ * same way — only the name is required, and each generator assembles its
+ * sentences from whatever else was given.
+ */
+const personDocument = (generate, filenamePrefix, label) => async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    if (!name) {
+      return res.status(400).json({ success: false, message: "Enter the person's name." });
+    }
+
+    const settings = (await Settings.findOne().lean()) || {};
+    const pdf = await generate({
+      logoUrl: settings.logo_url,
+      company: {
+        name: settings.company_name,
+        address: settings.company_address,
+        phone: settings.company_phone,
+      },
+      ...req.body,
+      name,
+    });
+
+    const safe = name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filenamePrefix}-${safe}.pdf"`);
+    return res.end(pdf);
+  } catch (err) {
+    console.error(`${label} error:`, err.message);
+    return res.status(500).json({ success: false, message: `Could not generate the ${label}.` });
+  }
+};
+
+/** POST /api/forms/completion-letter */
+router.post('/completion-letter', personDocument(
+  generateCompletionLetter, 'completion-letter', 'completion letter',
+));
+
+/** POST /api/forms/internship-certificate */
+router.post('/internship-certificate', personDocument(
+  generateInternshipCertificate, 'certificate', 'certificate',
+));
 
 module.exports = router;

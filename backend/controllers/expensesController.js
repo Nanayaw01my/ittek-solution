@@ -1,5 +1,16 @@
 const { validationResult } = require('express-validator');
 const Expense = require('../models/Expense');
+const { ROLE_LEVELS } = require('../middleware/rbac');
+
+/**
+ * Whose expenses a user may see.
+ *
+ * Everyone below CEO sees only what they entered themselves. Spending is
+ * personal accountability — a Manager reading the whole shop's petty cash is
+ * the owners' view, not a supervisor's — and it was previously scoped for
+ * Sales alone, so a Manager saw everybody's.
+ */
+const ownExpensesOnly = (user) => (ROLE_LEVELS[user?.role] || 0) < 3;
 
 /**
  * POST /api/expenses
@@ -27,8 +38,7 @@ const getExpenses = async (req, res) => {
     const { startDate, endDate, category, page = 1, limit = 50 } = req.query;
     const filter = {};
 
-    // Sales can only see own expenses
-    if (req.user.role === 'Sales') {
+    if (ownExpensesOnly(req.user)) {
       filter.user_id = req.user._id;
     }
 
@@ -68,7 +78,7 @@ const getExpenseSummary = async (req, res) => {
     const { startDate, endDate } = req.query;
     const match = {};
 
-    if (req.user.role === 'Sales') match.user_id = req.user._id;
+    if (ownExpensesOnly(req.user)) match.user_id = req.user._id;
     if (startDate || endDate) {
       match.expense_date = {};
       if (startDate) match.expense_date.$gte = new Date(startDate);
@@ -97,7 +107,7 @@ const getExpense = async (req, res) => {
     const expense = await Expense.findById(req.params.id).populate('user_id', 'username');
     if (!expense) return res.status(404).json({ success: false, message: 'Expense not found.' });
 
-    if (req.user.role === 'Sales' && String(expense.user_id._id) !== String(req.user._id)) {
+    if (ownExpensesOnly(req.user) && String(expense.user_id._id) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
@@ -116,7 +126,7 @@ const updateExpense = async (req, res) => {
     const expense = await Expense.findById(req.params.id);
     if (!expense) return res.status(404).json({ success: false, message: 'Expense not found.' });
 
-    if (req.user.role === 'Sales' && String(expense.user_id) !== String(req.user._id)) {
+    if (ownExpensesOnly(req.user) && String(expense.user_id) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
@@ -136,7 +146,7 @@ const deleteExpense = async (req, res) => {
     const expense = await Expense.findById(req.params.id);
     if (!expense) return res.status(404).json({ success: false, message: 'Expense not found.' });
 
-    if (req.user.role === 'Sales' && String(expense.user_id) !== String(req.user._id)) {
+    if (ownExpensesOnly(req.user) && String(expense.user_id) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
