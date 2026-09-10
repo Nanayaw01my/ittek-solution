@@ -26,6 +26,21 @@ router.post('/', authenticate, requireLevel(2), upload.single('image'), async (r
       return res.status(400).json({ success: false, message: 'No image provided.' });
     }
 
+    // Named plainly. Without this the request fails deep inside the Cloudinary
+    // client and comes back as "Image upload failed", which sends people
+    // hunting through the browser for a fault that is in the server's
+    // environment.
+    const missing = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET']
+      .filter((key) => !process.env[key]);
+    if (missing.length) {
+      console.error('Upload attempted with Cloudinary unconfigured. Missing:', missing.join(', '));
+      return res.status(503).json({
+        success: false,
+        message: `Image uploads are not configured on the server (missing ${missing.join(', ')}). `
+          + 'Set those and redeploy.',
+      });
+    }
+
     const folder = `ittek/${req.query.folder || 'general'}`;
 
     const result = await new Promise((resolve, reject) => {
@@ -37,8 +52,14 @@ router.post('/', authenticate, requireLevel(2), upload.single('image'), async (r
 
     return res.status(200).json({ success: true, data: { url: result.secure_url } });
   } catch (err) {
-    console.error('Upload error:', err.message);
-    return res.status(500).json({ success: false, message: 'Image upload failed.' });
+    // The real reason, both in the log and on screen. Cloudinary's messages
+    // are specific — a wrong key, a rejected file — and hiding them behind
+    // "Image upload failed" leaves nothing to act on.
+    console.error('Upload error:', err.stack || err.message);
+    return res.status(500).json({
+      success: false,
+      message: `Image upload failed: ${err.message || 'unknown error'}`,
+    });
   }
 });
 
