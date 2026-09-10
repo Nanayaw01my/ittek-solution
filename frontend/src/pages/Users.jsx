@@ -644,10 +644,16 @@ export default function Users() {
           myRole={me?.role}
           loading={createMutation.isPending || updateMutation.isPending}
           onSubmit={(formData) => {
+            // Built field by field rather than passed straight through, so
+            // anything the form gains has to be added here too. The staff
+            // photo was not, which is why choosing one appeared to work and
+            // then never showed: it was dropped on this line, before the
+            // request was made.
             const payload = {
               username: formData.username,
               email: formData.email || undefined,
               role: formData.role,
+              avatar_url: formData.avatar_url,
               assigned_categories: formData.assigned_categories,
               page_access: formData.page_access,
               ...(!editUser && { password: formData.password }),
