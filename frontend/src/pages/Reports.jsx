@@ -396,6 +396,32 @@ export default function Reports() {
         </div>
       )}
 
+      {/* Two lists off the catalogue rather than the sales figures, so they
+          sit here rather than under a date range. Neither carries a cost
+          price: one is handed to customers, the other read at a supplier's
+          counter. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-gray-800 text-sm">Price &amp; Stock List</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Every product, what is in stock and what it sells for.
+            </p>
+          </div>
+          <ExportBtn type="price-list" params={{}} label="Print" />
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-gray-800 text-sm">Low Stock</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Only what is at or below its re-order level, and how short it is.
+            </p>
+          </div>
+          <ExportBtn type="low-stock" params={{}} label="Print" />
+        </div>
+      </div>
+
       {/* Date picker + tabs */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5">
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-4">

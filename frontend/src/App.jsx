@@ -8,6 +8,7 @@ import LoadingSpinner from './components/LoadingSpinner'
 
 // Pages
 import Login from './pages/Login'
+import Welcome from './pages/Welcome'
 import Dashboard from './pages/Dashboard'
 import POS from './pages/POS'
 import Products from './pages/Products'
@@ -83,6 +84,14 @@ export default function App() {
 
       {/* Root redirect */}
       <Route path="/" element={<RootRedirect />} />
+
+      {/* The greeting after signing in. Outside Layout because it is a full
+          screen with no sidebar, but still behind the guard — it shows the
+          person's own name and photo. */}
+      <Route
+        path="/welcome"
+        element={<ProtectedRoute><Welcome /></ProtectedRoute>}
+      />
 
       {/* Protected routes inside Layout */}
       <Route

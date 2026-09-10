@@ -721,6 +721,59 @@ const exportReportPdf = async (req, res) => {
         ],
         note: 'Stock on hand as at ' + new Date().toLocaleString('en-GB') + '.',
       };
+    } else if (reportType === 'price-list' || reportType === 'low-stock') {
+      // Two views of the same rows. The price list is what a customer may see;
+      // low stock is the buying list. Neither carries a cost price — the first
+      // goes out of the building, and the second is read at a supplier's
+      // counter where the shop's margins are nobody's business.
+      const lowOnly = reportType === 'low-stock';
+      const products = await Product.find({
+        is_active: true,
+        ...(lowOnly ? { $expr: { $lte: ['$quantity', '$low_stock_level'] } } : {}),
+      })
+        .populate('category_id', 'name')
+        .sort(lowOnly ? { quantity: 1 } : { name: 1 })
+        .lean();
+
+      const rows = products.map((p) => ({
+        name: p.name,
+        category: p.category_id?.name || 'Uncategorised',
+        quantity: p.quantity || 0,
+        low_stock_level: p.low_stock_level ?? 0,
+        selling_price: p.selling_price,
+        shortfall: Math.max(0, (p.low_stock_level ?? 0) - (p.quantity || 0)),
+      }));
+
+      spec = {
+        title: lowOnly ? 'LOW STOCK' : 'PRODUCT PRICE & STOCK LIST',
+        subtitle: lowOnly
+          ? 'Products at or below their re-order level, lowest first.'
+          : 'Every product, what is in stock and what it sells for.',
+        columns: [
+          { key: 'name', label: 'PRODUCT', weight: 4 },
+          { key: 'category', label: 'CATEGORY', weight: 2 },
+          { key: 'quantity', label: 'QTY', weight: 1.1, align: 'right', format: plain, bold: true },
+          ...(lowOnly ? [
+            { key: 'low_stock_level', label: 'RE-ORDER AT', weight: 1.4, align: 'right', format: plain },
+            { key: 'shortfall', label: 'SHORT BY', weight: 1.3, align: 'right', format: plain, bold: true },
+          ] : []),
+          { key: 'selling_price', label: 'SELLING PRICE', weight: 1.9, align: 'right', format: money },
+        ],
+        rows,
+        summary: lowOnly
+          ? [
+            { label: 'Products to re-order', value: plain(rows.length) },
+            { label: 'Units short', value: plain(rows.reduce((s, r) => s + r.shortfall, 0)) },
+            { label: 'Out of stock', value: plain(rows.filter((r) => r.quantity <= 0).length) },
+          ]
+          : [
+            { label: 'Products', value: plain(rows.length) },
+            { label: 'Units in stock', value: plain(rows.reduce((s, r) => s + r.quantity, 0)) },
+          ],
+        note: lowOnly
+          ? 'Stock at or below the re-order level as at ' + new Date().toLocaleString('en-GB') + '.'
+          : 'Prices as at ' + new Date().toLocaleString('en-GB') + '. Subject to change without notice.',
+      };
     } else if (reportType === 'stock-count') {
       // A sheet to carry round the shop and write on. Deliberately carries no
       // money: it goes onto the shop floor, and a counter does not need the
@@ -762,7 +815,7 @@ const exportReportPdf = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Unknown report. Try one of: daily-sales, sales-by-user, top-products, '
-          + 'profit-loss, debtors, stock-valuation, stock-count.',
+          + 'profit-loss, debtors, stock-valuation, stock-count, price-list, low-stock.',
       });
     }
 

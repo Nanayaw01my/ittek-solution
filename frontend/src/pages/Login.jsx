@@ -56,7 +56,9 @@ export default function Login() {
 
       storeLogin(user, token)
       toast.success(`Welcome back, ${user.username}!`)
-      navigate('/dashboard')
+      // Straight to the greeting, which shows their photo and then moves on
+      // to the dashboard by itself.
+      navigate('/welcome', { replace: true })
     } catch (err) {
       // Never blame the password for a network or server fault — that sends
       // staff off resetting a password that was never wrong.

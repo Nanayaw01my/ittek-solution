@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX, FiTrash2, FiEye, FiEyeOff } from 'react-icons/fi'
 import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword } from '../api/users'
 import { getCategories } from '../api/products'
+import { uploadImage } from '../api/upload'
 import { GRANTABLE_PAGES, MODE_LABELS } from '../config/pageAccess'
 import { formatDate, getRoleLabel, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
@@ -104,6 +105,27 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
   const [assigned, setAssigned] = useState(
     (editUser?.assigned_categories || []).map(c => String(c?._id || c))
   )
+
+  // Staff photo. Uploaded as soon as it is chosen so the form only ever
+  // carries the resulting URL — the image itself never rides along with the
+  // rest of the user's details.
+  const [avatarUrl, setAvatarUrl] = useState(editUser?.avatar_url || '')
+  const [avatarBusy, setAvatarBusy] = useState(false)
+
+  const pickAvatar = async (file) => {
+    if (!file) return
+    if (!/^image\//.test(file.type)) return toast.error('Choose an image file.')
+    if (file.size > 5 * 1024 * 1024) return toast.error('That image is over 5MB — choose a smaller one.')
+    setAvatarBusy(true)
+    try {
+      const res = await uploadImage(file, 'avatars')
+      setAvatarUrl(res.data?.url || res.data?.data?.url || '')
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not upload the photo.')
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
   const { data: categoriesData } = useQuery({
     queryKey: ['categories'],
     queryFn: () => getCategories().then(r => r.data),
@@ -116,9 +138,42 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
 
   return (
     <form
-      onSubmit={handleSubmit(data => onSubmit({ ...data, assigned_categories: assigned, page_access: grants }))}
+      onSubmit={handleSubmit(data => onSubmit({ ...data, avatar_url: avatarUrl, assigned_categories: assigned, page_access: grants }))}
       className="p-5 space-y-4"
     >
+      {/* The photo, first: it is what the person sees when they sign in. */}
+      <div className="flex items-center gap-4">
+        <div className="w-16 h-16 rounded-full overflow-hidden bg-orange-100 flex items-center justify-center flex-shrink-0 border border-orange-200">
+          {avatarUrl
+            ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+            : <FiUser className="text-orange-400" size={26} />}
+        </div>
+        <div className="min-w-0">
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Photo</label>
+          <div className="flex items-center gap-2">
+            <label className={`px-3 py-2 border border-gray-200 rounded-xl text-xs font-semibold cursor-pointer hover:bg-gray-50 ${avatarBusy ? 'opacity-60 pointer-events-none' : ''}`}>
+              {avatarBusy ? 'Uploading…' : avatarUrl ? 'Change' : 'Choose photo'}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => pickAvatar(e.target.files?.[0])}
+              />
+            </label>
+            {avatarUrl && !avatarBusy && (
+              <button
+                type="button"
+                onClick={() => setAvatarUrl('')}
+                className="px-3 py-2 text-xs font-semibold text-gray-500 hover:text-red-600"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-gray-400 mt-1">Shown when they sign in. Optional.</p>
+        </div>
+      </div>
+
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1">Username *</label>
         <input
