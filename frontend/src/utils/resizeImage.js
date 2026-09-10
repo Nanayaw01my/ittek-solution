@@ -40,3 +40,13 @@ export async function resizeImageToDataUrl(file, size = 256, quality = 0.85) {
   // it sits in means transparency is never needed.
   return canvas.toDataURL('image/jpeg', quality)
 }
+
+/** A data URL as a File, so it can be sent as an ordinary upload. */
+export function dataUrlToFile(dataUrl, filename = 'photo.jpg') {
+  const [header, body] = String(dataUrl).split(',')
+  const mime = (header.match(/data:([^;]+)/) || [])[1] || 'image/jpeg'
+  const binary = atob(body)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+  return new File([bytes], filename, { type: mime })
+}

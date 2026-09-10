@@ -5,7 +5,8 @@ import toast from 'react-hot-toast'
 import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX, FiTrash2, FiEye, FiEyeOff } from 'react-icons/fi'
 import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword } from '../api/users'
 import { getCategories } from '../api/products'
-import { resizeImageToDataUrl } from '../utils/resizeImage'
+import { resizeImageToDataUrl, dataUrlToFile } from '../utils/resizeImage'
+import { uploadImage } from '../api/upload'
 import { GRANTABLE_PAGES, MODE_LABELS } from '../config/pageAccess'
 import { formatDate, getRoleLabel, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
@@ -112,15 +113,29 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
   const [avatarUrl, setAvatarUrl] = useState(editUser?.avatar_url || '')
   const [avatarBusy, setAvatarBusy] = useState(false)
 
+  /**
+   * Shrink the photo first, then put it on the image service — and if that
+   * cannot be reached, keep the shrunk copy with the user record instead.
+   *
+   * Shrinking first is worth it either way: a phone photo is several
+   * megabytes and this sends about four kilobytes, which matters on a shop
+   * connection. And because the small copy already exists, a problem with the
+   * image service costs nothing — the photo is simply stored the other way
+   * rather than the upload failing and leaving an empty circle.
+   */
   const pickAvatar = async (file) => {
     if (!file) return
     if (!/^image\//.test(file.type)) return toast.error('Choose an image file.')
     setAvatarBusy(true)
     try {
-      // Shrunk here, in the browser, and saved with the user record — no image
-      // service and no credentials to keep working. The original file is never
-      // sent anywhere; only the small square leaves this machine.
-      setAvatarUrl(await resizeImageToDataUrl(file))
+      const small = await resizeImageToDataUrl(file)
+      try {
+        const res = await uploadImage(dataUrlToFile(small), 'avatars')
+        const url = res.data?.url || res.data?.data?.url
+        setAvatarUrl(url || small)
+      } catch {
+        setAvatarUrl(small)
+      }
     } catch (err) {
       toast.error(err.message || 'Could not read that photo.')
     } finally {
