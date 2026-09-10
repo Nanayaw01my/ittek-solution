@@ -34,6 +34,34 @@ const getUsers = async (req, res) => {
 };
 
 /**
+ * A staff photo, checked before it is stored.
+ *
+ * Photos are kept with the user record rather than sent to an image service,
+ * so the shop needs no third-party account for them to work. That only holds
+ * if what arrives is small: the browser shrinks the file to a 256px square
+ * before sending, and this refuses anything that did not.
+ *
+ * An ordinary http(s) address is still accepted, so photos uploaded through
+ * the old image service keep working.
+ */
+const MAX_AVATAR_CHARS = 400 * 1024;   // ~300KB of image once base64 is undone
+
+const avatarRefusal = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const v = String(value);
+
+  if (/^https?:\/\//i.test(v)) return null;
+
+  if (!/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(v)) {
+    return 'That photo could not be read. Choose a JPEG, PNG or WebP image.';
+  }
+  if (v.length > MAX_AVATAR_CHARS) {
+    return 'That photo is too large. Choose a smaller image.';
+  }
+  return null;
+};
+
+/**
  * Name the field the database rejected, and its value where there is one.
  *
  * "Username or email already exists" sent people hunting for a clash that was
@@ -87,6 +115,8 @@ const createUser = async (req, res) => {
     }
 
     const { avatar_url } = req.body;
+    const avatarProblem = avatarRefusal(avatar_url);
+    if (avatarProblem) return res.status(400).json({ success: false, message: avatarProblem });
     const user = await User.create({
       username: normalUsername,
       ...(normalEmail ? { email: normalEmail } : {}),
@@ -167,7 +197,12 @@ const updateUser = async (req, res) => {
     }
 
     if (role) user.role = role;
-    if (avatar_url !== undefined) user.avatar_url = avatar_url;
+    if (avatar_url !== undefined) {
+      const problem = avatarRefusal(avatar_url);
+      if (problem) return res.status(400).json({ success: false, message: problem });
+      // An empty value clears the photo rather than storing an empty string.
+      user.avatar_url = avatar_url || undefined;
+    }
 
     // Which product categories this Manager may add products to. Sent as an
     // array of category ids; an empty array withdraws the assignment entirely.

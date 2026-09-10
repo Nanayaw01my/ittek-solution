@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX, FiTrash2, FiEye, FiEyeOff } from 'react-icons/fi'
 import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword } from '../api/users'
 import { getCategories } from '../api/products'
-import { uploadImage } from '../api/upload'
+import { resizeImageToDataUrl } from '../utils/resizeImage'
 import { GRANTABLE_PAGES, MODE_LABELS } from '../config/pageAccess'
 import { formatDate, getRoleLabel, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
@@ -115,13 +115,14 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
   const pickAvatar = async (file) => {
     if (!file) return
     if (!/^image\//.test(file.type)) return toast.error('Choose an image file.')
-    if (file.size > 5 * 1024 * 1024) return toast.error('That image is over 5MB — choose a smaller one.')
     setAvatarBusy(true)
     try {
-      const res = await uploadImage(file, 'avatars')
-      setAvatarUrl(res.data?.url || res.data?.data?.url || '')
+      // Shrunk here, in the browser, and saved with the user record — no image
+      // service and no credentials to keep working. The original file is never
+      // sent anywhere; only the small square leaves this machine.
+      setAvatarUrl(await resizeImageToDataUrl(file))
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Could not upload the photo.')
+      toast.error(err.message || 'Could not read that photo.')
     } finally {
       setAvatarBusy(false)
     }
