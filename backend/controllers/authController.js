@@ -53,6 +53,10 @@ const login = async (req, res) => {
           role: user.role,
           is_active: user.is_active,
           last_login: user.last_login,
+          // Their photo, for the greeting shown straight after signing in.
+          // Left out of this payload before, so the greeting had a name and
+          // an empty circle no matter what had been uploaded.
+          avatar_url: user.avatar_url,
           // Which product categories a Manager may add products to. The
           // Products page uses it to limit the category picker; the server
           // enforces it again on every create.

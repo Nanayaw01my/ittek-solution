@@ -71,6 +71,9 @@ export default function Layout() {
         if (cancelled || !fresh) return
         updateUser({
           role: fresh.role,
+          // Carried through so a photo added by an owner appears on this
+          // person's next page load rather than only after they sign in again.
+          avatar_url: fresh.avatar_url,
           assigned_categories: (fresh.assigned_categories || []).map(c => String(c?._id || c)),
           page_access: fresh.page_access || {},
         })

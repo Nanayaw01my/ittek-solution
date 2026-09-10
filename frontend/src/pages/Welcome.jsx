@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FiUser, FiArrowRight } from 'react-icons/fi'
 import useAuthStore from '../store/authStore'
+import { getMe } from '../api/auth'
 import { getRoleLabel } from '../utils/helpers'
 
 /** Morning, afternoon or evening, by the clock on the device. */
@@ -24,7 +25,30 @@ const greeting = () => {
 export default function Welcome() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const updateUser = useAuthStore(s => s.updateUser)
   const [leaving, setLeaving] = useState(false)
+
+  /**
+   * Ask the server for the photo rather than trusting what the sign-in
+   * response happened to include.
+   *
+   * This screen sits outside the layout that normally refreshes the stored
+   * user, and the sign-in payload once omitted the photo entirely — which
+   * showed here as a name over an empty circle. Asking directly means the
+   * greeting is right whatever the sign-in response carried.
+   */
+  useEffect(() => {
+    if (user?.avatar_url) return
+    let cancelled = false
+    getMe()
+      .then(r => {
+        const fresh = r.data?.data || r.data
+        if (!cancelled && fresh?.avatar_url) updateUser({ avatar_url: fresh.avatar_url })
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const go = () => {
     setLeaving(true)
