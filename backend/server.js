@@ -235,6 +235,7 @@ app.use('/api/debts', require('./routes/debts'));
 app.use('/api/workers', require('./routes/workers'));
 app.use('/api/purchases', require('./routes/purchases'));
 app.use('/api/stock-requests', require('./routes/stockRequests'));
+app.use('/api/dispatches', require('./routes/dispatches'));
 app.use('/api/credit-agreements', require('./routes/creditAgreements'));
 app.use('/api/financial', require('./routes/financial'));
 app.use('/api/reports', require('./routes/reports'));
