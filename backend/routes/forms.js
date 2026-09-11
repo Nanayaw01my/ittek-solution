@@ -6,11 +6,11 @@ const Settings = require('../models/Settings');
 
 const {
   generateBlankReceiptForm, generateInstallmentPlanSheet, generateInstallmentTable,
-  generateFixedPriceList, generateAcceptanceLetter,
+  generateFixedPriceList, generateNameList, generateAcceptanceLetter,
   generateCompletionLetter, generateInternshipCertificate,
 } = require('../utils/pdfGenerator');
 const { PLAN_SETS, PRICE_LISTS } = require('../config/installmentPlans');
-const { IPHONE_PACKAGES } = require('../config/iphonePlans');
+const { IPHONE_PACKAGES, IPHONE_PRICES } = require('../config/iphonePlans');
 
 /**
  * Every sheet on this router is Manager and above.
@@ -231,6 +231,41 @@ router.get('/iphone-plan', async (req, res) => {
     return res.end(pdf);
   } catch (err) {
     console.error('iPhone plan sheet error:', err.message);
+    return res.status(500).json({ success: false, message: 'Could not generate the sheet.' });
+  }
+});
+
+/**
+ * GET /api/forms/iphone-names
+ *
+ * The models the shop carries, and nothing else — no prices, no terms.
+ *
+ * For a customer looking to see whether their phone is stocked before the
+ * conversation turns to money. A printed price is a commitment that goes out
+ * of date the week it is handed over; a printed name does not.
+ */
+router.get('/iphone-names', async (req, res) => {
+  try {
+    const settings = (await Settings.findOne().lean()) || {};
+    const pdf = await generateNameList({
+      logoUrl: settings.logo_url,
+      company: {
+        name: settings.company_name,
+        address: settings.company_address,
+        phone: settings.company_phone,
+      },
+      title: 'IPHONES AVAILABLE',
+      subtitle: 'Models we carry. Please ask for today\'s price.',
+      names: IPHONE_PRICES.map((p) => p.name),
+      columns: 2,
+      note: 'Stock changes daily — please ask a member of staff to confirm availability and price.',
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="iphone-models.pdf"');
+    return res.end(pdf);
+  } catch (err) {
+    console.error('iPhone names sheet error:', err.message);
     return res.status(500).json({ success: false, message: 'Could not generate the sheet.' });
   }
 });

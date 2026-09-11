@@ -1595,6 +1595,138 @@ const generateInstallmentPlanSheet = async (options = {}) => {
  * @param {Object} options - { logoUrl, company, title, subtitle, items }
  * @returns {Promise<Buffer>}
  */
+/**
+ * A list of names on A4, and nothing else.
+ *
+ * For showing what the shop stocks without quoting what it costs — a customer
+ * can see whether the model they want is carried, and the price stays a
+ * conversation rather than a printed commitment.
+ *
+ * Laid out in columns, because thirty-odd short names down a single column
+ * wastes most of the page and reads worse for it.
+ *
+ * @param {Object} options - { logoUrl, company, title, subtitle, names,
+ *   columns, note }
+ * @returns {Promise<Buffer>}
+ */
+const generateNameList = async (options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+  const names = (options.names || []).map((n) => String(n)).filter(Boolean);
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, bottom: 40, left: 40, right: 40 } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 40;
+      const W = 515;
+      const PAGE_BOTTOM = 842;
+      const ORANGE = '#e86b00';
+      const LGRAY = '#777777';
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+      const companyAddress = company.address || 'Bogoso, Western Region';
+      const companyPhone = company.phone || '+233 595413632';
+
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      attachWatermark(doc, logoBuf);
+
+      const drawHeader = () => {
+        let hy = 40;
+        if (logoBuf) {
+          try { doc.image(logoBuf, ML, hy, { width: 48 }); } catch { /* keep the gap */ }
+        }
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#111111')
+          .text(companyName, ML + 58, hy + 2, { width: W - 58 });
+        doc.fontSize(8.5).font('Helvetica').fillColor(LGRAY)
+          .text([companyAddress, companyPhone && 'Tel: ' + companyPhone].filter(Boolean).join('  |  '),
+            ML + 58, hy + 20, { width: W - 58 });
+        reset();
+
+        hy += 52;
+        doc.moveTo(ML, hy).lineTo(ML + W, hy).lineWidth(1.5).strokeColor(ORANGE).stroke();
+        reset();
+
+        hy += 12;
+        doc.fontSize(16).font('Helvetica-Bold').fillColor(ORANGE)
+          .text(options.title || 'LIST', ML, hy, { width: W });
+        hy += 22;
+        if (options.subtitle) {
+          doc.fontSize(9.5).font('Helvetica').fillColor('#555555')
+            .text(options.subtitle, ML, hy, { width: W });
+          hy += 15;
+        }
+        reset();
+        return hy + 12;
+      };
+
+      const FOOTER_TOP = PAGE_BOTTOM - 40 - 34;
+      const drawFooter = () => {
+        doc.moveTo(ML, FOOTER_TOP).lineTo(ML + W, FOOTER_TOP)
+          .lineWidth(0.5).strokeColor('#dddddd').stroke();
+        reset();
+        doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
+          .text(options.note || 'Availability changes daily — please ask for current stock and prices.',
+            ML, FOOTER_TOP + 9, { width: W, align: 'center' });
+        reset();
+      };
+
+      const cols = Math.max(1, Math.min(4, options.columns || 2));
+      const GAP = 16;
+      const colW = (W - GAP * (cols - 1)) / cols;
+      const ROW_H = 22;
+
+      let top = drawHeader();
+      let y = top;
+      let col = 0;
+
+      const nextColumnOrPage = () => {
+        col += 1;
+        if (col < cols) { y = top; return; }
+        col = 0;
+        drawFooter();
+        doc.addPage();          // pageAdded redraws the watermark
+        top = drawHeader();
+        y = top;
+      };
+
+      names.forEach((name, i) => {
+        if (y + ROW_H > FOOTER_TOP - 6) nextColumnOrPage();
+
+        const x = ML + col * (colW + GAP);
+
+        // A dot rather than a number: the list is read for what is on it, not
+        // for how far down something sits.
+        doc.circle(x + 4, y + 7, 2).fill(ORANGE);
+        reset();
+        doc.fontSize(10.5).font('Helvetica').fillColor('#111111')
+          .text(name, x + 14, y + 1.5, { width: colW - 18, lineBreak: false });
+        doc.moveTo(x, y + ROW_H - 4).lineTo(x + colW, y + ROW_H - 4)
+          .lineWidth(0.3).strokeColor('#eeeeee').stroke();
+        reset();
+        y += ROW_H;
+      });
+
+      if (names.length === 0) {
+        doc.fontSize(10).font('Helvetica-Oblique').fillColor(LGRAY)
+          .text('Nothing to list.', ML, y + 10, { width: W, align: 'center' });
+        reset();
+      }
+
+      drawFooter();
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
+
 const generateFixedPriceList = async (options = {}) => {
   const logoBuf = await fetchBuf(options.logoUrl || null);
   const items = options.items || [];
@@ -2912,7 +3044,7 @@ module.exports = {
   generatePriceList, generateReport, generateBlankReceiptForm,
   generateInstallmentPlanSheet, generateInstallmentTable, generateTableReport,
   generateDayEndReport,
-  generateFixedPriceList, generateAcceptanceLetter,
+  generateFixedPriceList, generateNameList, generateAcceptanceLetter,
   generateCompletionLetter, generateInternshipCertificate,
   // The original name, kept so nothing that imports it breaks.
   generateFreezerOfferSheet: generateInstallmentPlanSheet,

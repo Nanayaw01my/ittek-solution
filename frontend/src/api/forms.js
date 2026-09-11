@@ -15,6 +15,9 @@ export const getPriceSheet = (params) =>
 // The standing iPhone offer, priced in config rather than typed in.
 export const getIphonePlanSheet = () => api.get('/forms/iphone-plan', { responseType: 'blob' })
 
+// The models we carry, with no prices on the sheet.
+export const getIphoneNamesSheet = () => api.get('/forms/iphone-names', { responseType: 'blob' })
+
 export const getPhonePlanSheet = (data) =>
   api.post('/forms/phone-plan', data, { responseType: 'blob' })
 

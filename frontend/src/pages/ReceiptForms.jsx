@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer, FiBatteryCharging, FiZap, FiSun, FiAward, FiSmartphone, FiTag } from 'react-icons/fi'
 import { getBlankReceiptForm, getFilledReceiptForm, getInstallmentPlanSheet, getPriceSheet, getAcceptanceLetter, getCompletionLetter, getInternshipCertificate,
-  getPhonePlanSheet, getIphonePlanSheet } from '../api/forms'
+  getPhonePlanSheet, getIphonePlanSheet, getIphoneNamesSheet } from '../api/forms'
 import { getProducts } from '../api/products'
 import { openPdfInNewTab } from '../utils/openPdf'
 import { formatCurrency, formatDate } from '../utils/helpers'
@@ -262,6 +262,17 @@ export default function ReceiptForms() {
       toast.error(err.message || 'Could not generate the letter.')
     } finally {
       setLetterBusy(false)
+    }
+  }
+
+  const printIphoneNames = async () => {
+    setPlanBusy('iphone-names')
+    try {
+      await openPdfInNewTab(() => getIphoneNamesSheet(), 'iphone-models.pdf')
+    } catch (err) {
+      toast.error(err.message || 'Could not generate the sheet.')
+    } finally {
+      setPlanBusy('')
     }
   }
 
@@ -641,6 +652,28 @@ export default function ReceiptForms() {
           >
             <FiSmartphone size={16} />
             {planBusy === 'iphone' ? 'Preparing…' : 'Print'}
+          </button>
+        </div>
+      </div>
+
+      {/* The models alone. A printed price is a commitment that dates the week
+          it is handed over; a printed name is not. */}
+      <div className="mt-4 bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-bold text-gray-800 text-sm">iPhone Models (no prices)</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Just the models you carry, two columns on one sheet. For a customer checking
+              whether their phone is stocked before the price comes up.
+            </p>
+          </div>
+          <button
+            onClick={printIphoneNames}
+            disabled={!!planBusy}
+            className="flex items-center gap-2 px-4 py-2.5 border border-orange-300 hover:bg-orange-50 disabled:opacity-60 text-orange-700 rounded-xl font-bold text-sm transition-colors flex-shrink-0"
+          >
+            <FiSmartphone size={16} />
+            {planBusy === 'iphone-names' ? 'Preparing…' : 'Print'}
           </button>
         </div>
       </div>
