@@ -19,7 +19,14 @@ const DispatchItemSchema = new mongoose.Schema(
     barcode: { type: String },
     quantity_issued: { type: Number, required: true, min: 1 },
     quantity_returned: { type: Number, default: 0, min: 0 },
+    // Paid for through the Pay button on this sheet. Those pieces are gone for
+    // good and DO count as a sale; returned ones came back on the shelf.
+    quantity_sold: { type: Number, default: 0, min: 0 },
     unit_price: { type: Number, default: 0 },
+    // Carried from the product when the sheet is issued. A sale line requires
+    // it, and the profit on a field sale must be worked out against what the
+    // goods cost when they left the shop, not what they cost weeks later.
+    cost_price: { type: Number, default: 0 },
   },
   { _id: false }
 );
@@ -35,6 +42,18 @@ const DispatchSchema = new mongoose.Schema(
     destination: { type: String, trim: true },
     notes: { type: String, trim: true },
     items: [DispatchItemSchema],
+    // Every payment taken against this sheet, so the dispatch record shows
+    // which invoices came out of it.
+    sales: [
+      {
+        sale_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale' },
+        invoice_no: { type: String },
+        amount: { type: Number, default: 0 },
+        customer_name: { type: String },
+        paid_at: { type: Date, default: Date.now },
+        _id: false,
+      },
+    ],
     status: {
       type: String,
       enum: ['issued', 'partly_returned', 'closed'],
@@ -51,12 +70,20 @@ const DispatchSchema = new mongoose.Schema(
 DispatchSchema.index({ status: 1, issued_at: -1 });
 DispatchSchema.index({ agent_name: 1 });
 
-/** Total pieces still out with the agent. */
+/** Total pieces still out with the agent — neither sold nor brought back. */
 DispatchSchema.methods.outstanding = function outstanding() {
   return this.items.reduce(
-    (sum, i) => sum + Math.max(0, i.quantity_issued - (i.quantity_returned || 0)),
+    (sum, i) => sum + Math.max(
+      0,
+      i.quantity_issued - (i.quantity_returned || 0) - (i.quantity_sold || 0)
+    ),
     0
   );
+};
+
+/** Money taken against this sheet. */
+DispatchSchema.methods.soldValue = function soldValue() {
+  return this.items.reduce((sum, i) => sum + (i.quantity_sold || 0) * (i.unit_price || 0), 0);
 };
 
 module.exports = mongoose.model('Dispatch', DispatchSchema);

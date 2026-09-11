@@ -1,6 +1,8 @@
 const Dispatch = require('../models/Dispatch');
+const Product = require('../models/Product');
 const Settings = require('../models/Settings');
-const { buildSaleItems, deductStock, restoreStock } = require('../utils/saleHelpers');
+const { buildSaleItems, deductStock, restoreStock, validatePayments } = require('../utils/saleHelpers');
+const { createSaleWithInvoice } = require('../utils/generateInvoice');
 const { generateTableReport } = require('../utils/pdfGenerator');
 
 const todayPart = () => {
@@ -31,14 +33,45 @@ const nextDispatchNo = async (datePart) => {
   return `DSR-${datePart}-${String(highest + 1).padStart(4, '0')}`;
 };
 
-/** Work out the status from what is still out with the agent. */
+/**
+ * Work out the status from what is still out with the agent.
+ *
+ * A piece leaves the sheet either by being paid for or by coming back. Once
+ * none are left out, the sheet is finished.
+ */
 const statusFor = (dispatch) => {
   const issued = dispatch.items.reduce((s, i) => s + i.quantity_issued, 0);
-  const returned = dispatch.items.reduce((s, i) => s + (i.quantity_returned || 0), 0);
-  if (returned <= 0) return 'issued';
-  if (returned >= issued) return 'closed';
+  const settled = dispatch.items.reduce(
+    (s, i) => s + (i.quantity_returned || 0) + (i.quantity_sold || 0),
+    0
+  );
+  if (settled <= 0) return 'issued';
+  if (settled >= issued) return 'closed';
   return 'partly_returned';
 };
+
+/**
+ * The cost price for a dispatch line, for sheets issued before it was stored.
+ * Zero is returned rather than throwing — a missing cost skews the profit
+ * report, but refusing the payment would leave the agent holding the money.
+ */
+const costPriceOf = async (item) => {
+  try {
+    const product = await Product.findById(item.product_id).select('cost_price variants').lean();
+    if (!product) return 0;
+    if (item.variant_sku) {
+      const variant = (product.variants || []).find((v) => v.sku === item.variant_sku);
+      if (variant) return variant.cost_price || 0;
+    }
+    return product.cost_price || 0;
+  } catch {
+    return 0;
+  }
+};
+
+/** How many of a line are still with the agent. */
+const stillOut = (item) =>
+  item.quantity_issued - (item.quantity_returned || 0) - (item.quantity_sold || 0);
 
 /**
  * GET /api/dispatches
@@ -128,7 +161,9 @@ const createDispatch = async (req, res) => {
       barcode: i.barcode,
       quantity_issued: i.quantity,
       quantity_returned: 0,
+      quantity_sold: 0,
       unit_price: i.unit_price,
+      cost_price: i.cost_price || 0,
     }));
 
     const datePart = todayPart();
@@ -207,11 +242,11 @@ const returnDispatchItems = async (req, res) => {
         });
       }
 
-      const stillOut = item.quantity_issued - (item.quantity_returned || 0);
-      if (qty > stillOut) {
+      const out = stillOut(item);
+      if (qty > out) {
         return res.status(400).json({
           success: false,
-          message: `Only ${stillOut} of ${item.product_name} is still out on this dispatch.`,
+          message: `Only ${out} of ${item.product_name} is still out on this dispatch.`,
         });
       }
 
@@ -243,6 +278,133 @@ const returnDispatchItems = async (req, res) => {
   } catch (err) {
     console.error('Return dispatch error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * POST /api/dispatches/:id/pay
+ *
+ * The agent sold some of what they took out and is paying it in. THIS is the
+ * point at which the goods become a sale — the sheet itself deliberately does
+ * not touch the books, because at that moment nothing had been sold yet.
+ *
+ * Stock is NOT deducted here. It came off the shelf when the sheet was issued,
+ * and deducting again would take the same piece out of stock twice.
+ */
+const payDispatchItems = async (req, res) => {
+  try {
+    const { items, payment_method, customer_name, customer_phone, discount = 0 } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: 'Enter what was sold.' });
+    }
+
+    const dispatch = await Dispatch.findById(req.params.id);
+    if (!dispatch) {
+      return res.status(404).json({ success: false, message: 'Dispatch not found.' });
+    }
+
+    const saleItems = [];
+    for (const line of items) {
+      const qty = Number(line.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+
+      const item = dispatch.items.find(
+        (i) => String(i.product_id) === String(line.product_id)
+          && (i.variant_sku || '') === (line.variant_sku || '')
+      );
+      if (!item) {
+        return res.status(400).json({
+          success: false,
+          message: 'That product was not on this dispatch.',
+        });
+      }
+
+      const out = stillOut(item);
+      if (qty > out) {
+        return res.status(400).json({
+          success: false,
+          message: `Only ${out} of ${item.product_name} is still out on this dispatch.`,
+        });
+      }
+
+      // The agent may have sold at a different figure on the field — a haggled
+      // price is normal — so an entered price is honoured and the sheet price
+      // is only the default.
+      const unitPrice = Number(line.unit_price) > 0 ? Number(line.unit_price) : item.unit_price;
+
+      item.quantity_sold = (item.quantity_sold || 0) + qty;
+      saleItems.push({
+        product_id: item.product_id,
+        product_name: item.product_name,
+        variant_sku: item.variant_sku,
+        variant_name: item.variant_name,
+        barcode: item.barcode,
+        quantity: qty,
+        unit_price: unitPrice,
+        // A sale line requires a cost price. Sheets issued before this was
+        // carried have none stored, so fall back to the product's.
+        cost_price: item.cost_price || (await costPriceOf(item)),
+        total: Number((unitPrice * qty).toFixed(2)),
+      });
+    }
+
+    if (saleItems.length === 0) {
+      return res.status(400).json({ success: false, message: 'Nothing to pay for.' });
+    }
+
+    const subtotal = Number(saleItems.reduce((s, i) => s + i.total, 0).toFixed(2));
+    const off = Math.min(Math.max(Number(discount) || 0, 0), subtotal);
+    const cart_total = Number((subtotal - off).toFixed(2));
+
+    const tender = validatePayments(req.body.payments, cart_total, payment_method || 'cash');
+    if (tender.error) {
+      return res.status(400).json({ success: false, message: tender.error });
+    }
+
+    const sale = await createSaleWithInvoice({
+      user_id: req.user._id,
+      customer_name: customer_name || `Field sale — ${dispatch.agent_name}`,
+      customer_phone,
+      subtotal,
+      discount: off,
+      discount_type: 'fixed',
+      total_amount: cart_total,
+      cart_total,
+      debt_amount: 0,
+      payment_status: 'paid',
+      payment_method: tender.method,
+      payments: tender.payments,
+      // So the sale can be traced back to the sheet it came off.
+      dispatch_ref: dispatch.dispatch_no,
+      items: saleItems,
+    });
+
+    dispatch.sales.push({
+      sale_id: sale._id,
+      invoice_no: sale.invoice_no,
+      amount: cart_total,
+      customer_name: customer_name || undefined,
+      paid_at: new Date(),
+    });
+    dispatch.status = statusFor(dispatch);
+    if (dispatch.status === 'closed') {
+      dispatch.closed_by = req.user._id;
+      dispatch.closed_at = new Date();
+    }
+    await dispatch.save();
+
+    return res.status(201).json({
+      success: true,
+      message: `Payment recorded as sale ${sale.invoice_no}.`,
+      data: sale,
+    });
+  } catch (err) {
+    console.error('Dispatch pay error:', err.stack || err.message);
+    return res.status(500).json({
+      success: false,
+      message: `Could not record the payment: ${err.message}`,
+    });
   }
 };
 
@@ -284,7 +446,7 @@ const deleteDispatch = async (req, res) => {
       .map((i) => ({
         product_id: i.product_id,
         variant_sku: i.variant_sku,
-        quantity: i.quantity_issued - (i.quantity_returned || 0),
+        quantity: stillOut(i),
       }))
       .filter((i) => i.quantity > 0);
 
@@ -350,6 +512,7 @@ const getDispatchSheet = async (req, res) => {
         { label: 'Items', value: String(dispatch.items.length) },
         { label: 'Total Qty Out', value: String(totalQty) },
         { label: 'Stock Value', value: `GHC ${money(totalValue)}` },
+        { label: 'Paid In', value: `GHC ${money(dispatch.soldValue())}` },
       ],
       columns: [
         { key: 'idx', label: '#', weight: 0.5, align: 'center' },
@@ -384,6 +547,7 @@ module.exports = {
   getDispatch,
   createDispatch,
   returnDispatchItems,
+  payDispatchItems,
   closeDispatch,
   deleteDispatch,
   getDispatchSheet,

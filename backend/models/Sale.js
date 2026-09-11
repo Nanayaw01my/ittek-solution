@@ -76,6 +76,17 @@ const SaleSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    /**
+     * Set when the sale was paid in against a field dispatch sheet, so takings
+     * from the field can be traced back to the agent who carried the goods.
+     * Empty for an ordinary sale at the till.
+     */
+    dispatch_ref: {
+      type: String,
+      trim: true,
+      index: true,
+      sparse: true,
+    },
     customer_phone: {
       type: String,
       trim: true,

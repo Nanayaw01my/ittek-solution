@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import {
   FiTruck, FiPlus, FiPrinter, FiSearch, FiTrash2, FiCornerUpLeft, FiCheckCircle,
+  FiDollarSign,
 } from 'react-icons/fi'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -13,8 +14,8 @@ import { formatCurrency } from '../utils/helpers'
 import { openPdfInNewTab } from '../utils/openPdf'
 import { getProducts } from '../api/products'
 import {
-  getDispatches, createDispatch, returnDispatchItems, closeDispatch,
-  deleteDispatch, getDispatchSheet,
+  getDispatches, createDispatch, returnDispatchItems, payDispatchItems,
+  closeDispatch, deleteDispatch, getDispatchSheet,
 } from '../api/dispatches'
 import useAuthStore from '../store/authStore'
 
@@ -30,7 +31,9 @@ const STATUS_LABELS = {
   closed: 'Closed',
 }
 
-const stillOut = (item) => item.quantity_issued - (item.quantity_returned || 0)
+// A piece leaves the sheet either by being paid for or by coming back.
+const stillOut = (item) =>
+  item.quantity_issued - (item.quantity_returned || 0) - (item.quantity_sold || 0)
 
 /** Pick products and quantities, then issue the sheet. */
 function NewDispatchModal({ onClose }) {
@@ -314,6 +317,166 @@ function ReturnModal({ dispatch, onClose }) {
   )
 }
 
+/**
+ * Take the money for what the agent sold on the field.
+ *
+ * This is the one action on this page that touches the books — it writes a
+ * real sale, so it shows in the day's takings and on every sales report.
+ */
+function PayModal({ dispatch, onClose }) {
+  const queryClient = useQueryClient()
+  const outstanding = dispatch.items.filter((i) => stillOut(i) > 0)
+
+  const [qtys, setQtys] = useState(() =>
+    Object.fromEntries(outstanding.map((i) => [i.product_id, ''])))
+  const [prices, setPrices] = useState(() =>
+    Object.fromEntries(outstanding.map((i) => [i.product_id, String(i.unit_price)])))
+  const [method, setMethod] = useState('cash')
+  const [customerName, setCustomerName] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
+
+  const total = useMemo(
+    () => outstanding.reduce(
+      (s, i) => s + (Number(qtys[i.product_id]) || 0) * (Number(prices[i.product_id]) || 0),
+      0
+    ),
+    [outstanding, qtys, prices]
+  )
+
+  const mutation = useMutation({
+    mutationFn: (items) => payDispatchItems(dispatch._id, {
+      items,
+      payment_method: method,
+      customer_name: customerName || undefined,
+      customer_phone: customerPhone || undefined,
+    }),
+    onSuccess: (res) => {
+      const sale = res.data
+      toast.success(`Sale ${sale?.invoice_no || ''} recorded`)
+      queryClient.invalidateQueries({ queryKey: ['dispatches'] })
+      // The dashboard cards and the sales screens must pick this up.
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['sales'] })
+      onClose()
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not take the payment'),
+  })
+
+  const submit = () => {
+    const items = outstanding
+      .map((i) => ({
+        product_id: i.product_id,
+        variant_sku: i.variant_sku,
+        quantity: Number(qtys[i.product_id]) || 0,
+        unit_price: Number(prices[i.product_id]) || undefined,
+      }))
+      .filter((i) => i.quantity > 0)
+    if (items.length === 0) {
+      toast.error('Enter how many were sold')
+      return
+    }
+    mutation.mutate(items)
+  }
+
+  const sellAll = () =>
+    setQtys(Object.fromEntries(outstanding.map((i) => [i.product_id, String(stillOut(i))])))
+
+  return (
+    <Modal isOpen onClose={onClose} title={`Payment — ${dispatch.dispatch_no}`} size="md">
+      <div className="p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-600">{dispatch.agent_name} sold on the field</p>
+          <button onClick={sellAll} className="text-xs font-bold text-orange-600 hover:underline">
+            Sold everything
+          </button>
+        </div>
+
+        <div className="border border-gray-100 rounded-xl divide-y">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 text-[11px] font-bold text-gray-500">
+            <span className="flex-1">PRODUCT</span>
+            <span className="w-20 text-center">QTY SOLD</span>
+            <span className="w-24 text-center">PRICE EACH</span>
+          </div>
+          {outstanding.map((i) => (
+            <div key={String(i.product_id) + (i.variant_sku || '')} className="flex items-center gap-2 px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-800 truncate">
+                  {i.variant_name ? `${i.product_name} (${i.variant_name})` : i.product_name}
+                </p>
+                <p className="text-xs text-gray-500">{stillOut(i)} still out</p>
+              </div>
+              <input
+                type="number" min="0" max={stillOut(i)} placeholder="0"
+                value={qtys[i.product_id] ?? ''}
+                onChange={(e) => setQtys((prev) => ({ ...prev, [i.product_id]: e.target.value }))}
+                className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-center"
+              />
+              <input
+                type="number" min="0" step="0.01"
+                value={prices[i.product_id] ?? ''}
+                onChange={(e) => setPrices((prev) => ({ ...prev, [i.product_id]: e.target.value }))}
+                className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-center"
+              />
+            </div>
+          ))}
+        </div>
+
+        <p className="text-xs text-gray-500">
+          The price is the shop price — change it if the agent sold at a different figure.
+        </p>
+
+        <div className="grid grid-cols-2 gap-3">
+          <input
+            value={customerName} onChange={(e) => setCustomerName(e.target.value)}
+            placeholder="Customer name (optional)"
+            className="px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+          <input
+            value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
+            placeholder="Phone (optional)"
+            className="px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+
+        <div className="flex gap-1">
+          {[['cash', 'Cash'], ['mobile_money', 'Mobile Money'], ['card', 'Card']].map(([m, label]) => (
+            <button
+              key={m} onClick={() => setMethod(m)}
+              className={`flex-1 py-2 text-xs font-bold rounded-xl border ${
+                method === m ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-600 border-gray-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 flex items-center justify-between">
+          <span className="text-sm font-semibold text-orange-800">Amount paid in</span>
+          <span className="text-2xl font-black text-orange-900">{formatCurrency(total)}</span>
+        </div>
+
+        <p className="text-xs text-gray-500">
+          This is recorded as a sale and goes into today's takings. Stock is not
+          touched — it already came off the shelf when the sheet was issued.
+        </p>
+
+        <div className="flex justify-end gap-2 pt-2 border-t">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl">
+            Cancel
+          </button>
+          <button
+            onClick={submit} disabled={mutation.isPending || total <= 0}
+            className="px-5 py-2 text-sm font-bold text-white bg-orange-600 rounded-xl disabled:opacity-50 hover:bg-orange-700"
+          >
+            {mutation.isPending ? 'Recording…' : `Take ${formatCurrency(total)}`}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 export default function FieldDispatch() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
@@ -321,6 +484,7 @@ export default function FieldDispatch() {
 
   const [showNew, setShowNew] = useState(false)
   const [returning, setReturning] = useState(null)
+  const [paying, setPaying] = useState(null)
   const [status, setStatus] = useState('')
 
   const { data, isLoading } = useQuery({
@@ -392,7 +556,10 @@ export default function FieldDispatch() {
         {dispatches.map((d) => {
           const out = d.items.reduce((s, i) => s + stillOut(i), 0)
           const issued = d.items.reduce((s, i) => s + i.quantity_issued, 0)
+          const sold = d.items.reduce((s, i) => s + (i.quantity_sold || 0), 0)
+          const back = d.items.reduce((s, i) => s + (i.quantity_returned || 0), 0)
           const value = d.items.reduce((s, i) => s + i.unit_price * i.quantity_issued, 0)
+          const paidIn = (d.sales || []).reduce((s, x) => s + (x.amount || 0), 0)
           return (
             <div key={d._id} className="bg-white border border-gray-100 rounded-2xl p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -409,8 +576,12 @@ export default function FieldDispatch() {
                     {d.issued_by?.username ? ` · issued by ${d.issued_by.username}` : ''}
                   </p>
                   <p className="text-xs text-gray-600 mt-1">
-                    {d.items.length} item(s) · {issued} out, {issued - out} back ·
-                    {' '}{formatCurrency(value)} stock value
+                    {d.items.length} item(s) · {issued} issued · {sold} sold · {back} returned ·
+                    {' '}{out} still with agent
+                  </p>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    {formatCurrency(value)} stock value ·
+                    {' '}<span className="font-bold text-green-700">{formatCurrency(paidIn)} paid in</span>
                   </p>
                 </div>
 
@@ -421,6 +592,14 @@ export default function FieldDispatch() {
                   >
                     <FiPrinter /> Sheet
                   </button>
+                  {d.status !== 'closed' && (
+                    <button
+                      onClick={() => setPaying(d)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-orange-600 rounded-lg hover:bg-orange-700"
+                    >
+                      <FiDollarSign /> Pay
+                    </button>
+                  )}
                   {d.status !== 'closed' && (
                     <button
                       onClick={() => setReturning(d)}
@@ -463,7 +642,8 @@ export default function FieldDispatch() {
                       {i.variant_name ? `${i.product_name} (${i.variant_name})` : i.product_name}
                     </span>
                     <span className="text-gray-500 flex-shrink-0">
-                      out {i.quantity_issued} · back {i.quantity_returned || 0} · with agent {stillOut(i)}
+                      out {i.quantity_issued} · sold {i.quantity_sold || 0} ·
+                      {' '}back {i.quantity_returned || 0} · with agent {stillOut(i)}
                     </span>
                   </div>
                 ))}
@@ -475,6 +655,7 @@ export default function FieldDispatch() {
 
       {showNew && <NewDispatchModal onClose={() => setShowNew(false)} />}
       {returning && <ReturnModal dispatch={returning} onClose={() => setReturning(null)} />}
+      {paying && <PayModal dispatch={paying} onClose={() => setPaying(null)} />}
     </div>
   )
 }
