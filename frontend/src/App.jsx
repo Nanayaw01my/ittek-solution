@@ -2,8 +2,8 @@ import React from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import useAuthStore from './store/authStore'
 import useDocumentTitle from './hooks/useDocumentTitle'
-import { canAccessPage } from './config/pageAccess'
-import Layout, { FIELD_AGENT_PAGES } from './components/Layout'
+import { canAccessPage, ROLE_LEVELS } from './config/pageAccess'
+import Layout, { FIELD_AGENT_PAGES, FIELD_AGENT_HOME } from './components/Layout'
 import LoadingSpinner from './components/LoadingSpinner'
 
 // Pages
@@ -37,7 +37,6 @@ import FraudAlerts from './pages/FraudAlerts'
 import DeleteRecords from './pages/DeleteRecords'
 import ReceiptForms from './pages/ReceiptForms'
 
-const ROLE_LEVELS = { 'Sales': 1, 'Manager': 2, 'CEO': 3, 'Super Admin': 4 }
 
 /**
  * `page` names a grantable screen (see config/pageAccess). When given, a user
@@ -65,23 +64,33 @@ function ProtectedRoute({ children, minLevel = 1, allowedRoles = null, page = nu
 
   const userLevel = ROLE_LEVELS[user?.role] || 0
 
+  // Turned away? Go to THIS user's own home, not a hardcoded /dashboard.
+  // Sending someone to a page they are also barred from is what turns one
+  // wrong permission into an endless redirect loop and a frozen white screen.
+  const home = homeFor(user)
+  const turnAway = location.pathname === home ? null : <Navigate to={home} replace />
+
   if (allowedRoles && !allowedRoles.includes(user?.role)) {
-    return <Navigate to="/dashboard" replace />
+    return turnAway
   }
 
   if (minLevel && userLevel < minLevel && !(page && canAccessPage(user, page))) {
-    return <Navigate to="/dashboard" replace />
+    return turnAway
   }
 
   return children
+}
+
+/** Where a signed-in user belongs when no particular page was asked for. */
+function homeFor(user) {
+  return user?.role === 'Field Agent' ? FIELD_AGENT_HOME : '/dashboard'
 }
 
 function RootRedirect() {
   const { user, token } = useAuthStore()
   const isAuthenticated = !!token && !!user
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (user?.role === 'Field Agent') return <Navigate to="/field-dispatch" replace />
-  return <Navigate to="/dashboard" replace />
+  return <Navigate to={homeFor(user)} replace />
 }
 
 export default function App() {

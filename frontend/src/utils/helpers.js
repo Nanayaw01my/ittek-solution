@@ -1,4 +1,5 @@
 import { format, parseISO, isValid } from 'date-fns'
+import { roleLevel } from '../config/pageAccess'
 
 export const formatCurrency = (amount) => {
   const num = parseFloat(amount) || 0
@@ -54,10 +55,7 @@ export const getRoleBadgeColor = (role) => {
 
 export const getRoleLabel = (role) => role || '—'
 
-export const getRoleLevel = (role) => {
-  const levels = { 'Field Agent': 1, 'Sales': 1, 'Manager': 2, 'CEO': 3, 'Super Admin': 4 }
-  return levels[role] || 0
-}
+export const getRoleLevel = (role) => roleLevel(role)
 
 export const truncate = (str, length = 30) => {
   if (!str) return ''

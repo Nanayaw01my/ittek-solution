@@ -40,7 +40,19 @@ export const MODE_LABELS = {
   full: 'Full access',
 }
 
-const ROLE_LEVELS = { 'Field Agent': 1, Sales: 1, Manager: 2, CEO: 3, 'Super Admin': 4 }
+/**
+ * The one role table in the browser. Everything that needs a role level
+ * imports it from here.
+ *
+ * There used to be four copies of this object, and adding a role meant
+ * remembering all four. The copy in App.jsx was missed, so a Field Agent
+ * scored level 0 there, failed the page's minimum, and was redirected to the
+ * dashboard — which the field-agent guard bounced straight back, looping
+ * thousands of times a second until the page froze white.
+ */
+export const ROLE_LEVELS = { 'Field Agent': 1, Sales: 1, Manager: 2, CEO: 3, 'Super Admin': 4 }
+
+export const roleLevel = (role) => ROLE_LEVELS[role] || 0
 
 /** What a user can do on a page: 'full' by role, else the granted mode, else null. */
 export function effectiveMode(user, page) {

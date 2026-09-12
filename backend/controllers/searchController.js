@@ -4,7 +4,7 @@ const Debt = require('../models/Debt');
 const Expense = require('../models/Expense');
 const CreditAgreement = require('../models/CreditAgreement');
 
-const ROLE_LEVELS = { 'Super Admin': 4, CEO: 3, Manager: 2, Sales: 1 };
+const { ROLE_LEVELS } = require('../config/pageAccess');
 
 /**
  * POST /api/search
