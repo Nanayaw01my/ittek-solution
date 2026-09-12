@@ -68,7 +68,12 @@ function ProtectedRoute({ children, minLevel = 1, allowedRoles = null, page = nu
   // Sending someone to a page they are also barred from is what turns one
   // wrong permission into an endless redirect loop and a frozen white screen.
   const home = homeFor(user)
-  const turnAway = location.pathname === home ? null : <Navigate to={home} replace />
+  // Barred from their own home page? Say so on screen. Rendering nothing would
+  // be a white page, which is the same failure this guard exists to prevent —
+  // it just looks like the app is broken rather than like a permission.
+  const turnAway = location.pathname === home
+    ? <NoAccess role={user?.role} />
+    : <Navigate to={home} replace />
 
   if (allowedRoles && !allowedRoles.includes(user?.role)) {
     return turnAway
@@ -79,6 +84,24 @@ function ProtectedRoute({ children, minLevel = 1, allowedRoles = null, page = nu
   }
 
   return children
+}
+
+/** Shown instead of a blank screen when someone has nowhere they may go. */
+function NoAccess({ role }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+      <div className="max-w-sm text-center">
+        <h1 className="text-lg font-black text-gray-900">No screens are open to you</h1>
+        <p className="mt-2 text-sm text-gray-600">
+          Your account is set to <span className="font-bold">{role || 'an unknown role'}</span>,
+          which has no pages enabled. Ask the CEO to check your role.
+        </p>
+        <a href="/login" className="inline-block mt-4 px-4 py-2 text-sm font-bold text-white bg-orange-600 rounded-xl">
+          Back to sign in
+        </a>
+      </div>
+    </div>
+  )
 }
 
 /** Where a signed-in user belongs when no particular page was asked for. */
