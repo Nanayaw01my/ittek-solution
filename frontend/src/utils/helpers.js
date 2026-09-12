@@ -55,7 +55,7 @@ export const getRoleBadgeColor = (role) => {
 export const getRoleLabel = (role) => role || '—'
 
 export const getRoleLevel = (role) => {
-  const levels = { 'Sales': 1, 'Manager': 2, 'CEO': 3, 'Super Admin': 4 }
+  const levels = { 'Field Agent': 1, 'Sales': 1, 'Manager': 2, 'CEO': 3, 'Super Admin': 4 }
   return levels[role] || 0
 }
 

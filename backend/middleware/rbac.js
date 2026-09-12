@@ -13,6 +13,10 @@ const ROLE_LEVELS = {
   CEO: 3,
   Manager: 2,
   Sales: 1,
+  // A DSR on the field. Level 1 so everything gated at Manager and above is
+  // shut to them, but the level is not the real boundary — see
+  // FIELD_AGENT_ALLOWED in middleware/auth.js, which is an allowlist.
+  'Field Agent': 1,
 };
 
 /**

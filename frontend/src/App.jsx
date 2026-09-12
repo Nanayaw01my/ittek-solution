@@ -1,9 +1,9 @@
 import React from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import useAuthStore from './store/authStore'
 import useDocumentTitle from './hooks/useDocumentTitle'
 import { canAccessPage } from './config/pageAccess'
-import Layout from './components/Layout'
+import Layout, { FIELD_AGENT_PAGES } from './components/Layout'
 import LoadingSpinner from './components/LoadingSpinner'
 
 // Pages
@@ -44,12 +44,23 @@ const ROLE_LEVELS = { 'Sales': 1, 'Manager': 2, 'CEO': 3, 'Super Admin': 4 }
  * the CEO granted that page reaches the route even if their role level is
  * below minLevel. The server checks again on every request.
  */
-function ProtectedRoute({ children, minLevel = 1, allowedRoles = null, page = null }) {
+function ProtectedRoute({ children, minLevel = 1, allowedRoles = null, page = null, path = null }) {
   const { user, token } = useAuthStore()
+  const location = useLocation()
   const isAuthenticated = !!token && !!user
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />
+  }
+
+  // A field agent is confined to their own screen. Typing another route into
+  // the address bar lands them back on it rather than on the dashboard, which
+  // they are not allowed to see either.
+  if (user?.role === 'Field Agent') {
+    const here = path || location.pathname
+    if (!FIELD_AGENT_PAGES.some(p => here === p || here.startsWith(p + '/'))) {
+      return <Navigate to="/field-dispatch" replace />
+    }
   }
 
   const userLevel = ROLE_LEVELS[user?.role] || 0
@@ -69,6 +80,7 @@ function RootRedirect() {
   const { user, token } = useAuthStore()
   const isAuthenticated = !!token && !!user
   if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (user?.role === 'Field Agent') return <Navigate to="/field-dispatch" replace />
   return <Navigate to="/dashboard" replace />
 }
 
@@ -91,7 +103,7 @@ export default function App() {
           person's own name and photo. */}
       <Route
         path="/welcome"
-        element={<ProtectedRoute><Welcome /></ProtectedRoute>}
+        element={<ProtectedRoute path="/welcome"><Welcome /></ProtectedRoute>}
       />
 
       {/* Protected routes inside Layout */}

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FiUser, FiArrowRight } from 'react-icons/fi'
 import useAuthStore from '../store/authStore'
+import { FIELD_AGENT_HOME } from '../components/Layout'
 import { getMe } from '../api/auth'
 import { getRoleLabel } from '../utils/helpers'
 
@@ -50,15 +51,18 @@ export default function Welcome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // A field agent has no dashboard — their one screen is where they land.
+  const home = user?.role === 'Field Agent' ? FIELD_AGENT_HOME : '/dashboard'
+
   const go = () => {
     setLeaving(true)
-    navigate('/dashboard', { replace: true })
+    navigate(home, { replace: true })
   }
 
   useEffect(() => {
-    const t = setTimeout(() => navigate('/dashboard', { replace: true }), 3500)
+    const t = setTimeout(() => navigate(home, { replace: true }), 3500)
     return () => clearTimeout(t)
-  }, [navigate])
+  }, [navigate, home])
 
   const today = new Date().toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',

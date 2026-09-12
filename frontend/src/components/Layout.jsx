@@ -18,6 +18,12 @@ import OfflineBanner from './OfflineBanner'
 import LocaleSwitcher from './LocaleSwitcher'
 import InstallAppButton from './InstallAppButton'
 
+/** The only screens a DSR out on the field ever sees. */
+export const FIELD_AGENT_PAGES = ['/field-dispatch', '/notifications']
+
+/** Where a field agent lands after signing in, instead of the dashboard. */
+export const FIELD_AGENT_HOME = '/field-dispatch'
+
 const NAV_ITEMS = [
   // All logged-in users
   { to: '/dashboard', label: 'Dashboard', icon: FiHome, minLevel: 1 },
@@ -88,9 +94,15 @@ export default function Layout() {
 
   // A screen shows when the role reaches it, or when the CEO granted this user
   // that page individually. The page id is the route without its slash.
-  const visibleNavItems = NAV_ITEMS.filter(item =>
-    userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1))
-  )
+  //
+  // A field agent is the exception: they get the one screen and nothing else,
+  // listed rather than filtered so a page added later does not quietly appear
+  // on a rep's phone. The server enforces the same list.
+  const visibleNavItems = user?.role === 'Field Agent'
+    ? NAV_ITEMS.filter(item => FIELD_AGENT_PAGES.includes(item.to))
+    : NAV_ITEMS.filter(item =>
+      userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1))
+    )
 
   const handleLogout = async () => {
     setLoggingOut(true)

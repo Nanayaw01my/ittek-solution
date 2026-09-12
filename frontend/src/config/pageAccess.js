@@ -40,7 +40,7 @@ export const MODE_LABELS = {
   full: 'Full access',
 }
 
-const ROLE_LEVELS = { Sales: 1, Manager: 2, CEO: 3, 'Super Admin': 4 }
+const ROLE_LEVELS = { 'Field Agent': 1, Sales: 1, Manager: 2, CEO: 3, 'Super Admin': 4 }
 
 /** What a user can do on a page: 'full' by role, else the granted mode, else null. */
 export function effectiveMode(user, page) {

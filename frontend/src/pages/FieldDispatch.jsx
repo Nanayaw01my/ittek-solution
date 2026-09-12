@@ -481,6 +481,9 @@ export default function FieldDispatch() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const isOwner = ['CEO', 'Super Admin'].includes(user?.role)
+  // Only the shop takes money. A rep on the field carries goods and comes in
+  // to account; the server refuses the payment either way.
+  const canTakeMoney = ['Manager', 'CEO', 'Super Admin'].includes(user?.role)
 
   const [showNew, setShowNew] = useState(false)
   const [returning, setReturning] = useState(null)
@@ -592,7 +595,7 @@ export default function FieldDispatch() {
                   >
                     <FiPrinter /> Sheet
                   </button>
-                  {d.status !== 'closed' && (
+                  {d.status !== 'closed' && canTakeMoney && (
                     <button
                       onClick={() => setPaying(d)}
                       className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-orange-600 rounded-lg hover:bg-orange-700"

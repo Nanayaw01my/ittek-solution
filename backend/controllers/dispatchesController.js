@@ -69,6 +69,15 @@ const costPriceOf = async (item) => {
   }
 };
 
+/**
+ * True when this user may touch this sheet. A field agent is confined to their
+ * own; everyone at the shop sees them all. Reported as "not found" rather than
+ * "forbidden" so guessing ids tells a rep nothing about other reps' sheets.
+ */
+const mayTouch = (req, dispatch) =>
+  req.user.role !== 'Field Agent'
+  || String(dispatch.agent_user_id || '') === String(req.user._id);
+
 /** How many of a line are still with the agent. */
 const stillOut = (item) =>
   item.quantity_issued - (item.quantity_returned || 0) - (item.quantity_sold || 0);
@@ -82,6 +91,9 @@ const getDispatches = async (req, res) => {
   try {
     const { status, agent, page = 1, limit = 50 } = req.query;
     const filter = {};
+    // A field agent sees their own sheets and nobody else's — one rep has no
+    // business knowing what another is carrying or what they owe.
+    if (req.user.role === 'Field Agent') filter.agent_user_id = req.user._id;
     if (status) filter.status = status;
     if (agent) filter.agent_name = { $regex: String(agent), $options: 'i' };
 
@@ -123,6 +135,9 @@ const getDispatch = async (req, res) => {
     if (!dispatch) {
       return res.status(404).json({ success: false, message: 'Dispatch not found.' });
     }
+    if (!mayTouch(req, dispatch)) {
+      return res.status(404).json({ success: false, message: 'Dispatch not found.' });
+    }
     return res.status(200).json({ success: true, data: dispatch });
   } catch (err) {
     console.error('Get dispatch error:', err.message);
@@ -136,7 +151,15 @@ const getDispatch = async (req, res) => {
  */
 const createDispatch = async (req, res) => {
   try {
-    const { agent_name, agent_phone, agent_user_id, destination, notes, items } = req.body;
+    const { agent_phone, destination, notes, items } = req.body;
+    let { agent_name, agent_user_id } = req.body;
+
+    // A field agent can only ever issue a sheet to themselves. Otherwise they
+    // could put the goods against another rep's name and walk away clean.
+    if (req.user.role === 'Field Agent') {
+      agent_user_id = req.user._id;
+      agent_name = req.user.username;
+    }
 
     if (!agent_name || !String(agent_name).trim()) {
       return res.status(400).json({ success: false, message: 'Enter the agent\'s name.' });
@@ -222,6 +245,9 @@ const returnDispatchItems = async (req, res) => {
     if (!dispatch) {
       return res.status(404).json({ success: false, message: 'Dispatch not found.' });
     }
+    if (!mayTouch(req, dispatch)) {
+      return res.status(404).json({ success: false, message: 'Dispatch not found.' });
+    }
     if (dispatch.status === 'closed') {
       return res.status(400).json({ success: false, message: 'This dispatch is already closed.' });
     }
@@ -301,6 +327,9 @@ const payDispatchItems = async (req, res) => {
 
     const dispatch = await Dispatch.findById(req.params.id);
     if (!dispatch) {
+      return res.status(404).json({ success: false, message: 'Dispatch not found.' });
+    }
+    if (!mayTouch(req, dispatch)) {
       return res.status(404).json({ success: false, message: 'Dispatch not found.' });
     }
 
@@ -419,6 +448,9 @@ const closeDispatch = async (req, res) => {
     if (!dispatch) {
       return res.status(404).json({ success: false, message: 'Dispatch not found.' });
     }
+    if (!mayTouch(req, dispatch)) {
+      return res.status(404).json({ success: false, message: 'Dispatch not found.' });
+    }
     dispatch.status = 'closed';
     dispatch.closed_by = req.user._id;
     dispatch.closed_at = new Date();
@@ -439,6 +471,9 @@ const deleteDispatch = async (req, res) => {
   try {
     const dispatch = await Dispatch.findById(req.params.id);
     if (!dispatch) {
+      return res.status(404).json({ success: false, message: 'Dispatch not found.' });
+    }
+    if (!mayTouch(req, dispatch)) {
       return res.status(404).json({ success: false, message: 'Dispatch not found.' });
     }
 
@@ -474,6 +509,9 @@ const getDispatchSheet = async (req, res) => {
   try {
     const dispatch = await Dispatch.findById(req.params.id).populate('issued_by', 'username');
     if (!dispatch) {
+      return res.status(404).json({ success: false, message: 'Dispatch not found.' });
+    }
+    if (!mayTouch(req, dispatch)) {
       return res.status(404).json({ success: false, message: 'Dispatch not found.' });
     }
 

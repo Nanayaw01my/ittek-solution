@@ -12,8 +12,8 @@ import { formatDate, getRoleLabel, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
 
 const ROLES_FOR_LEVEL = {
-  3: ['Manager', 'Sales'],
-  4: ['Super Admin', 'CEO', 'Manager', 'Sales'],
+  3: ['Manager', 'Sales', 'Field Agent'],
+  4: ['Super Admin', 'CEO', 'Manager', 'Sales', 'Field Agent'],
 }
 
 const ROLE_COLORS = {
@@ -21,6 +21,7 @@ const ROLE_COLORS = {
   'CEO': 'bg-blue-100 text-blue-700',
   'Manager': 'bg-orange-100 text-orange-700',
   'Sales': 'bg-green-100 text-green-700',
+  'Field Agent': 'bg-teal-100 text-teal-700',
 }
 
 function Modal({ isOpen, onClose, title, children, size = 'md' }) {

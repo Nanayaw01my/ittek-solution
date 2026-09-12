@@ -44,7 +44,7 @@ const GRANTABLE_PAGES = {
   'credit-agreements': { label: 'Credit Agreements', defaultLevel: 2, modes: ['view', 'full'] },
 };
 
-const ROLE_LEVELS = { 'Super Admin': 4, CEO: 3, Manager: 2, Sales: 1 };
+const ROLE_LEVELS = { 'Super Admin': 4, CEO: 3, Manager: 2, Sales: 1, 'Field Agent': 1 };
 
 /** The mode a user was explicitly granted for a page, or null. */
 const grantedMode = (user, page) => {

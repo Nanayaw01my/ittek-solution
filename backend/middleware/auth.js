@@ -2,6 +2,33 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 /**
+ * What a Field Agent (DSR) is allowed to reach, as an ALLOWLIST.
+ *
+ * A role level cannot express this. Level 1 would hand them the till, because
+ * the POS routes are open to any signed-in user — and a rep ringing a sale
+ * through the till would deduct shop stock for goods already taken out on
+ * their sheet, quietly draining the stock figure twice a day.
+ *
+ * An allowlist is deliberate: it is checked in one place, before any route
+ * runs, and a route added later is closed to field agents until someone names
+ * it here. A denylist would have to be remembered every time, and would not be.
+ */
+const FIELD_AGENT_ALLOWED = [
+  '/api/auth',           // sign in, sign out, /me
+  '/api/dispatches',     // their whole job — Pay is barred on the route itself
+  '/api/products',       // searching the catalogue to build a sheet
+  '/api/notifications',
+  '/api/settings',       // company name and logo for the printed sheet
+];
+
+const fieldAgentMayReach = (req) => {
+  const path = (req.originalUrl || req.url || '').split('?')[0];
+  return FIELD_AGENT_ALLOWED.some(
+    (prefix) => path === prefix || path.startsWith(prefix + '/')
+  );
+};
+
+/**
  * authenticate: verify JWT token from Authorization header (Bearer token).
  * Attaches the full user document to req.user.
  */
@@ -52,6 +79,14 @@ const authenticate = async (req, res, next) => {
     }
 
     req.user = user;
+
+    if (user.role === 'Field Agent' && !fieldAgentMayReach(req)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Field agents can only use the Field Dispatch screen.',
+      });
+    }
+
     next();
   } catch (error) {
     console.error('Auth middleware error:', error.message);
