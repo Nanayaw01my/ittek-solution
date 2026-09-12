@@ -457,7 +457,7 @@ export default function Users() {
   const myLevel = getRoleLevel(me?.role)
 
   const visibleUsers = me?.role === 'CEO'
-    ? users.filter(u => ['Manager', 'Sales'].includes(u.role))
+    ? users.filter(u => ['Manager', 'Sales', 'Field Agent'].includes(u.role))
     : users
 
   const activeCount = visibleUsers.filter(u => u.is_active).length

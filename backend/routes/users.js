@@ -7,6 +7,12 @@ const { auditLog } = require('../middleware/auditLogger');
 const {
   getUsers, createUser, getUser, updateUser, deleteUser, toggleActive, resetPassword,
 } = require('../controllers/usersController');
+const { ROLE_LEVELS } = require('../middleware/rbac');
+
+// Taken from the role table rather than typed out again. A second hardcoded
+// list here is what made "Field Agent" fail as an invalid role after the model
+// already accepted it — the two lists drifted the moment a role was added.
+const ROLES = Object.keys(ROLE_LEVELS);
 
 // Only CEO (3) and Super Admin (4) can access user management
 const canAccess = [authenticate, requireLevel(3)];
@@ -20,7 +26,7 @@ router.post(
     body('username').notEmpty().withMessage('Username is required.').isLength({ min: 3 }),
     body('email').optional({ checkFalsy: true }).isEmail().withMessage('Valid email required.').normalizeEmail(),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters.'),
-    body('role').isIn(['Super Admin', 'CEO', 'Manager', 'Sales']).withMessage('Invalid role.'),
+    body('role').isIn(ROLES).withMessage('Invalid role.'),
   ],
   auditLog('CREATE_USER', (req, body) => ({ created_username: req.body.username, role: req.body.role })),
   createUser

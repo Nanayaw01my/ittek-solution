@@ -21,8 +21,11 @@ const canManage = (actorRole, targetRole) => {
 const getUsers = async (req, res) => {
   try {
     let filter = {};
+    // A CEO manages the staff below them, not the other owners. Every role
+    // below CEO belongs here — leaving one out hides those people from the
+    // only screen that can edit them.
     if (req.user.role === 'CEO') {
-      filter.role = { $in: ['Manager', 'Sales'] };
+      filter.role = { $in: ['Manager', 'Sales', 'Field Agent'] };
     }
 
     const users = await User.find(filter).populate('created_by', 'username email').sort({ createdAt: -1 });
