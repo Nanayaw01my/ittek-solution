@@ -1,3 +1,4 @@
+const { EXPENSE_CATEGORIES } = require('../config/expenseCategories');
 const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
@@ -16,7 +17,7 @@ router.post(
   '/',
   [
     body('category')
-      .isIn(['Rent', 'Utilities', 'Transport', 'Salaries', 'Maintenance', 'Marketing', 'Other'])
+      .isIn(EXPENSE_CATEGORIES)
       .withMessage('Invalid expense category.'),
     body('amount').isNumeric({ min: 0.01 }).withMessage('Amount must be a positive number.'),
   ],

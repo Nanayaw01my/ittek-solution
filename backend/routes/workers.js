@@ -18,6 +18,10 @@ router.post(
   [
     body('worker_name').notEmpty().withMessage('Worker name is required.'),
     body('amount_paid').isNumeric({ min: 0.01 }).withMessage('Amount must be positive.'),
+    body('payment_type').optional().isIn(['salary', 'commission'])
+      .withMessage('A payment is either a salary or a commission.'),
+    body('payment_method').optional().isIn(['cash', 'mobile_money', 'bank_transfer'])
+      .withMessage('Choose how the money was paid.'),
   ],
   auditLog('CREATE_WORKER_PAYMENT', (req) => ({ worker: req.body.worker_name, amount: req.body.amount_paid })),
   createWorkerPayment

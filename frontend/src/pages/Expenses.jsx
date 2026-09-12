@@ -15,7 +15,7 @@ import DateRangePicker from '../components/DateRangePicker'
 import { format, startOfMonth } from 'date-fns'
 import RefreshButton from '../components/RefreshButton'
 
-const EXPENSE_CATEGORIES = ['Rent', 'Utilities', 'Transport', 'Salaries', 'Maintenance', 'Marketing', 'Other']
+import { EXPENSE_CATEGORIES } from '../config/expenseCategories'
 
 function ExpenseForm({ expense, onSubmit, loading }) {
   const { register, handleSubmit, formState: { errors } } = useForm({

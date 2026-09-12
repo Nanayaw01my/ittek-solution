@@ -34,7 +34,10 @@ router.get('/agents', shopStaffOnly, getFieldAgents);
 router.post('/', shopStaffOnly, auditLog('CREATE_DISPATCH'), createDispatch);
 router.get('/:id', getDispatch);
 router.get('/:id/sheet', getDispatchSheet);
-router.put('/:id/return', auditLog('RETURN_DISPATCH'), returnDispatchItems);
+// Returns happen at the counter too. A rep adding stock back on their own
+// phone would be writing the shop's stock figure up from the field, with
+// nobody having seen the goods come through the door.
+router.put('/:id/return', shopStaffOnly, auditLog('RETURN_DISPATCH'), returnDispatchItems);
 /**
  * Taking the money for what the agent sold on the field — this one does write
  * a sale, so it lands in the day's takings like any other.

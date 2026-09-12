@@ -629,7 +629,7 @@ export default function FieldDispatch() {
                       <FiDollarSign /> Pay
                     </button>
                   )}
-                  {d.status !== 'closed' && (
+                  {d.status !== 'closed' && !isAgent && (
                     <button
                       onClick={() => setReturning(d)}
                       className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-green-600 rounded-lg hover:bg-green-700"
@@ -637,7 +637,7 @@ export default function FieldDispatch() {
                       <FiCornerUpLeft /> Returns
                     </button>
                   )}
-                  {d.status !== 'closed' && (
+                  {d.status !== 'closed' && !isAgent && (
                     <button
                       onClick={() => {
                         if (window.confirm('Close this dispatch? Anything still out stays off the shelf as sold on the field.')) {

@@ -1,3 +1,4 @@
+const { EXPENSE_CATEGORIES } = require('../config/expenseCategories');
 const mongoose = require('mongoose');
 
 const ExpenseSchema = new mongoose.Schema(
@@ -9,7 +10,7 @@ const ExpenseSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ['Rent', 'Utilities', 'Transport', 'Salaries', 'Maintenance', 'Marketing', 'Other'],
+      enum: EXPENSE_CATEGORIES,
       required: [true, 'Expense category is required'],
     },
     amount: {
