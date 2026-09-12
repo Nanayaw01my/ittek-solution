@@ -1,6 +1,9 @@
 import api from './axios'
 
 export const getDispatches = (params) => api.get('/dispatches', { params })
+
+/** Who a sheet can be issued to. Shop staff only. */
+export const getFieldAgents = () => api.get('/dispatches/agents')
 export const getDispatch = (id) => api.get(`/dispatches/${id}`)
 export const createDispatch = (data) => api.post('/dispatches', data)
 export const returnDispatchItems = (id, data) => api.put(`/dispatches/${id}/return`, data)

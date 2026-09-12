@@ -15,11 +15,16 @@ const User = require('../models/User');
  */
 const FIELD_AGENT_ALLOWED = [
   '/api/auth',           // sign in, sign out, /me
-  '/api/dispatches',     // their whole job — Pay is barred on the route itself
-  '/api/products',       // searching the catalogue to build a sheet
+  '/api/dispatches',     // their own sheets; issuing and Pay are barred on the routes
   '/api/notifications',
   '/api/settings',       // company name and logo for the printed sheet
 ];
+
+// Deliberately NOT here: /api/products. A rep has no business browsing what
+// the shop holds. Their portal shows what is in their own hands and nothing
+// else, so the catalogue — quantities, cost prices, everything — stays at the
+// shop. The goods are chosen for them at the counter.
+
 
 const fieldAgentMayReach = (req) => {
   const path = (req.originalUrl || req.url || '').split('?')[0];

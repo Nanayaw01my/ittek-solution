@@ -1,5 +1,6 @@
 const Dispatch = require('../models/Dispatch');
 const Product = require('../models/Product');
+const User = require('../models/User');
 const Settings = require('../models/Settings');
 const { buildSaleItems, deductStock, restoreStock, validatePayments } = require('../utils/saleHelpers');
 const { createSaleWithInvoice } = require('../utils/generateInvoice');
@@ -83,6 +84,26 @@ const stillOut = (item) =>
   item.quantity_issued - (item.quantity_returned || 0) - (item.quantity_sold || 0);
 
 /**
+ * GET /api/dispatches/agents
+ *
+ * The field agents a sheet can be issued to. Its own endpoint because the
+ * counter staff who hand out the goods are not allowed near user management,
+ * and this exposes only a name and an id — nothing else about the account.
+ */
+const getFieldAgents = async (req, res) => {
+  try {
+    const agents = await User.find({ role: 'Field Agent', is_active: true })
+      .select('username')
+      .sort({ username: 1 })
+      .lean();
+    return res.status(200).json({ success: true, data: agents });
+  } catch (err) {
+    console.error('Get field agents error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
  * GET /api/dispatches
  * Everyone who can sign in can see the sheets — a field agent's colleague at
  * the counter needs to know what went out with them.
@@ -154,11 +175,16 @@ const createDispatch = async (req, res) => {
     const { agent_phone, destination, notes, items } = req.body;
     let { agent_name, agent_user_id } = req.body;
 
-    // A field agent can only ever issue a sheet to themselves. Otherwise they
-    // could put the goods against another rep's name and walk away clean.
-    if (req.user.role === 'Field Agent') {
-      agent_user_id = req.user._id;
-      agent_name = req.user.username;
+    // Issued to a named field agent, so the sheet lands in that person's own
+    // portal. The name is read from the account rather than taken from the
+    // request: a typed name that does not match any login would leave the
+    // goods against a rep who can never see them.
+    if (agent_user_id) {
+      const agent = await User.findById(agent_user_id).select('username role is_active').lean();
+      if (!agent || agent.role !== 'Field Agent' || !agent.is_active) {
+        return res.status(400).json({ success: false, message: 'Choose an active field agent.' });
+      }
+      agent_name = agent.username;
     }
 
     if (!agent_name || !String(agent_name).trim()) {
@@ -581,6 +607,7 @@ const getDispatchSheet = async (req, res) => {
 };
 
 module.exports = {
+  getFieldAgents,
   getDispatches,
   getDispatch,
   createDispatch,

@@ -14,7 +14,7 @@ import { formatCurrency } from '../utils/helpers'
 import { openPdfInNewTab } from '../utils/openPdf'
 import { getProducts } from '../api/products'
 import {
-  getDispatches, createDispatch, returnDispatchItems, payDispatchItems,
+  getDispatches, getFieldAgents, createDispatch, returnDispatchItems, payDispatchItems,
   closeDispatch, deleteDispatch, getDispatchSheet,
 } from '../api/dispatches'
 import useAuthStore from '../store/authStore'
@@ -38,12 +38,20 @@ const stillOut = (item) =>
 /** Pick products and quantities, then issue the sheet. */
 function NewDispatchModal({ onClose }) {
   const queryClient = useQueryClient()
-  const [agentName, setAgentName] = useState('')
+  const [agentId, setAgentId] = useState('')
   const [agentPhone, setAgentPhone] = useState('')
   const [destination, setDestination] = useState('')
   const [notes, setNotes] = useState('')
   const [search, setSearch] = useState('')
   const [lines, setLines] = useState([])
+
+  // Who the goods can be handed to. A sheet must be tied to a real login, or
+  // it would never appear in that rep's portal.
+  const { data: agentData } = useQuery({
+    queryKey: ['field-agents'],
+    queryFn: () => getFieldAgents().then((r) => r.data),
+  })
+  const agents = agentData || []
 
   const { data, isLoading } = useQuery({
     queryKey: ['dispatch-products', search],
@@ -81,7 +89,7 @@ function NewDispatchModal({ onClose }) {
 
   const mutation = useMutation({
     mutationFn: () => createDispatch({
-      agent_name: agentName,
+      agent_user_id: agentId,
       agent_phone: agentPhone || undefined,
       destination: destination || undefined,
       notes: notes || undefined,
@@ -102,7 +110,7 @@ function NewDispatchModal({ onClose }) {
     onError: (err) => toast.error(err.response?.data?.message || 'Could not issue the dispatch'),
   })
 
-  const canSubmit = agentName.trim() && lines.length > 0 && overStocked.length === 0
+  const canSubmit = agentId && lines.length > 0 && overStocked.length === 0
     && lines.every((l) => Number(l.quantity) > 0)
 
   return (
@@ -110,12 +118,21 @@ function NewDispatchModal({ onClose }) {
       <div className="p-5 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Agent name *</label>
-            <input
-              value={agentName} onChange={(e) => setAgentName(e.target.value)}
-              placeholder="Who is taking the goods?"
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500"
-            />
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Field agent *</label>
+            <select
+              value={agentId} onChange={(e) => setAgentId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="">Who is taking the goods?</option>
+              {agents.map((a) => (
+                <option key={a._id} value={a._id}>{a.username}</option>
+              ))}
+            </select>
+            {agents.length === 0 && (
+              <p className="text-xs text-red-600 mt-1">
+                No field agents yet. Ask the CEO to create one in User Management.
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Phone</label>
@@ -484,6 +501,9 @@ export default function FieldDispatch() {
   // Only the shop takes money. A rep on the field carries goods and comes in
   // to account; the server refuses the payment either way.
   const canTakeMoney = ['Manager', 'CEO', 'Super Admin'].includes(user?.role)
+  // A rep is handed goods at the counter; they never issue their own sheet,
+  // and they cannot see the shop's stock to build one from.
+  const isAgent = user?.role === 'Field Agent'
 
   const [showNew, setShowNew] = useState(false)
   const [returning, setReturning] = useState(null)
@@ -518,16 +538,18 @@ export default function FieldDispatch() {
   return (
     <div>
       <PageHeader
-        title="Field Dispatch (DSR)"
-        subtitle="Goods taken out by an agent — stock comes off the shelf, nothing is counted as a sale."
-        action={
+        title={isAgent ? 'My Goods' : 'Field Dispatch (DSR)'}
+        subtitle={isAgent
+          ? 'What you are carrying. Goods are added here by the shop when you collect them.'
+          : 'Goods taken out by an agent — stock comes off the shelf, nothing is counted as a sale.'}
+        action={!isAgent && (
           <button
             onClick={() => setShowNew(true)}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-orange-600 rounded-xl hover:bg-orange-700"
           >
             <FiPlus /> New dispatch
           </button>
-        }
+        )}
       >
         <RefreshButton keys={['dispatches', 'products']} />
       </PageHeader>
@@ -551,7 +573,11 @@ export default function FieldDispatch() {
       {!isLoading && dispatches.length === 0 && (
         <div className="bg-white border border-gray-100 rounded-2xl p-10 text-center">
           <FiTruck className="mx-auto text-3xl text-gray-300" />
-          <p className="mt-3 text-sm text-gray-500">No dispatches yet.</p>
+          <p className="mt-3 text-sm text-gray-500">
+            {isAgent
+              ? 'You are not carrying anything. The shop adds goods here when you collect them.'
+              : 'No dispatches yet.'}
+          </p>
         </div>
       )}
 

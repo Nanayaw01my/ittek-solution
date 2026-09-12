@@ -4,16 +4,34 @@ const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
-  getDispatches, getDispatch, createDispatch,
+  getFieldAgents, getDispatches, getDispatch, createDispatch,
   returnDispatchItems, payDispatchItems, closeDispatch, deleteDispatch, getDispatchSheet,
 } = require('../controllers/dispatchesController');
 
-// Field dispatch is open to everyone who can sign in — a sales hand going out
-// should not need a manager standing next to them to print their sheet.
+// Open to everyone who can sign in, but not equally: a field agent sees only
+// their own sheets and can neither issue one nor take money for it.
 router.use(authenticate);
 
+/**
+ * A field agent never issues their own sheet. The goods are chosen for them at
+ * the counter, by someone who can see the shop's stock — which a rep cannot.
+ * Letting them issue to themselves would be letting them help themselves.
+ */
+const shopStaffOnly = (req, res, next) => {
+  if (req.user.role === 'Field Agent') {
+    return res.status(403).json({
+      success: false,
+      message: 'Goods are issued to you at the shop. Ask the counter to add them.',
+    });
+  }
+  next();
+};
+
 router.get('/', getDispatches);
-router.post('/', auditLog('CREATE_DISPATCH'), createDispatch);
+// Who a sheet can be issued to. Counter staff need this and cannot reach
+// /api/users, which is CEO only.
+router.get('/agents', shopStaffOnly, getFieldAgents);
+router.post('/', shopStaffOnly, auditLog('CREATE_DISPATCH'), createDispatch);
 router.get('/:id', getDispatch);
 router.get('/:id/sheet', getDispatchSheet);
 router.put('/:id/return', auditLog('RETURN_DISPATCH'), returnDispatchItems);
