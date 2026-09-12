@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
-const { requireLevel } = require('../middleware/rbac');
+const { requireLevel, ROLE_LEVELS } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
   getFieldAgents, getDispatches, getDispatch, createDispatch,
@@ -39,17 +39,32 @@ router.get('/:id/sheet', getDispatchSheet);
 // nobody having seen the goods come through the door.
 router.put('/:id/return', shopStaffOnly, auditLog('RETURN_DISPATCH'), returnDispatchItems);
 /**
- * Taking the money for what the agent sold on the field — this one does write
- * a sale, so it lands in the day's takings like any other.
+ * Taking the money for what the agent sold on the field. This one writes a
+ * real sale, so it lands in the day's takings and on the CEO's dashboard like
+ * any other.
  *
- * Manager and above only. The agent never presses this, on purpose: they come
- * in to account once a week, and a manager checks the goods against the sheet
- * and takes the money. An agent who could ring up their own sales could
- * declare three sold when they sold five and keep the difference, and nothing
- * on the sheet would look wrong.
+ * Open to the agent for their OWN sheet — the controller allows a field agent
+ * nowhere near anyone else's — and to Manager and above for all of them. A
+ * Sales hand at the counter cannot settle another person's field sheet.
+ *
+ * Note what this does not prove: that the money reached the shop. It records
+ * that the goods were sold, on the agent's word. The check on that is the
+ * sheet itself — what went out against what came back — read at the weekly
+ * accounting.
  */
-router.post('/:id/pay', requireLevel(2), auditLog('PAY_DISPATCH'), payDispatchItems);
-router.put('/:id/close', auditLog('CLOSE_DISPATCH'), closeDispatch);
+const mayTakeMoney = (req, res, next) => {
+  const level = ROLE_LEVELS[req.user.role] || 0;
+  if (req.user.role === 'Field Agent' || level >= 2) return next();
+  return res.status(403).json({
+    success: false,
+    message: 'Only the agent or a manager can settle a field sheet.',
+  });
+};
+
+router.post('/:id/pay', mayTakeMoney, auditLog('PAY_DISPATCH'), payDispatchItems);
+// Closing writes off whatever is still out as gone, with no money against it.
+// That is a counter decision, never the agent's own.
+router.put('/:id/close', shopStaffOnly, auditLog('CLOSE_DISPATCH'), closeDispatch);
 
 // Cancelling a sheet puts stock back, so it stays with CEO and above.
 router.delete('/:id', requireLevel(3), auditLog('DELETE_DISPATCH'), deleteDispatch);

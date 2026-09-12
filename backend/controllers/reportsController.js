@@ -69,6 +69,7 @@ const getDashboardStats = async (req, res) => {
       todayRefundsAgg, monthlyRefundsAgg,
       todayLayawayAgg, monthlyLayawayAgg,
       todaySalesCountAgg,
+      todayFieldSalesAgg,
     ] = await Promise.all([
       Sale.aggregate([{ $match: { sale_date: { $gte: startOfToday } } }, { $group: { _id: null, total: { $sum: '$total_amount' } } }]),
       Sale.aggregate([{ $match: { sale_date: { $gte: startOfMonth } } }, { $group: { _id: null, total: { $sum: '$total_amount' } } }]),
@@ -99,6 +100,13 @@ const getDashboardStats = async (req, res) => {
         { $group: { _id: null, total: { $sum: '$payments.amount' } } },
       ]),
       Sale.countDocuments({ sale_date: { $gte: startOfToday } }),
+      // Money paid in against a field dispatch sheet. Already inside
+      // todaySales — this only separates out how much of the day came from
+      // agents on the field rather than over the counter.
+      Sale.aggregate([
+        { $match: { sale_date: { $gte: startOfToday }, dispatch_ref: { $exists: true, $ne: null } } },
+        { $group: { _id: null, total: { $sum: '$total_amount' }, count: { $sum: 1 } } },
+      ]),
     ]);
 
     const todayRefunds = todayRefundsAgg[0]?.total || 0;
@@ -127,6 +135,8 @@ const getDashboardStats = async (req, res) => {
         lowStockCount: lowStockProducts.length,
         todayExpenses,
         netProfit,
+        todayFieldSales: todayFieldSalesAgg[0]?.total || 0,
+        todayFieldSalesCount: todayFieldSalesAgg[0]?.count || 0,
         todayLayawayCollections: todayLayawayAgg[0]?.total || 0,
         monthlyLayawayCollections: monthlyLayawayAgg[0]?.total || 0,
         outstandingDebtAmount,

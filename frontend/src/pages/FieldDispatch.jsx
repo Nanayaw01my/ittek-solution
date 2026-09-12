@@ -342,6 +342,11 @@ function ReturnModal({ dispatch, onClose }) {
  */
 function PayModal({ dispatch, onClose }) {
   const queryClient = useQueryClient()
+  const { user } = useAuthStore()
+  // An agent sells at the shop price. Letting them type the price in would
+  // undo the point of the sheet: sell at 900, enter 750, keep the difference,
+  // and the stock still balances. A manager at the counter can still adjust.
+  const priceLocked = user?.role === 'Field Agent'
   const outstanding = dispatch.items.filter((i) => stillOut(i) > 0)
 
   const [qtys, setQtys] = useState(() =>
@@ -402,7 +407,9 @@ function PayModal({ dispatch, onClose }) {
     <Modal isOpen onClose={onClose} title={`Payment — ${dispatch.dispatch_no}`} size="md">
       <div className="p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-600">{dispatch.agent_name} sold on the field</p>
+          <p className="text-sm text-gray-600">
+            {priceLocked ? 'What you sold on the field' : `${dispatch.agent_name} sold on the field`}
+          </p>
           <button onClick={sellAll} className="text-xs font-bold text-orange-600 hover:underline">
             Sold everything
           </button>
@@ -431,15 +438,20 @@ function PayModal({ dispatch, onClose }) {
               <input
                 type="number" min="0" step="0.01"
                 value={prices[i.product_id] ?? ''}
+                readOnly={priceLocked}
                 onChange={(e) => setPrices((prev) => ({ ...prev, [i.product_id]: e.target.value }))}
-                className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-center"
+                className={`w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-center ${
+                  priceLocked ? 'bg-gray-100 text-gray-600' : ''
+                }`}
               />
             </div>
           ))}
         </div>
 
         <p className="text-xs text-gray-500">
-          The price is the shop price — change it if the agent sold at a different figure.
+          {priceLocked
+            ? 'Prices are set by the shop and cannot be changed here.'
+            : 'The price is the shop price — change it if the agent sold at a different figure.'}
         </p>
 
         <div className="grid grid-cols-2 gap-3">
@@ -500,7 +512,9 @@ export default function FieldDispatch() {
   const isOwner = ['CEO', 'Super Admin'].includes(user?.role)
   // Only the shop takes money. A rep on the field carries goods and comes in
   // to account; the server refuses the payment either way.
-  const canTakeMoney = ['Manager', 'CEO', 'Super Admin'].includes(user?.role)
+  // The agent settles their own sheet from the field; a manager can settle
+  // anyone's. A Sales hand at the counter cannot.
+  const canTakeMoney = ['Field Agent', 'Manager', 'CEO', 'Super Admin'].includes(user?.role)
   // A rep is handed goods at the counter; they never issue their own sheet,
   // and they cannot see the shop's stock to build one from.
   const isAgent = user?.role === 'Field Agent'

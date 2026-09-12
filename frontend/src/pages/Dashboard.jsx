@@ -2,7 +2,7 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { FiShoppingCart, FiDollarSign, FiPackage, FiAlertTriangle, FiUsers, FiTrendingUp, FiActivity, FiCreditCard, FiClock } from 'react-icons/fi'
+import { FiShoppingCart, FiDollarSign, FiPackage, FiAlertTriangle, FiUsers, FiTrendingUp, FiActivity, FiCreditCard, FiClock, FiSend } from 'react-icons/fi'
 import StatCard from '../components/StatCard'
 import { getDashboardStats, getSalesTrend, getTopProductsReport } from '../api/reports'
 import { getSales } from '../api/pos'
@@ -207,7 +207,18 @@ export default function Dashboard() {
       </div>
 
       {/* Row 2 */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4">
+        {/* Already counted inside Today's Sales — this says how much of the
+            day came from agents on the field rather than over the counter. */}
+        <StatCard
+          icon={FiSend}
+          value={formatCurrency(stats.todayFieldSales || 0)}
+          label="Field Sales Today"
+          color="purple"
+          loading={statsLoading}
+          hint={statsError ? null
+            : `${stats.todayFieldSalesCount ?? 0} paid in by agents`}
+        />
         <StatCard
           icon={FiDollarSign}
           value={formatCurrency(stats.todayExpenses || 0)}
