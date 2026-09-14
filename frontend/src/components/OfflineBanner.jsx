@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { FiWifiOff, FiRefreshCw, FiList } from 'react-icons/fi'
+import { FiWifiOff, FiRefreshCw, FiList, FiX } from 'react-icons/fi'
 import toast from 'react-hot-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import useOnlineStatus from '../hooks/useOnlineStatus'
@@ -16,6 +16,15 @@ export default function OfflineBanner() {
   const [syncing, setSyncing] = useState(false)
   const [showPending, setShowPending] = useState(false)
   const [askSync, setAskSync] = useState(false)
+  // Set when the user presses Cancel mid-sync. Checked between sales rather
+  // than aborting a request in flight: a sale already sent may well have been
+  // written, and killing the response would lose the outcome and leave it
+  // queued to be sent a second time.
+  const cancelRef = useRef(false)
+  // How many were queued when they last said "Not now". Asking again only
+  // makes sense once there is something new to ask about — otherwise a shaky
+  // line that flickers on and off puts the question up over and over.
+  const declinedAtRef = useRef(-1)
 
   const refreshCount = () => setPendingCount(getPendingQueue().length)
 
@@ -28,12 +37,16 @@ export default function OfflineBanner() {
   const handleSync = useCallback(async () => {
     const queue = getPendingQueue()
     if (!queue.length || syncing) return
+    cancelRef.current = false
     setSyncing(true)
     let ok = 0
     let fail = 0
+    let stopped = 0
     let lastReason = ''
 
     for (const entry of queue) {
+      // Stop between sales, never in the middle of one.
+      if (cancelRef.current) { stopped = queue.length - (ok + fail); break }
       try {
         const res = await syncOfflineSales([{ type: entry.type, payload: entry.payload }])
 
@@ -62,6 +75,8 @@ export default function OfflineBanner() {
     }
 
     setSyncing(false)
+    const wasCancelled = cancelRef.current
+    cancelRef.current = false
     refreshCount()
     if (ok > 0) {
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
@@ -77,7 +92,18 @@ export default function OfflineBanner() {
         { duration: 8000 }
       )
     }
+    if (wasCancelled) {
+      // Whatever went up is up; the rest is untouched and still on the device.
+      toast(
+        `Sync stopped${stopped > 0 ? ` — ${stopped} sale${stopped > 1 ? 's' : ''} left on this device` : ''}.`,
+        { icon: '✋', duration: 6000 }
+      )
+      declinedAtRef.current = getPendingQueue().length
+    }
   }, [syncing, queryClient])
+
+  /** Stop the run after the sale currently in flight. */
+  const cancelSync = useCallback(() => { cancelRef.current = true }, [])
 
   // Sync on coming back online, and on opening the app with a queue already
   // waiting. The transition check alone missed the common case: the till is
@@ -88,7 +114,10 @@ export default function OfflineBanner() {
     // offline is going in, and to choose the moment — mid-queue at the counter
     // is not it. The banner keeps the sales either way; nothing is lost by
     // answering later.
-    if (isOnline && getPendingQueue().length > 0) {
+    const waiting = getPendingQueue().length
+    // Ask again only if the queue has grown since they last declined. Saying
+    // "Not now" should mean not now, not "ask me again in ten seconds".
+    if (isOnline && waiting > 0 && waiting !== declinedAtRef.current) {
       setAskSync(true)
     }
     wasOnlineRef.current = isOnline
@@ -122,14 +151,26 @@ export default function OfflineBanner() {
         )}
       </div>
       {isOnline && pendingCount > 0 && (
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="flex items-center gap-1.5 bg-white text-amber-600 px-3 py-1 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors disabled:opacity-60"
-        >
-          <FiRefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
-          {syncing ? 'Syncing…' : 'Sync Now'}
-        </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-1.5 bg-white text-amber-600 px-3 py-1 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors disabled:opacity-60"
+          >
+            <FiRefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing…' : 'Sync Now'}
+          </button>
+          {/* Stopping a sync that is already running — it finishes the sale it
+              is on and leaves the rest queued. */}
+          {syncing && (
+            <button
+              onClick={cancelSync}
+              className="flex items-center gap-1 bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg text-xs font-bold transition-colors"
+            >
+              <FiX size={12} /> Cancel
+            </button>
+          )}
+        </div>
       )}
     </div>
 
@@ -158,7 +199,12 @@ export default function OfflineBanner() {
         </button>
         <div className="flex gap-3">
           <button
-            onClick={() => setAskSync(false)}
+            onClick={() => {
+              setAskSync(false)
+              // Remember, so a flickering connection does not ask again a
+              // moment later. A new offline sale makes it worth asking again.
+              declinedAtRef.current = getPendingQueue().length
+            }}
             className="flex-1 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50"
           >
             Not now
@@ -172,7 +218,8 @@ export default function OfflineBanner() {
           </button>
         </div>
         <p className="text-xs text-gray-400 text-center">
-          Choosing "Not now" keeps them safe on this device — the banner stays until they are sent.
+          "Not now" keeps them safe on this device and stops the asking — the banner
+          stays, and you can sync from there whenever you are ready.
         </p>
       </div>
     </Modal>
