@@ -89,6 +89,8 @@ const getDashboardStats = async (req, res) => {
       Refund.aggregate([{ $match: { status: 'approved', refund_date: { $gte: startOfToday } } }, { $group: { _id: null, total: { $sum: '$refund_amount' } } }]),
       Refund.aggregate([{ $match: { status: 'approved', refund_date: { $gte: startOfMonth } } }, { $group: { _id: null, total: { $sum: '$refund_amount' } } }]),
       // Pay & Pick Later instalments — cash in hand that no Sale records yet.
+      // The Sale is written when the goods are collected, so a plan's money
+      // reaches the day's sales then, not as it comes in.
       Layaway.aggregate([
         { $unwind: '$payments' },
         { $match: { 'payments.paid_at': { $gte: startOfToday } } },

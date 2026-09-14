@@ -87,6 +87,17 @@ const SaleSchema = new mongoose.Schema(
       index: true,
       sparse: true,
     },
+    /**
+     * Set when the sale came from a Pay & Pick Later plan being collected.
+     * The money arrived in instalments over weeks; the sale is recorded when
+     * the goods actually leave, which is the point the shop has earned it.
+     */
+    layaway_ref: {
+      type: String,
+      trim: true,
+      index: true,
+      sparse: true,
+    },
     customer_phone: {
       type: String,
       trim: true,

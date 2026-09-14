@@ -74,6 +74,10 @@ const LayawaySchema = new mongoose.Schema(
     collected_at: { type: Date },
 
     payments: [LayawayPaymentSchema],
+    // The sale written when the goods were collected, so the plan and the
+    // invoice can be read back against each other.
+    sale_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale' },
+    sale_invoice_no: { type: String, trim: true },
     sale_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale' }, // set when finalised
     created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     cancelled_reason: { type: String, trim: true },

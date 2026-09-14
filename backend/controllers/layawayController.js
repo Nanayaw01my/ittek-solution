@@ -2,6 +2,28 @@ const crypto = require('crypto');
 const Layaway = require('../models/Layaway');
 const Notification = require('../models/Notification');
 const { buildSaleItems, deductStock, restoreStock } = require('../utils/saleHelpers');
+const { createSaleWithInvoice } = require('../utils/generateInvoice');
+const Product = require('../models/Product');
+
+/**
+ * A layaway line stores no cost price, but a sale line requires one. It is
+ * read from the product at collection. Zero rather than a throw: a missing
+ * cost skews the profit figure, but it must never stop a paid-up customer
+ * walking out with goods they own.
+ */
+const costPriceOf = async (item) => {
+  try {
+    const product = await Product.findById(item.product_id).select('cost_price variants').lean();
+    if (!product) return 0;
+    if (item.variant_sku) {
+      const variant = (product.variants || []).find((v) => v.sku === item.variant_sku);
+      if (variant) return variant.cost_price || 0;
+    }
+    return product.cost_price || 0;
+  } catch {
+    return 0;
+  }
+};
 const Settings = require('../models/Settings');
 const { generateLayawayAgreement } = require('../utils/pdfGenerator');
 
@@ -219,12 +241,80 @@ const collectLayaway = async (req, res) => {
       return res.status(400).json({ success: false, message: 'These goods were already collected.' });
     }
 
+    // ── Record the sale ─────────────────────────────────────────────────────
+    // This is the moment the shop has earned the money: the goods leave. Until
+    // now a completed plan produced no Sale at all, so instalment takings never
+    // reached the day's sales, the monthly figures, the profit or any sales
+    // report — the stock had gone and the money was in, but the books showed
+    // nothing sold.
+    //
+    // Stock is NOT deducted here. It came off the shelf when the plan was
+    // opened, so the reserved item could not be sold twice.
+    const saleItems = [];
+    for (const item of layaway.items) {
+      saleItems.push({
+        product_id: item.product_id,
+        product_name: item.product_name,
+        variant_sku: item.variant_sku,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        cost_price: await costPriceOf(item),
+        total: item.total,
+      });
+    }
+
+    // The tenders the customer actually used across every instalment, so the
+    // sale shows how it was paid rather than guessing cash.
+    const tenders = (layaway.payments || [])
+      .filter((p) => Number(p.amount) > 0)
+      .map((p) => ({
+        method: ['cash', 'card', 'mobile_money'].includes(p.method) ? p.method : 'cash',
+        amount: Number(Number(p.amount).toFixed(2)),
+        reference: p.reference || undefined,
+      }));
+    const tendered = Number(tenders.reduce((sum, p) => sum + p.amount, 0).toFixed(2));
+
+    let sale = null;
+    try {
+      sale = await createSaleWithInvoice({
+        user_id: req.user._id,
+        customer_name: layaway.customer_name,
+        customer_phone: layaway.customer_phone,
+        layaway_ref: layaway.reference,
+        subtotal: layaway.total_amount,
+        discount: 0,
+        discount_type: 'fixed',
+        total_amount: layaway.total_amount,
+        cart_total: layaway.total_amount,
+        debt_amount: 0,
+        payment_status: 'paid',
+        payment_method: tenders.length > 1 ? 'split' : (tenders[0]?.method || 'cash'),
+        payments: tenders,
+        items: saleItems,
+      });
+    } catch (saleErr) {
+      // The customer is standing at the counter with their goods. Refusing to
+      // release them over a bookkeeping failure is the wrong call — the
+      // collection goes ahead and the problem is logged to be put right.
+      console.error('Layaway sale write failed for', layaway.reference, '-', saleErr.stack || saleErr.message);
+    }
+
     layaway.collected = true;
     layaway.collected_at = new Date();
     layaway.status = 'completed';
+    if (sale) {
+      layaway.sale_id = sale._id;
+      layaway.sale_invoice_no = sale.invoice_no;
+    }
     await layaway.save();
 
-    return res.status(200).json({ success: true, message: 'Goods released to customer.', data: layaway });
+    return res.status(200).json({
+      success: true,
+      message: sale
+        ? `Goods released. Recorded as sale ${sale.invoice_no}.`
+        : 'Goods released to customer.',
+      data: layaway,
+    });
   } catch (err) {
     console.error('Collect layaway error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });

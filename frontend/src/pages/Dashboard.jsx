@@ -233,12 +233,17 @@ export default function Dashboard() {
           color={!statsLoading && (stats.netProfit || 0) < 0 ? 'red' : 'green'}
           loading={statsLoading}
         />
+        {/* Instalments taken today. A plan only becomes a sale when the goods
+            are collected, so this is cash in hand that Today's Sales has not
+            counted yet — said plainly, because adding the two together would
+            count the final instalment twice. */}
         <StatCard
           icon={FiClock}
           value={formatCurrency(stats.todayLayawayCollections || 0)}
           label="Pay & Pick Later Today"
           color="blue"
           loading={statsLoading}
+          hint={statsError ? null : 'instalments in; becomes a sale on collection'}
         />
         <StatCard
           icon={FiCreditCard}
