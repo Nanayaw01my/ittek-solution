@@ -29,8 +29,12 @@ const getDashboardStats = async (req, res) => {
       // the shop holds and what is running low is the owners' business, so it
       // is not computed here at all rather than sent and hidden in the browser.
       const [myTodaySalesAgg, myTodayExpensesAgg, myTodayLayawayAgg, outstandingDebtsCount, pendingStockCount] = await Promise.all([
+        // Sales they rang up today, EXCLUDING one written when a Pay & Pick
+        // Later plan was collected — every cedi of that was already counted as
+        // an instalment on the day it came in, so counting it again here would
+        // double it.
         Sale.aggregate([
-          { $match: { user_id: userId, sale_date: { $gte: startOfToday } } },
+          { $match: { user_id: userId, sale_date: { $gte: startOfToday }, layaway_ref: { $in: [null, undefined] } } },
           { $group: { _id: null, total: { $sum: '$total_amount' } } },
         ]),
         Expense.aggregate([
@@ -48,10 +52,13 @@ const getDashboardStats = async (req, res) => {
         Debt.countDocuments({ status: { $in: ['active', 'overdue'] } }),
         StockRequest.countDocuments({ status: 'pending' }),
       ]);
+      // What they actually took today: sales over the counter plus instalments
+      // paid in on Pay & Pick Later plans. The money is the money.
+      const myLayaway = myTodayLayawayAgg[0]?.total || 0;
       return res.status(200).json({
         success: true,
         data: {
-          myTodaySales: myTodaySalesAgg[0]?.total || 0,
+          myTodaySales: (myTodaySalesAgg[0]?.total || 0) + myLayaway,
           myTodayExpenses: myTodayExpensesAgg[0]?.total || 0,
           myTodayLayawayCollections: myTodayLayawayAgg[0]?.total || 0,
           outstandingDebts: outstandingDebtsCount,
@@ -71,8 +78,11 @@ const getDashboardStats = async (req, res) => {
       todaySalesCountAgg,
       todayFieldSalesAgg,
     ] = await Promise.all([
-      Sale.aggregate([{ $match: { sale_date: { $gte: startOfToday } } }, { $group: { _id: null, total: { $sum: '$total_amount' } } }]),
-      Sale.aggregate([{ $match: { sale_date: { $gte: startOfMonth } } }, { $group: { _id: null, total: { $sum: '$total_amount' } } }]),
+      // Takings exclude a sale written when a Pay & Pick Later plan was
+      // collected: that money was counted as instalments as it arrived, and
+      // the instalment totals are added in below.
+      Sale.aggregate([{ $match: { sale_date: { $gte: startOfToday }, layaway_ref: { $in: [null, undefined] } } }, { $group: { _id: null, total: { $sum: '$total_amount' } } }]),
+      Sale.aggregate([{ $match: { sale_date: { $gte: startOfMonth }, layaway_ref: { $in: [null, undefined] } } }, { $group: { _id: null, total: { $sum: '$total_amount' } } }]),
       Sale.aggregate([
         { $match: { sale_date: { $gte: startOfMonth } } },
         { $group: { _id: null, total: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.cost_price', '$$this.quantity'] }] } } } } } },
@@ -113,8 +123,12 @@ const getDashboardStats = async (req, res) => {
 
     const todayRefunds = todayRefundsAgg[0]?.total || 0;
     const monthlyRefunds = monthlyRefundsAgg[0]?.total || 0;
-    const todaySales = Math.max(0, (todaySalesAgg[0]?.total || 0) - todayRefunds);
-    const monthlySales = Math.max(0, (monthlySalesAgg[0]?.total || 0) - monthlyRefunds);
+    // Money taken, counted once each: sales over the counter and in the field,
+    // plus Pay & Pick Later instalments on the day they were handed over.
+    const todayLayaway = todayLayawayAgg[0]?.total || 0;
+    const monthlyLayaway = monthlyLayawayAgg[0]?.total || 0;
+    const todaySales = Math.max(0, (todaySalesAgg[0]?.total || 0) + todayLayaway - todayRefunds);
+    const monthlySales = Math.max(0, (monthlySalesAgg[0]?.total || 0) + monthlyLayaway - monthlyRefunds);
     const monthlyCOGS = monthlyCOGSAgg[0]?.total || 0;
     const todayExpenses = todayExpensesAgg[0]?.total || 0;
     const monthlyExpenses = monthlyExpensesAgg[0]?.total || 0;
@@ -139,8 +153,8 @@ const getDashboardStats = async (req, res) => {
         netProfit,
         todayFieldSales: todayFieldSalesAgg[0]?.total || 0,
         todayFieldSalesCount: todayFieldSalesAgg[0]?.count || 0,
-        todayLayawayCollections: todayLayawayAgg[0]?.total || 0,
-        monthlyLayawayCollections: monthlyLayawayAgg[0]?.total || 0,
+        todayLayawayCollections: todayLayaway,
+        monthlyLayawayCollections: monthlyLayaway,
         outstandingDebtAmount,
         activeUsers,
         lowStockProducts: lowStockProducts.map(p => ({

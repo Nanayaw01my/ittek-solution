@@ -93,7 +93,7 @@ export default function Dashboard() {
           <StatCard
             icon={FiShoppingCart}
             value={formatCurrency(stats.myTodaySales || 0)}
-            label="My Today's Sales"
+            label="My Today's Takings"
             color="orange"
             loading={statsLoading}
           />
@@ -110,6 +110,7 @@ export default function Dashboard() {
             label="My Pay & Pick Later Today"
             color="blue"
             loading={statsLoading}
+            hint={statsError ? null : 'included in your takings'}
           />
           {/* How much stock the shop holds and what is running low is the
               owners' business — the server does not send those figures to
@@ -181,7 +182,9 @@ export default function Dashboard() {
           label="Today's Sales"
           color="orange"
           loading={statsLoading}
-          hint={statsError ? null : `${stats.todaySalesCount ?? 0} sale${stats.todaySalesCount === 1 ? '' : 's'} today`}
+          hint={statsError ? null
+            : `${stats.todaySalesCount ?? 0} sale${stats.todaySalesCount === 1 ? '' : 's'}`
+              + `${stats.todayLayawayCollections > 0 ? ' + plan instalments' : ' today'}`}
         />
         <StatCard
           icon={FiTrendingUp}
@@ -233,17 +236,15 @@ export default function Dashboard() {
           color={!statsLoading && (stats.netProfit || 0) < 0 ? 'red' : 'green'}
           loading={statsLoading}
         />
-        {/* Instalments taken today. A plan only becomes a sale when the goods
-            are collected, so this is cash in hand that Today's Sales has not
-            counted yet — said plainly, because adding the two together would
-            count the final instalment twice. */}
+        {/* Instalments taken today. Already inside Today's Sales — this breaks
+            out how much of the day came from plans rather than the counter. */}
         <StatCard
           icon={FiClock}
           value={formatCurrency(stats.todayLayawayCollections || 0)}
           label="Pay & Pick Later Today"
           color="blue"
           loading={statsLoading}
-          hint={statsError ? null : 'instalments in; becomes a sale on collection'}
+          hint={statsError ? null : 'included in Today\u2019s Sales'}
         />
         <StatCard
           icon={FiCreditCard}
