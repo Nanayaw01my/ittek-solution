@@ -79,32 +79,148 @@ function PhotoBox({ label, value, onChange }) {
   )
 }
 
+/**
+ * Taking an application, one thing at a time.
+ *
+ * This was a single scroll holding two people, six photographs, the phone and
+ * the money. On a phone — which is where a rep fills it in, standing in front
+ * of the customer — that is a wall to get lost in, and it is easy to reach the
+ * bottom having missed something in the middle. It is now four short steps,
+ * each of which fits a screen, and each checked before moving on so nothing is
+ * discovered missing at the end.
+ */
+const STEPS = ['Customer', 'Guarantor', 'The phone', 'Check & send']
+
+function StepDots({ step }) {
+  return (
+    <div className="flex items-center gap-1.5 mb-5">
+      {STEPS.map((label, i) => (
+        <div key={label} className="flex-1">
+          <div className={`h-1.5 rounded-full transition-colors ${
+            i < step ? 'bg-green-500' : i === step ? 'bg-orange-500' : 'bg-gray-200'
+          }`} />
+          <p className={`mt-1 text-[10px] font-bold truncate ${
+            i === step ? 'text-orange-600' : 'text-gray-400'
+          }`}>
+            {i + 1}. {label}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** One person's details and their three photographs, used for both people. */
+function PersonStep({ who, values, onChange, docs, onDocs, relationLabel }) {
+  const set = (k) => (e) => onChange({ ...values, [k]: e.target.value })
+  const input = (k, label, opts = {}) => (
+    <div className={opts.wide ? 'sm:col-span-2' : ''}>
+      <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+      <input
+        value={values[k] || ''} onChange={set(k)} type={opts.type || 'text'}
+        placeholder={opts.placeholder} inputMode={opts.inputMode}
+        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+      />
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {input('name', 'Full name *', { placeholder: 'As written on the card' })}
+        {input('phone', 'Phone number *', { type: 'tel', inputMode: 'tel', placeholder: '024 000 0000' })}
+        {input('address', 'Address / area', { placeholder: 'House, town' })}
+        {relationLabel
+          ? input('relationship', relationLabel, { placeholder: 'Brother, employer…' })
+          : input('occupation', 'Work they do', { placeholder: 'Trader, teacher…' })}
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Ghana card number</label>
+          <input
+            value={docs.ghana_card_number || ''}
+            onChange={(e) => onDocs({ ...docs, ghana_card_number: e.target.value })}
+            placeholder="GHA-XXXXXXXXX-X"
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold text-gray-600 mb-2">
+          Photographs — the card front is required
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          <PhotoBox label="Card front *" value={docs.ghana_card_front_url}
+            onChange={(url) => onDocs({ ...docs, ghana_card_front_url: url })} />
+          <PhotoBox label="Card back" value={docs.ghana_card_back_url}
+            onChange={(url) => onDocs({ ...docs, ghana_card_back_url: url })} />
+          <PhotoBox label={`${who}'s face`} value={docs.photo_url}
+            onChange={(url) => onDocs({ ...docs, photo_url: url })} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function NewApplicationModal({ onClose }) {
   const queryClient = useQueryClient()
-  const [f, setF] = useState({
-    customer_name: '', customer_phone: '', customer_address: '', customer_occupation: '',
-    guarantor_name: '', guarantor_phone: '', guarantor_address: '', guarantor_relationship: '',
-    phone_model: '', imei: '', total_amount: '', down_payment: '',
-    plan: 'monthly', notes: '',
-  })
-  const [customerId, setCustomerId] = useState({})
-  const [guarantorId, setGuarantorId] = useState({})
-  const set = (k) => (e) => setF((prev) => ({ ...prev, [k]: e.target.value }))
+  const [step, setStep] = useState(0)
 
-  const total = parseFloat(f.total_amount) || 0
-  const down = parseFloat(f.down_payment) || 0
+  const [customer, setCustomer] = useState({ name: '', phone: '', address: '', occupation: '' })
+  const [customerId, setCustomerId] = useState({})
+  const [guarantor, setGuarantor] = useState({ name: '', phone: '', address: '', relationship: '' })
+  const [guarantorId, setGuarantorId] = useState({})
+  const [deal, setDeal] = useState({
+    phone_model: '', imei: '', total_amount: '', down_payment: '', plan: 'monthly', notes: '',
+  })
+  const setDealField = (k) => (e) => setDeal((p) => ({ ...p, [k]: e.target.value }))
+
+  const total = parseFloat(deal.total_amount) || 0
+  const down = parseFloat(deal.down_payment) || 0
   const balance = Math.max(0, total - down)
-  const count = f.plan === 'weekly' ? 12 : 3
+  const count = deal.plan === 'weekly' ? 12 : 3
   const each = balance > 0 ? balance / count : 0
+
+  // What is missing on the step being looked at, said in words rather than
+  // leaving someone to hunt for the red field.
+  const missing = () => {
+    if (step === 0) {
+      if (!customer.name.trim()) return "the customer's full name"
+      if (!customer.phone.trim()) return "the customer's phone number"
+      if (!customerId.ghana_card_front_url) return "a photo of the customer's Ghana card"
+    }
+    if (step === 1) {
+      if (!guarantor.name.trim()) return "the guarantor's full name"
+      if (!guarantor.phone.trim()) return "the guarantor's phone number"
+      if (!guarantorId.ghana_card_front_url) return "a photo of the guarantor's Ghana card"
+    }
+    if (step === 2) {
+      if (!deal.phone_model.trim()) return 'which phone is being sold'
+      if (total <= 0) return 'the total price'
+      if (down > total) return 'a down payment no bigger than the price'
+    }
+    return null
+  }
+  const blocker = missing()
 
   const mutation = useMutation({
     mutationFn: () => createPhoneSale({
-      ...f,
+      customer_name: customer.name,
+      customer_phone: customer.phone,
+      customer_address: customer.address,
+      customer_occupation: customer.occupation,
+      customer_id: customerId,
+      guarantor_name: guarantor.name,
+      guarantor_phone: guarantor.phone,
+      guarantor_address: guarantor.address,
+      guarantor_relationship: guarantor.relationship,
+      guarantor_id: guarantorId,
+      phone_model: deal.phone_model,
+      imei: deal.imei,
       total_amount: total,
       down_payment: down,
+      plan: deal.plan,
       installments: count,
-      customer_id: customerId,
-      guarantor_id: guarantorId,
+      notes: deal.notes,
     }),
     onSuccess: () => {
       toast.success('Sent to the CEO for approval')
@@ -114,129 +230,186 @@ function NewApplicationModal({ onClose }) {
     onError: (err) => toast.error(err.response?.data?.message || 'Could not submit'),
   })
 
-  const ready = f.customer_name && f.customer_phone && f.guarantor_name
-    && f.guarantor_phone && f.phone_model && total > 0
-    && customerId.ghana_card_front_url && guarantorId.ghana_card_front_url
+  const Row = ({ label, value }) => (
+    <div className="flex justify-between gap-3 py-1.5 border-b border-gray-100 last:border-0">
+      <span className="text-xs text-gray-500 flex-shrink-0">{label}</span>
+      <span className="text-sm text-gray-900 font-semibold text-right break-words">{value || '—'}</span>
+    </div>
+  )
 
-  const field = (key, label, opts = {}) => (
-    <div>
-      <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-      <input
-        value={f[key]} onChange={set(key)} type={opts.type || 'text'}
-        placeholder={opts.placeholder}
-        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-      />
+  const Thumbs = ({ docs }) => (
+    <div className="flex gap-1.5 mt-2">
+      {['ghana_card_front_url', 'ghana_card_back_url', 'photo_url'].map((k) => (
+        docs[k]
+          ? <img key={k} src={docs[k]} alt="" className="h-12 w-12 object-cover rounded-lg border" />
+          : <div key={k} className="h-12 w-12 rounded-lg border border-dashed border-gray-200" />
+      ))}
     </div>
   )
 
   return (
     <Modal isOpen onClose={onClose} title="New phone credit application" size="lg">
-      <div className="p-5 space-y-5">
-        <section>
-          <h3 className="text-xs font-black text-gray-500 uppercase tracking-wide mb-2">The customer</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {field('customer_name', 'Full name *')}
-            {field('customer_phone', 'Phone *')}
-            {field('customer_address', 'Address / area')}
-            {field('customer_occupation', 'Work they do')}
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Ghana card number</label>
-              <input
-                value={customerId.ghana_card_number || ''}
-                onChange={(e) => setCustomerId((p) => ({ ...p, ghana_card_number: e.target.value }))}
-                placeholder="GHA-XXXXXXXXX-X"
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2 mt-3">
-            <PhotoBox label="Card front *" value={customerId.ghana_card_front_url}
-              onChange={(url) => setCustomerId((p) => ({ ...p, ghana_card_front_url: url }))} />
-            <PhotoBox label="Card back" value={customerId.ghana_card_back_url}
-              onChange={(url) => setCustomerId((p) => ({ ...p, ghana_card_back_url: url }))} />
-            <PhotoBox label="Their photo" value={customerId.photo_url}
-              onChange={(url) => setCustomerId((p) => ({ ...p, photo_url: url }))} />
-          </div>
-        </section>
+      <div className="p-5">
+        <StepDots step={step} />
 
-        <section>
-          <h3 className="text-xs font-black text-gray-500 uppercase tracking-wide mb-2">The guarantor</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {field('guarantor_name', 'Full name *')}
-            {field('guarantor_phone', 'Phone *')}
-            {field('guarantor_address', 'Address / area')}
-            {field('guarantor_relationship', 'Relation to customer', { placeholder: 'Brother, employer…' })}
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Ghana card number</label>
-              <input
-                value={guarantorId.ghana_card_number || ''}
-                onChange={(e) => setGuarantorId((p) => ({ ...p, ghana_card_number: e.target.value }))}
-                placeholder="GHA-XXXXXXXXX-X"
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2 mt-3">
-            <PhotoBox label="Card front *" value={guarantorId.ghana_card_front_url}
-              onChange={(url) => setGuarantorId((p) => ({ ...p, ghana_card_front_url: url }))} />
-            <PhotoBox label="Card back" value={guarantorId.ghana_card_back_url}
-              onChange={(url) => setGuarantorId((p) => ({ ...p, ghana_card_back_url: url }))} />
-            <PhotoBox label="Their photo" value={guarantorId.photo_url}
-              onChange={(url) => setGuarantorId((p) => ({ ...p, photo_url: url }))} />
-          </div>
-        </section>
-
-        <section>
-          <h3 className="text-xs font-black text-gray-500 uppercase tracking-wide mb-2">The phone</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {field('phone_model', 'Model *', { placeholder: 'iPhone 12 Pro' })}
-            {field('imei', 'IMEI / serial')}
-            {field('total_amount', 'Total price (GH₵) *', { type: 'number' })}
-            {field('down_payment', 'Down payment (GH₵)', { type: 'number' })}
-          </div>
-          <div className="flex gap-2 mt-3">
-            {[['monthly', '3 months'], ['weekly', '12 weeks']].map(([value, label]) => (
-              <button
-                key={value} type="button"
-                onClick={() => setF((p) => ({ ...p, plan: value }))}
-                className={`flex-1 py-2 text-xs font-bold rounded-xl border ${
-                  f.plan === value
-                    ? 'bg-orange-500 text-white border-orange-500'
-                    : 'bg-white text-gray-600 border-gray-200'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {balance > 0 && (
-            <div className="mt-3 bg-orange-50 border border-orange-200 rounded-xl p-3 text-sm">
-              <p className="text-orange-800">
-                Balance <span className="font-black">{formatCurrency(balance)}</span> over {count}
-                {f.plan === 'weekly' ? ' weeks' : ' months'} —
-                <span className="font-black"> {formatCurrency(each)}</span> each.
-              </p>
-            </div>
-          )}
-        </section>
-
-        <div className="flex justify-end gap-2 pt-2 border-t">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl">
-            Cancel
-          </button>
-          <button
-            onClick={() => mutation.mutate()}
-            disabled={!ready || mutation.isPending}
-            className="px-5 py-2 text-sm font-bold text-white bg-orange-600 rounded-xl disabled:opacity-50 hover:bg-orange-700"
-          >
-            {mutation.isPending ? 'Sending…' : 'Send for approval'}
-          </button>
-        </div>
-        {!ready && (
-          <p className="text-xs text-gray-500 text-right">
-            Both Ghana card fronts, both names and phones, the model and the price are needed.
-          </p>
+        {step === 0 && (
+          <PersonStep who="Customer" values={customer} onChange={setCustomer}
+            docs={customerId} onDocs={setCustomerId} />
         )}
+
+        {step === 1 && (
+          <PersonStep who="Guarantor" values={guarantor} onChange={setGuarantor}
+            docs={guarantorId} onDocs={setGuarantorId}
+            relationLabel="Relation to customer" />
+        )}
+
+        {step === 2 && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Phone model *</label>
+                <input
+                  value={deal.phone_model} onChange={setDealField('phone_model')}
+                  placeholder="iPhone 12 Pro"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">IMEI / serial number</label>
+                <input
+                  value={deal.imei} onChange={setDealField('imei')} inputMode="numeric"
+                  placeholder="Dial *#06# on the phone"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Total price (GH₵) *</label>
+                <input
+                  type="number" inputMode="decimal" value={deal.total_amount} onChange={setDealField('total_amount')}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Down payment (GH₵)</label>
+                <input
+                  type="number" inputMode="decimal" value={deal.down_payment} onChange={setDealField('down_payment')}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-1.5">Pay the balance over</p>
+              <div className="flex gap-2">
+                {[['monthly', '3 months'], ['weekly', '12 weeks']].map(([value, label]) => (
+                  <button
+                    key={value} type="button"
+                    onClick={() => setDeal((p) => ({ ...p, plan: value }))}
+                    className={`flex-1 py-2.5 text-xs font-bold rounded-xl border ${
+                      deal.plan === value
+                        ? 'bg-orange-500 text-white border-orange-500'
+                        : 'bg-white text-gray-600 border-gray-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {balance > 0 && (
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+                <p className="text-sm text-orange-800">
+                  Balance <span className="font-black">{formatCurrency(balance)}</span> —
+                  {' '}<span className="font-black">{formatCurrency(each)}</span> every
+                  {deal.plan === 'weekly' ? ' week for 12 weeks' : ' month for 3 months'}.
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Anything else worth noting</label>
+              <textarea
+                value={deal.notes} onChange={setDealField('notes')} rows={2}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-4">
+            <section>
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-wide mb-1">Customer</h3>
+              <Row label="Name" value={customer.name} />
+              <Row label="Phone" value={customer.phone} />
+              <Row label="Address" value={customer.address} />
+              <Row label="Work" value={customer.occupation} />
+              <Row label="Ghana card" value={customerId.ghana_card_number} />
+              <Thumbs docs={customerId} />
+            </section>
+
+            <section>
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-wide mb-1">Guarantor</h3>
+              <Row label="Name" value={guarantor.name} />
+              <Row label="Phone" value={guarantor.phone} />
+              <Row label="Address" value={guarantor.address} />
+              <Row label="Relation" value={guarantor.relationship} />
+              <Row label="Ghana card" value={guarantorId.ghana_card_number} />
+              <Thumbs docs={guarantorId} />
+            </section>
+
+            <section>
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-wide mb-1">The phone</h3>
+              <Row label="Model" value={deal.phone_model} />
+              <Row label="IMEI" value={deal.imei} />
+              <Row label="Price" value={formatCurrency(total)} />
+              <Row label="Down payment" value={formatCurrency(down)} />
+              <Row label="Balance" value={formatCurrency(balance)} />
+              <Row label="Repayment"
+                value={`${count} × ${formatCurrency(each)} ${deal.plan === 'weekly' ? 'weekly' : 'monthly'}`} />
+              {deal.notes && <Row label="Notes" value={deal.notes} />}
+            </section>
+
+            <p className="text-xs text-gray-500">
+              This goes to the CEO for approval. Nothing is sold and no stock moves until they agree to it.
+            </p>
+          </div>
+        )}
+
+        {/* One bar, in the same place at every step. */}
+        <div className="flex items-center gap-2 pt-4 mt-4 border-t">
+          <button
+            onClick={() => (step === 0 ? onClose() : setStep(step - 1))}
+            className="px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl"
+          >
+            {step === 0 ? 'Cancel' : 'Back'}
+          </button>
+          <div className="flex-1 text-right">
+            {blocker && (
+              <p className="text-xs text-gray-500">Still need {blocker}.</p>
+            )}
+          </div>
+          {step < STEPS.length - 1 ? (
+            <button
+              onClick={() => setStep(step + 1)}
+              disabled={!!blocker}
+              className="px-6 py-2.5 text-sm font-bold text-white bg-orange-600 rounded-xl disabled:opacity-40 hover:bg-orange-700"
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending}
+              className="px-6 py-2.5 text-sm font-bold text-white bg-orange-600 rounded-xl disabled:opacity-50 hover:bg-orange-700"
+            >
+              {mutation.isPending ? 'Sending…' : 'Send for approval'}
+            </button>
+          )}
+        </div>
       </div>
     </Modal>
   )
