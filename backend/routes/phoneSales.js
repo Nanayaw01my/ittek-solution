@@ -5,6 +5,7 @@ const { requireRoles } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
   getPhoneSales, getPhoneSale, createPhoneSale, approvePhoneSale, rejectPhoneSale,
+  deletePhoneSale,
 } = require('../controllers/phoneSalesController');
 
 router.use(authenticate);
@@ -21,5 +22,9 @@ router.post('/', auditLog('CREATE_PHONE_SALE', (req) => ({ customer: req.body.cu
 const ownersOnly = requireRoles('CEO', 'Super Admin');
 router.put('/:id/approve', ownersOnly, auditLog('APPROVE_PHONE_SALE', (req) => ({ id: req.params.id })), approvePhoneSale);
 router.put('/:id/reject', ownersOnly, auditLog('REJECT_PHONE_SALE', (req) => ({ id: req.params.id })), rejectPhoneSale);
+
+// Deleting takes the customer's details with it, so it stays with the two
+// who can see them. The audit log keeps a note that it happened.
+router.delete('/:id', ownersOnly, auditLog('DELETE_PHONE_SALE', (req) => ({ id: req.params.id })), deletePhoneSale);
 
 module.exports = router;

@@ -7,3 +7,4 @@ export const createPhoneSale = (data) => api.post('/phone-sales', data)
 /** Owners only — the server refuses everyone else. */
 export const approvePhoneSale = (id) => api.put(`/phone-sales/${id}/approve`)
 export const rejectPhoneSale = (id, reason) => api.put(`/phone-sales/${id}/reject`, { reason })
+export const deletePhoneSale = (id) => api.delete(`/phone-sales/${id}`)

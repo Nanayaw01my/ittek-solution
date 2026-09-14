@@ -244,8 +244,38 @@ const rejectPhoneSale = async (req, res) => {
   }
 };
 
+/**
+ * DELETE /api/phone-sales/:id — owners only.
+ *
+ * Removes the record and the customer's details with it. Kept to the two
+ * people who can read those details in the first place: an application is the
+ * only trace of a credit deal and of the cards taken for it, and whoever
+ * submitted it should not be able to make a rejected one disappear.
+ */
+const deletePhoneSale = async (req, res) => {
+  try {
+    const sale = await PhoneSale.findById(req.params.id);
+    if (!sale) {
+      return res.status(404).json({ success: false, message: 'Application not found.' });
+    }
+
+    const { reference, customer_name, status } = sale;
+    await sale.deleteOne();
+
+    return res.status(200).json({
+      success: true,
+      message: `${reference} (${customer_name}) deleted.`,
+      data: { reference, status },
+    });
+  } catch (err) {
+    console.error('Delete phone sale error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 module.exports = {
   getPhoneSales,
+  deletePhoneSale,
   getPhoneSale,
   createPhoneSale,
   approvePhoneSale,

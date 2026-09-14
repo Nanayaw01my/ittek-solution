@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import {
-  FiSmartphone, FiPlus, FiCamera, FiCheckCircle, FiXCircle, FiLock, FiUser,
+  FiSmartphone, FiPlus, FiCamera, FiCheckCircle, FiXCircle, FiLock, FiUser, FiTrash2,
 } from 'react-icons/fi'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -13,7 +13,7 @@ import { formatCurrency } from '../utils/helpers'
 import { uploadImage } from '../api/upload'
 import { resizeImageToDataUrl, dataUrlToFile } from '../utils/resizeImage'
 import {
-  getPhoneSales, createPhoneSale, approvePhoneSale, rejectPhoneSale,
+  getPhoneSales, createPhoneSale, approvePhoneSale, rejectPhoneSale, deletePhoneSale,
 } from '../api/phoneSales'
 import useAuthStore from '../store/authStore'
 
@@ -372,7 +372,20 @@ export default function PhoneSales() {
   const { user } = useAuthStore()
   const [showNew, setShowNew] = useState(false)
   const [viewing, setViewing] = useState(null)
+  const [deleting, setDeleting] = useState(null)
   const [status, setStatus] = useState('')
+  const queryClient = useQueryClient()
+
+  const removeMutation = useMutation({
+    mutationFn: (id) => deletePhoneSale(id),
+    onSuccess: (_res, id) => {
+      const gone = sales.find((x) => x._id === id)
+      toast.success(`${gone?.reference || 'Application'} deleted`)
+      queryClient.invalidateQueries({ queryKey: ['phone-sales'] })
+      setDeleting(null)
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not delete'),
+  })
 
   const { data, isLoading } = useQuery({
     queryKey: ['phone-sales', status],
@@ -455,12 +468,21 @@ export default function PhoneSales() {
               </div>
 
               {isReviewer ? (
-                <button
-                  onClick={() => setViewing(s)}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-gray-800 rounded-lg hover:bg-gray-900"
-                >
-                  <FiUser /> {s.status === 'pending' ? 'Review' : 'View'}
-                </button>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => setViewing(s)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-gray-800 rounded-lg hover:bg-gray-900"
+                  >
+                    <FiUser /> {s.status === 'pending' ? 'Review' : 'View'}
+                  </button>
+                  <button
+                    onClick={() => setDeleting(s)}
+                    title="Delete this application"
+                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                  >
+                    <FiTrash2 />
+                  </button>
+                </div>
               ) : (
                 <span className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-gray-400">
                   <FiLock size={11} /> Customer details are owners-only
@@ -473,6 +495,44 @@ export default function PhoneSales() {
 
       {showNew && <NewApplicationModal onClose={() => setShowNew(false)} />}
       {viewing && <DetailModal sale={viewing} onClose={() => setViewing(null)} />}
+
+      {/* Deleting takes the customer's and guarantor's details with it, so the
+          confirmation says so plainly rather than asking "are you sure?". */}
+      {deleting && (
+        <Modal isOpen onClose={() => setDeleting(null)} title="Delete this application?" size="sm">
+          <div className="p-5 space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+              <p className="text-sm font-bold text-red-800">
+                {deleting.reference} — {deleting.customer_name}
+              </p>
+              <p className="text-xs text-red-700 mt-1">
+                {deleting.phone_model} · {formatCurrency(deleting.total_amount)} ·
+                {' '}{STATUS_LABELS[deleting.status]}
+              </p>
+            </div>
+            <p className="text-sm text-gray-700">
+              This removes the record and the Ghana card photographs of both the
+              customer and the guarantor. It cannot be undone, and if the phone
+              has already gone out there will be nothing left to chase it with.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleting(null)}
+                className="flex-1 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50"
+              >
+                Keep it
+              </button>
+              <button
+                onClick={() => removeMutation.mutate(deleting._id)}
+                disabled={removeMutation.isPending}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm"
+              >
+                {removeMutation.isPending ? 'Deleting…' : 'Delete for good'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
