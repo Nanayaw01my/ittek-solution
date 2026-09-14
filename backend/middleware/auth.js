@@ -16,6 +16,8 @@ const User = require('../models/User');
 const FIELD_AGENT_ALLOWED = [
   '/api/auth',           // sign in, sign out, /me
   '/api/dispatches',     // their own sheets; issuing and Pay are barred on the routes
+  '/api/phone-sales',    // taking a credit application in front of a customer
+  '/api/upload',         // the Ghana card photographs that go with one
   '/api/notifications',
   '/api/settings',       // company name and logo for the printed sheet
 ];

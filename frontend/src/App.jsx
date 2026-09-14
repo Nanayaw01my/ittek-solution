@@ -33,6 +33,7 @@ import SalesHistory from './pages/SalesHistory'
 import PublicReceipt from './pages/PublicReceipt'
 import Layaways from './pages/Layaways'
 import FieldDispatch from './pages/FieldDispatch'
+import PhoneSales from './pages/PhoneSales'
 import FraudAlerts from './pages/FraudAlerts'
 import DeleteRecords from './pages/DeleteRecords'
 import ReceiptForms from './pages/ReceiptForms'
@@ -154,6 +155,9 @@ export default function App() {
         <Route path="refunds" element={<ProtectedRoute minLevel={1}><Refunds /></ProtectedRoute>} />
         {/* Field dispatch is open to every signed-in user. */}
         <Route path="field-dispatch" element={<ProtectedRoute minLevel={1}><FieldDispatch /></ProtectedRoute>} />
+        {/* Standalone: its own records, wired into nothing else.
+            Anyone may take an application; only an owner reads it back. */}
+        <Route path="phone-sales" element={<ProtectedRoute minLevel={1}><PhoneSales /></ProtectedRoute>} />
         <Route path="search" element={<ProtectedRoute minLevel={3} page="search"><Search /></ProtectedRoute>} />
 
         {/* CEO+ */}

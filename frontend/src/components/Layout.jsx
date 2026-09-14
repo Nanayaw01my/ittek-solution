@@ -10,7 +10,7 @@ import {
   FiAlertCircle, FiUsers, FiShoppingBag, FiInbox, FiFileText,
   FiBarChart2, FiSettings, FiDatabase, FiBell, FiSearch, FiLogOut,
   FiMenu, FiX, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
-  FiArchive, FiShield, FiGlobe, FiTrash2, FiClipboard, FiSend
+  FiArchive, FiShield, FiGlobe, FiTrash2, FiClipboard, FiSend, FiSmartphone
 } from 'react-icons/fi'
 import { logout as apiLogout } from '../api/auth'
 import toast from 'react-hot-toast'
@@ -19,7 +19,7 @@ import LocaleSwitcher from './LocaleSwitcher'
 import InstallAppButton from './InstallAppButton'
 
 /** The only screens a DSR out on the field ever sees. */
-export const FIELD_AGENT_PAGES = ['/field-dispatch', '/notifications']
+export const FIELD_AGENT_PAGES = ['/field-dispatch', '/phone-sales', '/notifications']
 
 /** Where a field agent lands after signing in, instead of the dashboard. */
 export const FIELD_AGENT_HOME = '/field-dispatch'
@@ -33,6 +33,7 @@ const NAV_ITEMS = [
   { to: '/pos', label: 'Point of Sale', icon: FiShoppingCart, minLevel: 1 },
   { to: '/refunds', label: 'Refunds', icon: FiRotateCcw, minLevel: 1 },
   { to: '/field-dispatch', label: 'Field Dispatch', icon: FiSend, minLevel: 1 },
+  { to: '/phone-sales', label: 'Phone Credit Sales', icon: FiSmartphone, minLevel: 1 },
   // CEO+ only
   { to: '/debts', label: 'Debts', icon: FiAlertCircle, minLevel: 2 },
   { to: '/stock-requests', label: 'Stock Requests', icon: FiInbox, minLevel: 2 },

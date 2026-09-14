@@ -20,7 +20,19 @@ const upload = multer({
 /**
  * POST /api/upload?folder=products|avatars|logo
  */
-router.post('/', authenticate, requireLevel(2), upload.single('image'), async (req, res) => {
+/**
+ * Uploading is a Manager job, with one exception: the Ghana card photographs
+ * that go with a credit application. Anyone who can take an application has to
+ * be able to attach the cards, or the application is worthless — so the `kyc`
+ * folder is open to any signed-in user. It is write-only for them in practice:
+ * the photographs come back only to a CEO or Super Admin.
+ */
+const canUpload = (req, res, next) => {
+  if (req.query.folder === 'kyc') return next();
+  return requireLevel(2)(req, res, next);
+};
+
+router.post('/', authenticate, canUpload, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No image provided.' });
