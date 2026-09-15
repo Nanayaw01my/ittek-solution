@@ -571,7 +571,9 @@ export default function PhoneSales() {
   const pending = sales.filter((s) => s.status === 'pending').length
 
   return (
-    <div>
+    // Same gutter as every other screen. Without it the heading and
+    // the cards sit flush against the edge of a phone.
+    <div className="p-4 sm:p-6 space-y-1">
       <PageHeader
         title="Phone Credit Sales"
         subtitle={isReviewer
@@ -595,7 +597,7 @@ export default function PhoneSales() {
         </div>
       )}
 
-      <div className="flex gap-1 mb-4">
+      <div className="flex flex-wrap gap-1.5 mb-4">
         {[['', 'All'], ['pending', 'Waiting'], ['approved', 'Approved'], ['rejected', 'Rejected']]
           .map(([value, label]) => (
             <button

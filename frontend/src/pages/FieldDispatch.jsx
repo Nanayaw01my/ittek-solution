@@ -550,7 +550,9 @@ export default function FieldDispatch() {
   })
 
   return (
-    <div>
+    // Same gutter as every other screen. Without it the heading and
+    // the cards sit flush against the edge of a phone.
+    <div className="p-4 sm:p-6 space-y-1">
       <PageHeader
         title={isAgent ? 'My Goods' : 'Field Dispatch (DSR)'}
         subtitle={isAgent
@@ -568,7 +570,7 @@ export default function FieldDispatch() {
         <RefreshButton keys={['dispatches', 'products']} />
       </PageHeader>
 
-      <div className="flex gap-1 mb-4">
+      <div className="flex flex-wrap gap-1.5 mb-4">
         {[['', 'All'], ['issued', 'Out on field'], ['partly_returned', 'Part returned'], ['closed', 'Closed']]
           .map(([value, label]) => (
             <button
