@@ -2,7 +2,7 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { FiShoppingCart, FiDollarSign, FiPackage, FiAlertTriangle, FiUsers, FiTrendingUp, FiActivity, FiCreditCard, FiClock, FiSend } from 'react-icons/fi'
+import { FiShoppingCart, FiDollarSign, FiPackage, FiAlertTriangle, FiUsers, FiTrendingUp, FiActivity, FiCreditCard, FiClock, FiSend, FiTool } from 'react-icons/fi'
 import StatCard from '../components/StatCard'
 import { getDashboardStats, getSalesTrend, getTopProductsReport } from '../api/reports'
 import { getSales } from '../api/pos'
@@ -210,7 +210,7 @@ export default function Dashboard() {
       </div>
 
       {/* Row 2 */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 sm:gap-4">
         {/* Already counted inside Today's Sales — this says how much of the
             day came from agents on the field rather than over the counter. */}
         <StatCard
@@ -221,6 +221,16 @@ export default function Dashboard() {
           loading={statsLoading}
           hint={statsError ? null
             : `${stats.todayFieldSalesCount ?? 0} paid in by agents`}
+        />
+        {/* Also already inside Today's Sales — work done rather than goods sold. */}
+        <StatCard
+          icon={FiTool}
+          value={formatCurrency(stats.todayServiceCharges || 0)}
+          label="Service Charges Today"
+          color="green"
+          loading={statsLoading}
+          hint={statsError ? null
+            : `${stats.todayServiceChargesCount ?? 0} job${stats.todayServiceChargesCount === 1 ? '' : 's'} \u2014 in Today\u2019s Sales`}
         />
         <StatCard
           icon={FiDollarSign}

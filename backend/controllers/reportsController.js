@@ -77,6 +77,7 @@ const getDashboardStats = async (req, res) => {
       todayLayawayAgg, monthlyLayawayAgg,
       todaySalesCountAgg,
       todayFieldSalesAgg,
+      todayServiceAgg,
     ] = await Promise.all([
       // Takings exclude a sale written when a Pay & Pick Later plan was
       // collected: that money was counted as instalments as it arrived, and
@@ -119,6 +120,12 @@ const getDashboardStats = async (req, res) => {
         { $match: { sale_date: { $gte: startOfToday }, dispatch_ref: { $exists: true, $ne: null } } },
         { $group: { _id: null, total: { $sum: '$total_amount' }, count: { $sum: 1 } } },
       ]),
+      // Money taken for work rather than goods. Already inside todaySales —
+      // this only separates out how much of the day came from jobs.
+      Sale.aggregate([
+        { $match: { sale_date: { $gte: startOfToday }, service_ref: { $exists: true, $ne: null } } },
+        { $group: { _id: null, total: { $sum: '$total_amount' }, count: { $sum: 1 } } },
+      ]),
     ]);
 
     const todayRefunds = todayRefundsAgg[0]?.total || 0;
@@ -153,6 +160,8 @@ const getDashboardStats = async (req, res) => {
         netProfit,
         todayFieldSales: todayFieldSalesAgg[0]?.total || 0,
         todayFieldSalesCount: todayFieldSalesAgg[0]?.count || 0,
+        todayServiceCharges: todayServiceAgg[0]?.total || 0,
+        todayServiceChargesCount: todayServiceAgg[0]?.count || 0,
         todayLayawayCollections: todayLayaway,
         monthlyLayawayCollections: monthlyLayaway,
         outstandingDebtAmount,
