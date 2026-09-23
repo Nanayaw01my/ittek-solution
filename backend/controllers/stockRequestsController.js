@@ -48,17 +48,50 @@ const createStockRequest = async (req, res) => {
       return res.status(400).json({ success: false, message: errors.array()[0].msg });
     }
 
-    const { items } = req.body;
-    if (!items || items.length === 0) {
+    const { items, notes } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: 'At least one item required.' });
     }
 
-    const total_amount = items.reduce((sum, i) => sum + (i.total || i.quantity_requested * (i.estimated_cost || 0)), 0);
+    // Take the line however it arrives. The screen sends product ids and the
+    // record stores a named line, and a mismatch between the two used to fail
+    // deep in the database and come back as a flat "Server error" with nothing
+    // to act on. Anything genuinely missing is named below instead.
+    const lines = [];
+    for (const raw of items) {
+      const name = String(raw.product_name || raw.name || '').trim();
+      const quantity = Number(raw.quantity_requested ?? raw.quantity);
+      const cost = Number(raw.estimated_cost ?? raw.estimatedCost) || 0;
+
+      if (!name) {
+        return res.status(400).json({
+          success: false,
+          message: 'Every line needs a product. Pick one from the list.',
+        });
+      }
+      if (!Number.isFinite(quantity) || quantity < 1) {
+        return res.status(400).json({
+          success: false,
+          message: `How many ${name}? Enter a quantity of at least 1.`,
+        });
+      }
+
+      lines.push({
+        product_id: raw.product_id || raw.product || undefined,
+        product_name: name,
+        quantity_requested: quantity,
+        estimated_cost: cost,
+        total: Number((raw.total ?? quantity * cost).toFixed(2)),
+      });
+    }
+
+    const total_amount = Number(lines.reduce((sum, i) => sum + i.total, 0).toFixed(2));
 
     const request = await StockRequest.create({
       created_by: req.user._id,
-      items,
+      items: lines,
       total_amount,
+      notes,
     });
 
     // Notify CEO/Super Admin
@@ -72,8 +105,20 @@ const createStockRequest = async (req, res) => {
 
     return res.status(201).json({ success: true, message: 'Stock request submitted.', data: request });
   } catch (err) {
-    console.error('Create stock request error:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error.' });
+    // The real reason, on screen and in the log. "Server error." told the
+    // person nothing and left no trail to follow.
+    console.error('Create stock request error:', err.stack || err.message);
+    if (err.name === 'ValidationError') {
+      const first = Object.values(err.errors || {})[0];
+      return res.status(400).json({
+        success: false,
+        message: first?.message || 'That request is missing something.',
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      message: `Could not submit the request: ${err.message}`,
+    });
   }
 };
 

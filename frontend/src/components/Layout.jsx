@@ -10,7 +10,7 @@ import {
   FiAlertCircle, FiUsers, FiShoppingBag, FiInbox, FiFileText,
   FiBarChart2, FiSettings, FiDatabase, FiBell, FiSearch, FiLogOut,
   FiMenu, FiX, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
-  FiArchive, FiShield, FiGlobe, FiTrash2, FiClipboard, FiSend, FiSmartphone
+  FiArchive, FiShield, FiGlobe, FiTrash2, FiClipboard, FiSend, FiSmartphone, FiTool
 } from 'react-icons/fi'
 import { logout as apiLogout } from '../api/auth'
 import toast from 'react-hot-toast'
@@ -34,6 +34,7 @@ const NAV_ITEMS = [
   { to: '/refunds', label: 'Refunds', icon: FiRotateCcw, minLevel: 1 },
   { to: '/field-dispatch', label: 'Field Dispatch', icon: FiSend, minLevel: 1 },
   { to: '/phone-sales', label: 'Phone Credit Sales', icon: FiSmartphone, minLevel: 1 },
+  { to: '/service-charges', label: 'Service Charges', icon: FiTool, minLevel: 1 },
   // CEO+ only
   { to: '/debts', label: 'Debts', icon: FiAlertCircle, minLevel: 2 },
   { to: '/stock-requests', label: 'Stock Requests', icon: FiInbox, minLevel: 2 },

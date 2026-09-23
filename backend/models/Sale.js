@@ -88,6 +88,17 @@ const SaleSchema = new mongoose.Schema(
       sparse: true,
     },
     /**
+     * Set when the sale was work done rather than goods sold — a repair, an
+     * installation, a call-out. It counts in the takings like any other sale;
+     * this only says where it came from.
+     */
+    service_ref: {
+      type: String,
+      trim: true,
+      index: true,
+      sparse: true,
+    },
+    /**
      * Set when the sale came from a Pay & Pick Later plan being collected.
      * The money arrived in instalments over weeks; the sale is recorded when
      * the goods actually leave, which is the point the shop has earned it.

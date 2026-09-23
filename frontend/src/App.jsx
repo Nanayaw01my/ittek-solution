@@ -34,6 +34,7 @@ import PublicReceipt from './pages/PublicReceipt'
 import Layaways from './pages/Layaways'
 import FieldDispatch from './pages/FieldDispatch'
 import PhoneSales from './pages/PhoneSales'
+import ServiceCharges from './pages/ServiceCharges'
 import FraudAlerts from './pages/FraudAlerts'
 import DeleteRecords from './pages/DeleteRecords'
 import ReceiptForms from './pages/ReceiptForms'
@@ -158,6 +159,7 @@ export default function App() {
         {/* Standalone: its own records, wired into nothing else.
             Anyone may take an application; only an owner reads it back. */}
         <Route path="phone-sales" element={<ProtectedRoute minLevel={1}><PhoneSales /></ProtectedRoute>} />
+        <Route path="service-charges" element={<ProtectedRoute minLevel={1}><ServiceCharges /></ProtectedRoute>} />
         <Route path="search" element={<ProtectedRoute minLevel={3} page="search"><Search /></ProtectedRoute>} />
 
         {/* CEO+ */}

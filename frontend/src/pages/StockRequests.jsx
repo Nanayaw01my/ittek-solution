@@ -29,6 +29,35 @@ function CreateRequestModal({ isOpen, onClose }) {
 
   const total = items.reduce((s, i) => s + (parseFloat(i.estimatedCost || 0) * parseFloat(i.quantity || 0)), 0)
 
+  /**
+   * The form works in product ids; the server stores a line of a request —
+   * a name, a quantity and a cost. Sending the form's own shape straight up
+   * was silently rejected by the database for having no product_name, and
+   * every request came back as "Server error".
+   */
+  const submit = (d) => {
+    const lines = (d.items || [])
+      .filter((i) => i.product && Number(i.quantity) > 0)
+      .map((i) => {
+        const product = products.find((p) => String(p._id) === String(i.product))
+        const quantity = Number(i.quantity) || 0
+        const cost = parseFloat(i.estimatedCost) || 0
+        return {
+          product_id: i.product,
+          product_name: product?.name || 'Unknown product',
+          quantity_requested: quantity,
+          estimated_cost: cost,
+          total: Number((quantity * cost).toFixed(2)),
+        }
+      })
+
+    if (lines.length === 0) {
+      toast.error('Pick a product and a quantity first')
+      return
+    }
+    mutation.mutate({ items: lines, notes: d.notes || undefined })
+  }
+
   const mutation = useMutation({
     mutationFn: createStockRequest,
     onSuccess: () => {
@@ -41,7 +70,7 @@ function CreateRequestModal({ isOpen, onClose }) {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Create Stock Request" size="xl">
-      <form onSubmit={handleSubmit(d => mutation.mutate(d))} className="p-5 space-y-4">
+      <form onSubmit={handleSubmit(submit)} className="p-5 space-y-4">
         <div className="space-y-3">
           {fields.map((field, index) => (
             <div key={field.id} className="grid grid-cols-12 gap-2 items-center">
