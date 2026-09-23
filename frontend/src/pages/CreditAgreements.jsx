@@ -278,6 +278,59 @@ function AgreementForm({ onSubmit, loading }) {
   )
 }
 
+/**
+ * The instalments this agreement actually commits the customer to.
+ *
+ * An agreement is three instalments, spaced by the plan they chose — three
+ * weeks, three months, or three days — so "weekly" answers the question the
+ * shop is really asking at the counter: how much, and by when. The screen used
+ * to show the word "weekly" and nothing else, which told nobody what was due.
+ *
+ * Payments are applied oldest instalment first, the way a ledger settles, so a
+ * part payment shows as part of the instalment it went against rather than
+ * floating loose.
+ */
+const EVERY = {
+  daily: { label: 'day', add: (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n) },
+  weekly: { label: 'week', add: (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n * 7) },
+  monthly: { label: 'month', add: (d, n) => new Date(d.getFullYear(), d.getMonth() + n, d.getDate()) },
+}
+
+const buildSchedule = (agreement) => {
+  const plan = EVERY[agreement.payment_plan] ? agreement.payment_plan : 'weekly'
+  const every = EVERY[plan]
+  const count = 3
+  const balance = Math.max(0, (agreement.total_amount || 0) - (agreement.down_payment || 0))
+  const each = Number((balance / count).toFixed(2))
+  const start = new Date(agreement.start_date || agreement.createdAt || Date.now())
+
+  // What has been paid, spread over the instalments in order.
+  let pot = (agreement.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const rows = []
+  for (let n = 1; n <= count; n++) {
+    // The last instalment carries any rounding, so the three add to the balance.
+    const due = n === count ? Number((balance - each * (count - 1)).toFixed(2)) : each
+    const paid = Math.min(pot, due)
+    pot = Math.max(0, pot - due)
+
+    const dueDate = every.add(start, n)
+    const settled = paid >= due - 0.005
+    const overdue = !settled && dueDate < today
+
+    rows.push({
+      n, due, paid, outstanding: Number((due - paid).toFixed(2)),
+      dueDate, settled, overdue,
+      partly: paid > 0 && !settled,
+    })
+  }
+
+  return { plan, every, count, each, balance, rows, extra: pot }
+}
+
 function ViewAgreementModal({ agreement, isOpen, onClose }) {
   const queryClient = useQueryClient()
   const [payAmount, setPayAmount] = useState('')
@@ -309,6 +362,10 @@ function ViewAgreementModal({ agreement, isOpen, onClose }) {
   const amountPaid = payments.reduce((s, p) => s + (p.amount || 0), 0)
   const remaining = Math.max(0, (agreement.total_amount || 0) - (agreement.down_payment || 0) - amountPaid)
   const balance = Math.max(0, (agreement.total_amount || 0) - (agreement.down_payment || 0))
+
+  const schedule = buildSchedule(agreement)
+  // The one the shop chases next: the first that is not settled.
+  const nextDue = schedule.rows.find(r => !r.settled) || null
 
   const SectionHeader = ({ title }) => (
     <div className="flex items-center gap-2 pb-1 border-b-2 border-orange-200 mb-3">
@@ -377,6 +434,59 @@ function ViewAgreementModal({ agreement, isOpen, onClose }) {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Repayment Schedule */}
+        <div>
+          <SectionHeader title={`Repayment Schedule — ${schedule.count} ${schedule.every.label}${schedule.count === 1 ? '' : 's'}`} />
+
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-3">
+            <p className="text-sm text-orange-900">
+              Pays <span className="font-black">{formatCurrency(schedule.each)}</span> every
+              {' '}{schedule.every.label}, for {schedule.count} {schedule.every.label}s —
+              {' '}<span className="font-black">{formatCurrency(schedule.balance)}</span> in total after the down payment.
+            </p>
+            {nextDue ? (
+              <p className={`text-xs mt-1 font-bold ${nextDue.overdue ? 'text-red-700' : 'text-orange-700'}`}>
+                {nextDue.overdue ? 'OVERDUE: ' : 'Next due: '}
+                {formatCurrency(nextDue.outstanding)} on {formatDate(nextDue.dueDate)}
+              </p>
+            ) : (
+              <p className="text-xs mt-1 font-bold text-green-700">All instalments paid.</p>
+            )}
+          </div>
+
+          <div className="border border-gray-100 rounded-xl overflow-hidden">
+            <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-gray-50 text-[11px] font-bold text-gray-500">
+              <span className="col-span-4">DUE ON</span>
+              <span className="col-span-3 text-right">AMOUNT</span>
+              <span className="col-span-2 text-right">PAID</span>
+              <span className="col-span-3 text-right">STATUS</span>
+            </div>
+            {schedule.rows.map(r => (
+              <div key={r.n} className={`grid grid-cols-12 gap-2 px-3 py-2 border-t text-sm ${
+                r.overdue ? 'bg-red-50' : r.settled ? 'bg-green-50' : ''
+              }`}>
+                <span className="col-span-4">
+                  <span className="text-gray-400 mr-1">{r.n}.</span>{formatDate(r.dueDate)}
+                </span>
+                <span className="col-span-3 text-right font-semibold">{formatCurrency(r.due)}</span>
+                <span className="col-span-2 text-right text-gray-600">{formatCurrency(r.paid)}</span>
+                <span className={`col-span-3 text-right text-xs font-bold ${
+                  r.settled ? 'text-green-700' : r.overdue ? 'text-red-700' : 'text-gray-500'
+                }`}>
+                  {r.settled ? 'Paid' : r.overdue
+                    ? `Overdue ${formatCurrency(r.outstanding)}`
+                    : r.partly ? `${formatCurrency(r.outstanding)} left` : 'Not yet due'}
+                </span>
+              </div>
+            ))}
+          </div>
+          {schedule.extra > 0 && (
+            <p className="text-xs text-green-700 mt-2">
+              Paid {formatCurrency(schedule.extra)} more than the schedule asks for.
+            </p>
+          )}
         </div>
 
         {/* Guarantor Details */}
