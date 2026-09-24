@@ -1031,19 +1031,34 @@ const generateBlankReceiptForm = async (options = {}) => {
 
       // Pre-filled lines, if any. Everything below is written to work equally
       // well with none of them.
+      // A line carries an amount, not a unit price to be multiplied out. The
+      // sheet is written at whatever was agreed across the counter, which is
+      // often not quantity times shelf price, and the arithmetic in between
+      // only got in the way.
       const filled = (options.items || [])
         .filter((i) => i && i.name)
         .slice(0, rows)
         .map((i) => {
           const qty = Number(i.quantity) || 0;
-          const price = Number(i.unit_price) || 0;
-          return { name: String(i.name), qty, price, total: +(qty * price).toFixed(2) };
+          const amount = i.total ?? i.amount;
+          const total = Number(amount);
+          return {
+            name: String(i.name),
+            qty,
+            total: Number.isFinite(total) && total > 0 ? +total.toFixed(2) : null,
+          };
         });
       const customer = options.customer || {};
-      const subtotal = filled.reduce((sum, i) => sum + i.total, 0);
-      const discount = Math.max(0, Number(options.discount) || 0);
-      const grandTotal = Math.max(0, subtotal - discount);
-      const hasItems = filled.length > 0;
+
+      // Typed in, never worked out. Anything left empty prints as a blank box
+      // to be written in by hand.
+      const num = (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      };
+      const subtotal = num(options.subtotal);
+      const discount = num(options.discount);
+      const grandTotal = num(options.grandTotal);
       const gh = (n) => 'GHC' + Number(n).toFixed(2);
 
       const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
@@ -1106,12 +1121,13 @@ const generateBlankReceiptForm = async (options = {}) => {
 
         // ── Items table ─────────────────────────────────────────────────────
         y += 30;
+        // No unit price column. The description takes the width it used to
+        // hold, which a hand-written line needs far more.
         const COLS = [
           { key: '#', x: ML, w: 26 },
-          { key: 'DESCRIPTION', x: ML + 26, w: 249 },
-          { key: 'QTY', x: ML + 275, w: 46 },
-          { key: 'UNIT PRICE', x: ML + 321, w: 87 },
-          { key: 'TOTAL', x: ML + 408, w: 87 },
+          { key: 'DESCRIPTION', x: ML + 26, w: 336 },
+          { key: 'QTY', x: ML + 362, w: 46 },
+          { key: 'AMOUNT', x: ML + 408, w: 87 },
         ];
 
         doc.rect(ML, y, W, 20).fill(ORANGE);
@@ -1143,10 +1159,13 @@ const generateBlankReceiptForm = async (options = {}) => {
             const ty = ry + (rowH - 9) / 2;
             doc.fontSize(9).font('Helvetica').fillColor('#111111')
               .text(line.name, COLS[1].x + 6, ty, { width: COLS[1].w - 12, lineBreak: false });
-            doc.text(String(line.qty), COLS[2].x, ty, { width: COLS[2].w, align: 'center' });
-            doc.text(gh(line.price), COLS[3].x, ty, { width: COLS[3].w - 8, align: 'right' });
-            doc.font('Helvetica-Bold')
-              .text(gh(line.total), COLS[4].x, ty, { width: COLS[4].w - 8, align: 'right' });
+            if (line.qty) {
+              doc.text(String(line.qty), COLS[2].x, ty, { width: COLS[2].w, align: 'center' });
+            }
+            if (line.total != null) {
+              doc.font('Helvetica-Bold')
+                .text(gh(line.total), COLS[3].x, ty, { width: COLS[3].w - 8, align: 'right' });
+            }
           }
           doc.moveTo(ML, ry + rowH).lineTo(ML + W, ry + rowH).lineWidth(0.4).strokeColor(RULE).stroke();
           reset();
@@ -1161,24 +1180,29 @@ const generateBlankReceiptForm = async (options = {}) => {
         y = tableBottom;
 
         // ── Totals, under the last two columns ──────────────────────────────
-        const totalsX = COLS[3].x;
-        const labelW = COLS[3].w;
-        const valueW = COLS[4].w;
+        // The value column sits under AMOUNT so the figures line up with the
+        // rows above; the label gets a proper width of its own rather than
+        // inheriting the narrow QTY column, where "GRAND TOTAL" wrapped.
+        const valueX = COLS[3].x;
+        const valueW = COLS[3].w;
+        const labelW = 110;
+        const totalsX = valueX - labelW;
         const totalsRow = (label, h, opts = {}) => {
           doc.rect(totalsX, y, labelW + valueW, h).lineWidth(0.7).strokeColor('#b5b5b5').stroke();
-          doc.moveTo(COLS[4].x, y).lineTo(COLS[4].x, y + h).lineWidth(0.5).strokeColor('#b5b5b5').stroke();
+          doc.moveTo(valueX, y).lineTo(valueX, y + h).lineWidth(0.5).strokeColor('#b5b5b5').stroke();
           doc.fontSize(opts.big ? 10 : 8.5).font('Helvetica-Bold').fillColor(opts.color || '#333333')
-            .text(label, totalsX, y + (h - (opts.big ? 10 : 9)) / 2, { width: labelW, align: 'center' });
+            .text(label, totalsX + 8, y + (h - (opts.big ? 10 : 9)) / 2,
+              { width: labelW - 16, align: 'left', lineBreak: false });
           if (opts.value) {
             doc.fontSize(opts.big ? 11 : 9).font('Helvetica-Bold').fillColor(opts.color || '#111111')
-              .text(opts.value, COLS[4].x, y + (h - (opts.big ? 11 : 9)) / 2, { width: valueW - 8, align: 'right' });
+              .text(opts.value, valueX, y + (h - (opts.big ? 11 : 9)) / 2, { width: valueW - 8, align: 'right' });
           }
           reset();
           y += h;
         };
-        totalsRow('SUBTOTAL', 22, { value: hasItems ? gh(subtotal) : null });
-        totalsRow('DISCOUNT', 22, { value: discount > 0 ? '-' + gh(discount) : null });
-        totalsRow('GRAND TOTAL', 26, { big: true, color: ORANGE, value: hasItems ? gh(grandTotal) : null });
+        totalsRow('SUBTOTAL', 22, { value: subtotal != null ? gh(subtotal) : null });
+        totalsRow('DISCOUNT', 22, { value: discount != null ? '-' + gh(discount) : null });
+        totalsRow('GRAND TOTAL', 26, { big: true, color: ORANGE, value: grandTotal != null ? gh(grandTotal) : null });
 
         // Amount in words and payment method sit beside the totals.
         let leftY = tableBottom + 4;

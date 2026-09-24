@@ -62,13 +62,16 @@ router.get('/blank-receipt', async (req, res) => {
  * no sale is written and no stock moves — this prints a sheet of paper. Ring
  * the sale up on the POS if it needs to count.
  *
- * Prices come from the request rather than being looked up, because the whole
- * point is writing a quote or a receipt by hand at a price that may not match
- * the shelf.
+ * Every figure comes from the request and none is calculated. The whole point
+ * is a receipt written at whatever was agreed across the counter, which is
+ * often not quantity times shelf price.
  */
 router.post('/receipt', async (req, res) => {
   try {
-    const { rows, copies, items, customer, receiptNo, date, discount } = req.body || {};
+    const {
+      rows, copies, items, customer, receiptNo, date,
+      discount, subtotal, grandTotal,
+    } = req.body || {};
 
     if (items && !Array.isArray(items)) {
       return res.status(400).json({ success: false, message: 'Items must be a list.' });
@@ -77,14 +80,17 @@ router.post('/receipt', async (req, res) => {
     const pdf = await buildForm({
       rows,
       copies,
+      // Typed, not worked out — anything left blank prints as an empty box.
       discount,
+      subtotal,
+      grandTotal,
       receiptNo,
       date,
       customer,
       items: (items || []).slice(0, 30).map((i) => ({
         name: String(i.name || '').slice(0, 120),
         quantity: Number(i.quantity) || 0,
-        unit_price: Number(i.unit_price) || 0,
+        total: i.total,
       })),
     });
 

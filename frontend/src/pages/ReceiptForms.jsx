@@ -41,6 +41,10 @@ export default function ReceiptForms() {
   const [customer, setCustomer] = useState({ name: '', phone: '', address: '' })
   const [receiptNo, setReceiptNo] = useState('')
   const [discount, setDiscount] = useState('')
+  // Typed in, not worked out. Leave one empty and it prints as a blank box to
+  // fill in by hand.
+  const [subtotalInput, setSubtotalInput] = useState('')
+  const [grandTotalInput, setGrandTotalInput] = useState('')
 
   // Acceptance letter for a student on attachment or internship. Only the name
   // is required — the letter is written from whatever is filled in.
@@ -172,14 +176,14 @@ export default function ReceiptForms() {
         product_id: p._id,
         name: p.name,
         quantity: 1,
-        unit_price: p.selling_price ?? '',
+        total: p.selling_price ?? '',
       }]
     })
     setSearch('')
   }
 
   const addBlankLine = () =>
-    setLines(prev => [...prev, { key: `manual-${Date.now()}`, name: '', quantity: 1, unit_price: '' }])
+    setLines(prev => [...prev, { key: `manual-${Date.now()}`, name: '', quantity: 1, total: '' }])
 
   const updateLine = (key, field, value) =>
     setLines(prev => prev.map(l => (
@@ -200,10 +204,8 @@ export default function ReceiptForms() {
 
   const removeLine = (key) => setLines(prev => prev.filter(l => l.key !== key))
 
-  const subtotal = lines.reduce(
-    (s, l) => s + (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0), 0
-  )
-  const total = Math.max(0, subtotal - (parseFloat(discount) || 0))
+  // Only ever a suggestion, shown beside the boxes. Nothing is sent from it.
+  const lineSum = lines.reduce((s, l) => s + (parseFloat(l.total) || 0), 0)
   const hasLines = lines.some(l => l.name.trim())
 
   const print = async () => {
@@ -215,7 +217,9 @@ export default function ReceiptForms() {
         await openPdfInNewTab(() => getFilledReceiptForm({
           rows: Number(rows),
           copies: 1,
-          discount: parseFloat(discount) || 0,
+          discount: discount === '' ? undefined : parseFloat(discount),
+          subtotal: subtotalInput === '' ? undefined : parseFloat(subtotalInput),
+          grandTotal: grandTotalInput === '' ? undefined : parseFloat(grandTotalInput),
           receiptNo: receiptNo.trim() || undefined,
           date: new Date().toLocaleDateString('en-GB'),
           customer: {
@@ -228,7 +232,7 @@ export default function ReceiptForms() {
             .map(l => ({
               name: l.name.trim(),
               quantity: parseFloat(l.quantity) || 0,
-              unit_price: parseFloat(l.unit_price) || 0,
+              total: l.total === '' ? undefined : parseFloat(l.total),
             })),
         }), 'receipt.pdf')
       } else {
@@ -424,9 +428,9 @@ export default function ReceiptForms() {
                     type="number"
                     min="0"
                     step="0.01"
-                    value={l.unit_price}
-                    onChange={e => updateLine(l.key, 'unit_price', e.target.value)}
-                    placeholder="Price"
+                    value={l.total}
+                    onChange={e => updateLine(l.key, 'total', e.target.value)}
+                    placeholder="Amount"
                     className="w-24 px-2 py-2 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                   <button
@@ -485,23 +489,41 @@ export default function ReceiptForms() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-xl">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">Discount</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={discount}
-                  onChange={e => setDiscount(e.target.value)}
-                  placeholder="0.00"
-                  className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-gray-500">Total</p>
-                <p className="text-lg font-black text-orange-600">{formatCurrency(total)}</p>
-              </div>
+            <div className="p-3 bg-gray-50 rounded-xl space-y-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Totals — typed, not worked out
+              </p>
+              {[
+                ['Subtotal', subtotalInput, setSubtotalInput],
+                ['Discount', discount, setDiscount],
+                ['Grand total', grandTotalInput, setGrandTotalInput],
+              ].map(([label, value, setter]) => (
+                <div key={label} className="flex items-center justify-between gap-3">
+                  <span className={`text-sm ${label === 'Grand total' ? 'font-bold text-gray-800' : 'text-gray-600'}`}>
+                    {label}
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={value}
+                    onChange={e => setter(e.target.value)}
+                    placeholder="leave blank to write it in"
+                    className={`w-44 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500 ${
+                      label === 'Grand total' ? 'font-bold text-orange-700' : ''
+                    }`}
+                  />
+                </div>
+              ))}
+              {lineSum > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSubtotalInput(String(lineSum.toFixed(2)))}
+                  className="text-xs font-semibold text-orange-600 hover:text-orange-700"
+                >
+                  The amounts above add up to {formatCurrency(lineSum)} — use it as the subtotal
+                </button>
+              )}
             </div>
           </>
         )}
