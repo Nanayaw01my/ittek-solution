@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { FiPrinter, FiFileText, FiSearch, FiX, FiPlus, FiThermometer, FiBatteryCharging, FiZap, FiSun, FiAward, FiSmartphone, FiTag } from 'react-icons/fi'
@@ -53,6 +53,10 @@ export default function ReceiptForms() {
   // What the customer actually handed over. Leave it empty and they paid the
   // lot; type less than the grand total and the rest becomes a debt.
   const [amountPaidInput, setAmountPaidInput] = useState('')
+  // Typed like the rest, but filled in for you from grand total less paid
+  // until you type in it yourself.
+  const [balanceDueInput, setBalanceDueInput] = useState('')
+  const [balanceTouched, setBalanceTouched] = useState(false)
 
   // Acceptance letter for a student on attachment or internship. Only the name
   // is required — the letter is written from whatever is filled in.
@@ -215,21 +219,36 @@ export default function ReceiptForms() {
 
   const hasLines = lines.some(l => l.name.trim())
 
-  // Shown on screen so the consequence of a part payment is visible before
-  // printing. The server works it out again from the same two figures.
-  const owing = (() => {
+  // Typed money counts as a filled receipt too. Without this, a sheet with the
+  // figures entered but no item line printed as a blank form and threw them
+  // away.
+  const hasMoney = [subtotalInput, discount, grandTotalInput, amountPaidInput, balanceDueInput]
+    .some(v => v !== '' && parseFloat(v) > 0)
+  const isFilled = hasLines || hasMoney
+
+  // What grand total less paid comes to, used to fill the balance box in.
+  const suggestedBalance = (() => {
     const total = parseFloat(grandTotalInput)
     const paid = parseFloat(amountPaidInput)
-    if (!Number.isFinite(total) || !Number.isFinite(paid)) return 0
+    if (!Number.isFinite(total) || !Number.isFinite(paid)) return null
     return Math.max(0, +(total - paid).toFixed(2))
   })()
+
+  // Keep the balance box in step until someone types their own figure in it.
+  useEffect(() => {
+    if (balanceTouched) return
+    setBalanceDueInput(suggestedBalance == null ? '' : String(suggestedBalance))
+  }, [suggestedBalance, balanceTouched])
+
+  // What actually goes to Debts: whatever is in the balance box.
+  const owing = Math.max(0, parseFloat(balanceDueInput) || 0)
 
   const print = async () => {
     setBusy(true)
     try {
       // Must stay inside the click: openPdfInNewTab opens the tab before the
       // request so the browser does not treat it as an unsolicited popup.
-      if (hasLines) {
+      if (isFilled) {
         await openPdfInNewTab(() => getFilledReceiptForm({
           rows: Number(rows),
           copies: 1,
@@ -239,6 +258,7 @@ export default function ReceiptForms() {
           record: recordSale,
           payment_method: payMethod,
           amountPaid: amountPaidInput === '' ? undefined : parseFloat(amountPaidInput),
+          balanceDue: balanceDueInput === '' ? undefined : parseFloat(balanceDueInput),
           receiptNo: receiptNo.trim() || undefined,
           date: new Date().toLocaleDateString('en-GB'),
           customer: {
@@ -485,8 +505,11 @@ export default function ReceiptForms() {
           </button>
         </div>
 
-        {/* ── Customer + totals, only useful once there are lines ───────── */}
-        {hasLines && (
+        {/* ── Customer and the money ─────────────────────────────────────
+            Always on show. These used to appear only once an item line had
+            been typed, so opening the page and pressing print gave a blank
+            sheet and the boxes were never seen at all. */}
+        {true && (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
@@ -517,30 +540,51 @@ export default function ReceiptForms() {
 
             <div className="p-3 bg-gray-50 rounded-xl space-y-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Totals — typed, not worked out
+                The money — type each figure
               </p>
+
               {[
-                ['Subtotal', subtotalInput, setSubtotalInput],
-                ['Discount', discount, setDiscount],
-                ['Grand total', grandTotalInput, setGrandTotalInput],
-              ].map(([label, value, setter]) => (
+                ['Subtotal', subtotalInput, setSubtotalInput, false],
+                ['Discount', discount, setDiscount, false],
+                ['Grand total', grandTotalInput, setGrandTotalInput, true],
+                ['Paid', amountPaidInput, setAmountPaidInput, false],
+              ].map(([label, value, setter, bold]) => (
                 <div key={label} className="flex items-center justify-between gap-3">
-                  <span className={`text-sm ${label === 'Grand total' ? 'font-bold text-gray-800' : 'text-gray-600'}`}>
+                  <span className={`text-sm ${bold ? 'font-bold text-gray-800' : 'text-gray-600'}`}>
                     {label}
                   </span>
                   <input
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    type="number" min="0" step="0.01"
                     value={value}
                     onChange={e => setter(e.target.value)}
-                    placeholder="leave blank to write it in"
+                    placeholder="0.00"
                     className={`w-44 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500 ${
-                      label === 'Grand total' ? 'font-bold text-orange-700' : ''
+                      bold ? 'font-bold text-orange-700' : ''
                     }`}
                   />
                 </div>
               ))}
+
+              {/* Filled in from grand total less paid, and overwritable. */}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-bold text-red-700">Balance due</span>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={balanceDueInput}
+                  onChange={e => { setBalanceTouched(true); setBalanceDueInput(e.target.value) }}
+                  placeholder="0.00"
+                  className="w-44 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right font-bold text-red-700 focus:outline-none focus:ring-2 focus:ring-red-400"
+                />
+              </div>
+              {balanceTouched && suggestedBalance != null && (
+                <button
+                  type="button"
+                  onClick={() => { setBalanceTouched(false); setBalanceDueInput(String(suggestedBalance)) }}
+                  className="text-xs font-semibold text-orange-600 hover:text-orange-700"
+                >
+                  Work it out again ({formatCurrency(suggestedBalance)})
+                </button>
+              )}
 
               <div className="pt-2 mt-1 border-t border-gray-200 space-y-2">
                 <label className="flex items-start gap-2 cursor-pointer">
@@ -561,43 +605,30 @@ export default function ReceiptForms() {
 
                 {recordSale && (
                   <>
-                  <div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm text-gray-700">Paid now</span>
-                      <input
-                        type="number" min="0" step="0.01"
-                        value={amountPaidInput}
-                        onChange={e => setAmountPaidInput(e.target.value)}
-                        placeholder="leave blank if paid in full"
-                        className="w-44 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      />
-                    </div>
                     {owing > 0 && (
-                      <p className="text-xs font-bold text-red-700 mt-1 text-right">
+                      <p className="text-xs font-bold text-red-700 text-right">
                         {formatCurrency(owing)} goes to Debts under {customer.name.trim() || 'the customer'}
                       </p>
                     )}
                     {owing > 0 && !customer.name.trim() && (
-                      <p className="text-xs text-red-600 mt-0.5 text-right">
+                      <p className="text-xs text-red-600 text-right">
                         Enter the customer's name — a balance has to be owed by somebody.
                       </p>
                     )}
-                  </div>
-
-                  <div className="flex gap-2">
-                    {[['cash', 'Cash'], ['mobile_money', 'Mobile Money'], ['card', 'Card']].map(([v, label]) => (
-                      <button
-                        key={v} type="button" onClick={() => setPayMethod(v)}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg border ${
-                          payMethod === v
-                            ? 'bg-orange-500 text-white border-orange-500'
-                            : 'bg-white text-gray-600 border-gray-200'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                    <div className="flex gap-2">
+                      {[['cash', 'Cash'], ['mobile_money', 'Mobile Money'], ['card', 'Card']].map(([v, label]) => (
+                        <button
+                          key={v} type="button" onClick={() => setPayMethod(v)}
+                          className={`flex-1 py-1.5 text-xs font-bold rounded-lg border ${
+                            payMethod === v
+                              ? 'bg-orange-500 text-white border-orange-500'
+                              : 'bg-white text-gray-600 border-gray-200'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </>
                 )}
               </div>
@@ -633,12 +664,12 @@ export default function ReceiptForms() {
               min="1"
               max="50"
               value={copies}
-              disabled={hasLines}
+              disabled={isFilled}
               onChange={e => setCopies(e.target.value)}
               className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm disabled:bg-gray-100 disabled:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
             <p className="mt-1 text-xs text-gray-400">
-              {hasLines
+              {isFilled
                 ? 'One sheet when products are filled in.'
                 : 'One per page, up to 50 at a time.'}
             </p>
@@ -651,7 +682,7 @@ export default function ReceiptForms() {
           className="w-full flex items-center justify-center gap-2 py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
         >
           <FiPrinter size={16} />
-          {busy ? 'Preparing…' : hasLines ? 'Print this receipt' : 'Print blank receipt forms'}
+          {busy ? 'Preparing…' : isFilled ? 'Print this receipt' : 'Print blank receipt forms'}
         </button>
 
         <p className="text-xs text-gray-400 text-center">

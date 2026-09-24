@@ -72,7 +72,7 @@ router.post('/receipt', async (req, res) => {
   try {
     const {
       rows, copies, items, customer, receiptNo, date,
-      discount, subtotal, grandTotal, record, payment_method, amountPaid,
+      discount, subtotal, grandTotal, record, payment_method, amountPaid, balanceDue,
     } = req.body || {};
 
     if (items && !Array.isArray(items)) {
@@ -87,6 +87,7 @@ router.post('/receipt', async (req, res) => {
       subtotal,
       grandTotal,
       amountPaid,
+      balanceDue,
       receiptNo,
       date,
       customer,
@@ -117,7 +118,12 @@ router.post('/receipt', async (req, res) => {
         const paid = Number.isFinite(paidNow) && paidNow >= 0
           ? Math.min(paidNow, amount)
           : amount;
-        const owing = Number((amount - paid).toFixed(2));
+        // The balance is typed like everything else. Only when it is left
+        // empty is it worked out from the grand total and what was paid.
+        const typedBalance = Number(balanceDue);
+        const owing = Number.isFinite(typedBalance) && typedBalance >= 0
+          ? Number(typedBalance.toFixed(2))
+          : Number((amount - paid).toFixed(2));
 
         if (owing > 0 && !(customer && String(customer.name || '').trim())) {
           return res.status(400).json({

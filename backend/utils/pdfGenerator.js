@@ -1053,9 +1053,12 @@ const generateBlankReceiptForm = async (options = {}) => {
       // Part payment: what was handed over, and what is still owed. Both only
       // appear when there is actually a balance.
       const amountPaid = num(options.amountPaid);
-      const balanceDue = grandTotal != null && amountPaid != null
-        ? +(grandTotal - amountPaid).toFixed(2)
-        : null;
+      // Typed if given, worked out only as a fallback.
+      const balanceDue = num(options.balanceDue) ?? (
+        grandTotal != null && amountPaid != null
+          ? +(grandTotal - amountPaid).toFixed(2)
+          : null
+      );
       const gh = (n) => 'GHC' + Number(n).toFixed(2);
 
       const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
@@ -1142,7 +1145,9 @@ const generateBlankReceiptForm = async (options = {}) => {
         const FOOTER_TOP = PAGE_BOTTOM - 40 - 42;
         const SIG_BLOCK_H = 96;
         const TOTALS_H = 22 + 22 + 26
-          + (Number(options.amountPaid) > 0 && Number(options.grandTotal) > Number(options.amountPaid)
+          + (Number(options.balanceDue) > 0
+            || (Number(options.amountPaid) > 0
+                && Number(options.grandTotal) > Number(options.amountPaid))
             ? 22 + 24 : 0);
         const available = FOOTER_TOP - SIG_BLOCK_H - 12 - tableTop;
         const rowH = Math.min(26, Math.max(14, Math.floor((available - TOTALS_H) / rows)));
@@ -1199,7 +1204,7 @@ const generateBlankReceiptForm = async (options = {}) => {
         totalsRow('DISCOUNT', 22, { value: discount != null ? '-' + gh(discount) : null });
         totalsRow('GRAND TOTAL', 26, { big: true, color: ORANGE, value: grandTotal != null ? gh(grandTotal) : null });
         if (balanceDue != null && balanceDue > 0) {
-          totalsRow('PAID', 22, { value: gh(amountPaid) });
+          totalsRow('PAID', 22, { value: amountPaid != null ? gh(amountPaid) : null });
           totalsRow('BALANCE DUE', 24, { big: true, color: '#b91c1c', value: gh(balanceDue) });
         }
 
