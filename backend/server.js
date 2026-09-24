@@ -185,6 +185,12 @@ app.use('/api', apiLimiter);
 
 // ─── STEP 6: BODY PARSING ─────────────────────────────────────────────────────
 
+// A restore carries the whole database in one request, which can be far
+// larger than an ordinary payload. Mounted before the general parser so the
+// bigger limit is the one that applies to it.
+app.use('/api/backup/restore', express.json({ limit: '200mb' }));
+app.use('/api/backup/restore', express.text({ limit: '200mb', type: '*/*' }));
+
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 

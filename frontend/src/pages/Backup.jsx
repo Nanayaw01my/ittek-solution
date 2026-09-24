@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { FiDownload, FiUpload, FiDatabase, FiAlertTriangle } from 'react-icons/fi'
-import { createBackup, restoreBackup, getBackupHistory } from '../api/settings'
+import { createBackup, restoreBackup, getBackupHistory, getBackupSummary } from '../api/settings'
 import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
 import { formatDateTime } from '../utils/helpers'
@@ -12,13 +12,17 @@ import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function Backup() {
   const { user } = useAuthStore()
-  const isSuperAdmin = user?.role === 'super_admin'
+  // The role is stored as 'Super Admin'. Comparing against 'super_admin' was
+  // never true, so the restore half of this screen was hidden from everybody,
+  // including the one person permitted to use it.
+  const isSuperAdmin = user?.role === 'Super Admin'
   const fileRef = useRef(null)
 
   const [backingUp, setBackingUp] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [showConfirm, setShowConfirm] = useState(false)
+  const [restoreResult, setRestoreResult] = useState(null)
 
   const { data: historyData, isLoading } = useQuery({
     queryKey: ['backup-history'],
@@ -27,13 +31,26 @@ export default function Backup() {
 
   const history = historyData?.history || historyData || []
 
+  // What is actually in the database right now, so the button is not a leap
+  // of faith and the file can be checked against it afterwards.
+  const { data: summary } = useQuery({
+    queryKey: ['backup-summary'],
+    queryFn: () => getBackupSummary().then(r => r.data),
+  })
+
   const handleBackup = async () => {
     setBackingUp(true)
     try {
       const res = await createBackup()
       const blob = new Blob([res.data], { type: 'application/json' })
       saveAs(blob, `backup-dandorsolar-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`)
-      toast.success('Backup created and downloaded!')
+      // Say what came out, so an empty or half file is obvious immediately
+      // rather than on the day it is needed.
+      const cols = res.headers?.['x-backup-collections']
+      const docs = res.headers?.['x-backup-documents']
+      toast.success(docs
+        ? `Backup downloaded — ${Number(docs).toLocaleString()} records from ${cols} collections`
+        : 'Backup created and downloaded')
     } catch (err) {
       toast.error(err.response?.data?.message || 'Backup failed')
     } finally {
@@ -56,10 +73,18 @@ export default function Backup() {
     setRestoring(true)
     setShowConfirm(false)
     try {
-      const formData = new FormData()
-      formData.append('backup', selectedFile)
-      await restoreBackup(formData)
-      toast.success('Restore completed! Please refresh.')
+      // Read the file here and post its contents. The server needs the JSON
+      // itself, not a form wrapper around it.
+      const text = await selectedFile.text()
+      const res = await restoreBackup(text)
+      const r = res.data || {}
+      toast.success(
+        r.documents_restored != null
+          ? `Restored ${Number(r.documents_restored).toLocaleString()} records across ${r.collections_restored} collections`
+          : 'Restore completed',
+        { duration: 8000 }
+      )
+      setRestoreResult(r)
       setSelectedFile(null)
       if (fileRef.current) fileRef.current.value = ''
     } catch (err) {
@@ -85,9 +110,38 @@ export default function Backup() {
               <p className="text-sm text-gray-500">Download a full data backup</p>
             </div>
           </div>
-          <p className="text-sm text-gray-600 mb-5 leading-relaxed">
-            Creates a complete backup of all business data including products, sales, expenses, users, and settings. The backup is downloaded as a JSON file.
+          <p className="text-sm text-gray-600 mb-4 leading-relaxed">
+            Copies <span className="font-semibold">every collection in the database</span> — products,
+            sales, expenses, debts, layaways, dispatches, phone applications, service charges, users,
+            settings, audit logs, all of it — into one file you download and keep.
           </p>
+
+          {/* What is in there right now. A backup button with no idea of the
+              size of the thing behind it is easy to trust wrongly. */}
+          {summary && (
+            <div className="mb-5 bg-gray-50 border border-gray-200 rounded-xl p-3">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">In the database now</p>
+              <p className="text-sm text-gray-800 mt-1">
+                <span className="font-black">{Number(summary.document_count || 0).toLocaleString()}</span> records
+                {' '}across <span className="font-black">{summary.collection_count || 0}</span> collections
+              </p>
+              <details className="mt-2">
+                <summary className="text-xs text-orange-600 font-semibold cursor-pointer">
+                  See the breakdown
+                </summary>
+                <div className="mt-2 max-h-40 overflow-y-auto text-xs space-y-0.5">
+                  {Object.entries(summary.counts || {})
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([name, n]) => (
+                      <div key={name} className="flex justify-between gap-3">
+                        <span className="text-gray-600 truncate">{name}</span>
+                        <span className="text-gray-900 font-semibold flex-shrink-0">{n.toLocaleString()}</span>
+                      </div>
+                    ))}
+                </div>
+              </details>
+            </div>
+          )}
           <button
             onClick={handleBackup}
             disabled={backingUp}
@@ -175,6 +229,34 @@ export default function Backup() {
           </div>
         )}
       </div>
+
+      {restoreResult && (
+        <div className="mb-8 bg-green-50 border border-green-200 rounded-xl p-4">
+          <p className="font-bold text-green-900 text-sm">Restore finished</p>
+          <p className="text-sm text-green-800 mt-1">
+            {Number(restoreResult.documents_restored || 0).toLocaleString()} records put back across
+            {' '}{restoreResult.collections_restored} collections
+            {restoreResult.from?.created_at
+              ? `, from the backup taken ${formatDateTime(restoreResult.from.created_at)}`
+              : ''}.
+          </p>
+          {restoreResult.safety_backup && (
+            <p className="text-xs text-green-700 mt-1">
+              A copy of what was here before was saved first as {restoreResult.safety_backup}.
+            </p>
+          )}
+          {restoreResult.collections_failed > 0 && (
+            <p className="text-xs text-red-700 mt-1 font-semibold">
+              {restoreResult.collections_failed} collection(s) could not be restored — see the server log.
+            </p>
+          )}
+          {restoreResult.untouched_collections?.length > 0 && (
+            <p className="text-xs text-green-700 mt-1">
+              Left alone (not in that backup): {restoreResult.untouched_collections.join(', ')}
+            </p>
+          )}
+        </div>
+      )}
 
       <ConfirmDialog
         isOpen={showConfirm}
