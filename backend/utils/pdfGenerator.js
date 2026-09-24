@@ -1038,16 +1038,7 @@ const generateBlankReceiptForm = async (options = {}) => {
       const filled = (options.items || [])
         .filter((i) => i && i.name)
         .slice(0, rows)
-        .map((i) => {
-          const qty = Number(i.quantity) || 0;
-          const amount = i.total ?? i.amount;
-          const total = Number(amount);
-          return {
-            name: String(i.name),
-            qty,
-            total: Number.isFinite(total) && total > 0 ? +total.toFixed(2) : null,
-          };
-        });
+        .map((i) => ({ name: String(i.name), qty: Number(i.quantity) || 0 }));
       const customer = options.customer || {};
 
       // Typed in, never worked out. Anything left empty prints as a blank box
@@ -1121,13 +1112,14 @@ const generateBlankReceiptForm = async (options = {}) => {
 
         // ── Items table ─────────────────────────────────────────────────────
         y += 30;
-        // No unit price column. The description takes the width it used to
-        // hold, which a hand-written line needs far more.
+        // What was sold and how many of it. No money per line: the figures
+        // that matter are typed once, in the totals box below, and a column of
+        // per-line amounts only invited arithmetic nobody wanted to do at the
+        // counter.
         const COLS = [
           { key: '#', x: ML, w: 26 },
-          { key: 'DESCRIPTION', x: ML + 26, w: 336 },
-          { key: 'QTY', x: ML + 362, w: 46 },
-          { key: 'AMOUNT', x: ML + 408, w: 87 },
+          { key: 'DESCRIPTION', x: ML + 26, w: 403 },
+          { key: 'QTY', x: ML + 429, w: 66 },
         ];
 
         doc.rect(ML, y, W, 20).fill(ORANGE);
@@ -1162,10 +1154,6 @@ const generateBlankReceiptForm = async (options = {}) => {
             if (line.qty) {
               doc.text(String(line.qty), COLS[2].x, ty, { width: COLS[2].w, align: 'center' });
             }
-            if (line.total != null) {
-              doc.font('Helvetica-Bold')
-                .text(gh(line.total), COLS[3].x, ty, { width: COLS[3].w - 8, align: 'right' });
-            }
           }
           doc.moveTo(ML, ry + rowH).lineTo(ML + W, ry + rowH).lineWidth(0.4).strokeColor(RULE).stroke();
           reset();
@@ -1180,13 +1168,12 @@ const generateBlankReceiptForm = async (options = {}) => {
         y = tableBottom;
 
         // ── Totals, under the last two columns ──────────────────────────────
-        // The value column sits under AMOUNT so the figures line up with the
-        // rows above; the label gets a proper width of its own rather than
-        // inheriting the narrow QTY column, where "GRAND TOTAL" wrapped.
-        const valueX = COLS[3].x;
-        const valueW = COLS[3].w;
+        // The totals box hangs off the right edge of the table, under the
+        // quantity column and the tail of the description.
+        const valueW = 110;
         const labelW = 110;
-        const totalsX = valueX - labelW;
+        const totalsX = ML + W - valueW - labelW;
+        const valueX = totalsX + labelW;
         const totalsRow = (label, h, opts = {}) => {
           doc.rect(totalsX, y, labelW + valueW, h).lineWidth(0.7).strokeColor('#b5b5b5').stroke();
           doc.moveTo(valueX, y).lineTo(valueX, y + h).lineWidth(0.5).strokeColor('#b5b5b5').stroke();

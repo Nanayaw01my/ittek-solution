@@ -45,6 +45,11 @@ export default function ReceiptForms() {
   // fill in by hand.
   const [subtotalInput, setSubtotalInput] = useState('')
   const [grandTotalInput, setGrandTotalInput] = useState('')
+  // A receipt written by hand is still a sale, so by default the money goes
+  // into the day's takings. Turned off, the sheet prints and nothing is
+  // recorded — which is what a quote is.
+  const [recordSale, setRecordSale] = useState(true)
+  const [payMethod, setPayMethod] = useState('cash')
 
   // Acceptance letter for a student on attachment or internship. Only the name
   // is required — the letter is written from whatever is filled in.
@@ -176,14 +181,14 @@ export default function ReceiptForms() {
         product_id: p._id,
         name: p.name,
         quantity: 1,
-        total: p.selling_price ?? '',
+
       }]
     })
     setSearch('')
   }
 
   const addBlankLine = () =>
-    setLines(prev => [...prev, { key: `manual-${Date.now()}`, name: '', quantity: 1, total: '' }])
+    setLines(prev => [...prev, { key: `manual-${Date.now()}`, name: '', quantity: 1 }])
 
   const updateLine = (key, field, value) =>
     setLines(prev => prev.map(l => (
@@ -204,8 +209,7 @@ export default function ReceiptForms() {
 
   const removeLine = (key) => setLines(prev => prev.filter(l => l.key !== key))
 
-  // Only ever a suggestion, shown beside the boxes. Nothing is sent from it.
-  const lineSum = lines.reduce((s, l) => s + (parseFloat(l.total) || 0), 0)
+
   const hasLines = lines.some(l => l.name.trim())
 
   const print = async () => {
@@ -220,6 +224,8 @@ export default function ReceiptForms() {
           discount: discount === '' ? undefined : parseFloat(discount),
           subtotal: subtotalInput === '' ? undefined : parseFloat(subtotalInput),
           grandTotal: grandTotalInput === '' ? undefined : parseFloat(grandTotalInput),
+          record: recordSale,
+          payment_method: payMethod,
           receiptNo: receiptNo.trim() || undefined,
           date: new Date().toLocaleDateString('en-GB'),
           customer: {
@@ -232,9 +238,20 @@ export default function ReceiptForms() {
             .map(l => ({
               name: l.name.trim(),
               quantity: parseFloat(l.quantity) || 0,
-              total: l.total === '' ? undefined : parseFloat(l.total),
             })),
         }), 'receipt.pdf')
+
+        // Printing a second copy must not book the money twice. The switch
+        // turns itself off once the sale is in, so another print is just
+        // paper.
+        if (recordSale && grandTotalInput !== '' && parseFloat(grandTotalInput) > 0) {
+          setRecordSale(false)
+          toast.success(
+            `${formatCurrency(parseFloat(grandTotalInput))} added to today's sales. `
+            + 'Printing again will not record it twice.',
+            { duration: 7000 }
+          )
+        }
       } else {
         await openPdfInNewTab(
           () => getBlankReceiptForm({ rows, copies }),
@@ -424,15 +441,6 @@ export default function ReceiptForms() {
                     placeholder="Qty"
                     className="w-16 px-2 py-2 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={l.total}
-                    onChange={e => updateLine(l.key, 'total', e.target.value)}
-                    placeholder="Amount"
-                    className="w-24 px-2 py-2 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
                   <button
                     onClick={() => removeLine(l.key)}
                     className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
@@ -515,15 +523,41 @@ export default function ReceiptForms() {
                   />
                 </div>
               ))}
-              {lineSum > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSubtotalInput(String(lineSum.toFixed(2)))}
-                  className="text-xs font-semibold text-orange-600 hover:text-orange-700"
-                >
-                  The amounts above add up to {formatCurrency(lineSum)} — use it as the subtotal
-                </button>
-              )}
+
+              <div className="pt-2 mt-1 border-t border-gray-200 space-y-2">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={recordSale}
+                    onChange={e => setRecordSale(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-orange-500"
+                  />
+                  <span className="text-sm text-gray-700">
+                    Add the grand total to today's sales
+                    <span className="block text-xs text-gray-500">
+                      Records it as a sale, like the till. Stock is not touched.
+                      Turn this off for a quote.
+                    </span>
+                  </span>
+                </label>
+
+                {recordSale && (
+                  <div className="flex gap-2">
+                    {[['cash', 'Cash'], ['mobile_money', 'Mobile Money'], ['card', 'Card']].map(([v, label]) => (
+                      <button
+                        key={v} type="button" onClick={() => setPayMethod(v)}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg border ${
+                          payMethod === v
+                            ? 'bg-orange-500 text-white border-orange-500'
+                            : 'bg-white text-gray-600 border-gray-200'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </>
         )}

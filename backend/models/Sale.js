@@ -99,6 +99,16 @@ const SaleSchema = new mongoose.Schema(
       sparse: true,
     },
     /**
+     * Set when the sale was written from a printed receipt form — a receipt
+     * made out by hand at the counter rather than rung through the till.
+     */
+    form_ref: {
+      type: String,
+      trim: true,
+      index: true,
+      sparse: true,
+    },
+    /**
      * Set when the sale came from a Pay & Pick Later plan being collected.
      * The money arrived in instalments over weeks; the sale is recorded when
      * the goods actually leave, which is the point the shop has earned it.

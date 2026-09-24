@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { createSaleWithInvoice } = require('../utils/generateInvoice');
 const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 const Settings = require('../models/Settings');
@@ -70,7 +71,7 @@ router.post('/receipt', async (req, res) => {
   try {
     const {
       rows, copies, items, customer, receiptNo, date,
-      discount, subtotal, grandTotal,
+      discount, subtotal, grandTotal, record, payment_method,
     } = req.body || {};
 
     if (items && !Array.isArray(items)) {
@@ -94,12 +95,65 @@ router.post('/receipt', async (req, res) => {
       })),
     });
 
+    // ── The money ───────────────────────────────────────────────────────
+    // A receipt made out by hand is still a sale: the goods went out and the
+    // customer paid. Writing one records it, so the day's takings match the
+    // receipts in the book rather than only the ones rung through the till.
+    //
+    // Stock is NOT touched. The lines here are typed by hand and may not name
+    // a product the system knows, and anything that does should be rung up at
+    // the till so it comes off the shelf exactly once.
+    let invoiceNo = null;
+    const amount = Number(grandTotal);
+    if (record && Number.isFinite(amount) && amount > 0) {
+      try {
+        const names = (items || []).map((i) => String(i.name || '').trim()).filter(Boolean);
+        const label = names.length
+          ? (names.length === 1 ? names[0] : `${names[0]} and ${names.length - 1} more`)
+          : 'Receipt form';
+
+        const sale = await createSaleWithInvoice({
+          user_id: req.user._id,
+          customer_name: (customer && customer.name) || 'Counter receipt',
+          customer_phone: customer && customer.phone,
+          form_ref: String(receiptNo || '').trim() || undefined,
+          subtotal: Number(subtotal) > 0 ? Number(subtotal) : amount,
+          discount: Number(discount) > 0 ? Number(discount) : 0,
+          discount_type: 'fixed',
+          total_amount: amount,
+          cart_total: amount,
+          debt_amount: 0,
+          payment_status: 'paid',
+          payment_method: ['cash', 'card', 'mobile_money'].includes(payment_method)
+            ? payment_method : 'cash',
+          items: [{
+            product_name: label,
+            quantity: 1,
+            unit_price: amount,
+            cost_price: 0,
+            total: amount,
+          }],
+        });
+        invoiceNo = sale.invoice_no;
+      } catch (saleErr) {
+        // The sheet still prints. A receipt the customer is waiting for must
+        // not be withheld over a bookkeeping failure, but it must be visible
+        // that the money did not land.
+        console.error('Receipt form sale failed:', saleErr.stack || saleErr.message);
+        res.setHeader('X-Sale-Error', String(saleErr.message).slice(0, 120));
+      }
+    }
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="receipt.pdf"');
+    if (invoiceNo) res.setHeader('X-Invoice-No', invoiceNo);
     return res.end(pdf);
   } catch (err) {
-    console.error('Receipt form error:', err.message);
-    return res.status(500).json({ success: false, message: 'Could not generate the receipt.' });
+    console.error('Receipt form error:', err.stack || err.message);
+    return res.status(500).json({
+      success: false,
+      message: `Could not generate the receipt: ${err.message}`,
+    });
   }
 });
 
