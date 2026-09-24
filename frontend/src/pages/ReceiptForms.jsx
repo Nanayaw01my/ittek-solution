@@ -284,8 +284,9 @@ export default function ReceiptForms() {
             : parseFloat(amountPaidInput)
           toast.success(
             owing > 0
-              ? `${formatCurrency(paidNow)} taken, ${formatCurrency(owing)} owed — the balance is now in Debts.`
-              : `${formatCurrency(parseFloat(grandTotalInput))} added to today's sales. `
+              ? `${formatCurrency(paidNow)} added to today's sales. `
+                + `${formatCurrency(owing)} is now in Debts and will count when it is paid.`
+              : `${formatCurrency(paidNow)} added to today's sales. `
                 + 'Printing again will not record it twice.',
             { duration: 8000 }
           )
@@ -595,10 +596,11 @@ export default function ReceiptForms() {
                     className="mt-0.5 w-4 h-4 accent-orange-500"
                   />
                   <span className="text-sm text-gray-700">
-                    Add the grand total to today's sales
+                    Add this to today's sales
                     <span className="block text-xs text-gray-500">
-                      Records it as a sale, like the till. Stock is not touched.
-                      Turn this off for a quote.
+                      Records what the customer actually paid. Any balance goes
+                      to Debts and counts on the day it is settled. Stock is not
+                      touched. Turn this off for a quote.
                     </span>
                   </span>
                 </label>

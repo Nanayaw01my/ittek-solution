@@ -106,8 +106,10 @@ router.post('/receipt', async (req, res) => {
     // Stock is NOT touched. The lines here are typed by hand and may not name
     // a product the system knows, and anything that does should be rung up at
     // the till so it comes off the shelf exactly once.
+    const gh = (n) => 'GHC' + Number(n || 0).toFixed(2);
     let invoiceNo = null;
     let debtCreated = null;
+    let recordedAmount = null;
     const amount = Number(grandTotal);
     if (record && Number.isFinite(amount) && amount > 0) {
       try {
@@ -137,29 +139,38 @@ router.post('/receipt', async (req, res) => {
           ? (names.length === 1 ? names[0] : `${names[0]} and ${names.length - 1} more`)
           : 'Receipt form';
 
+        // The takings record the money that changed hands, not the value of
+        // the package. The balance is carried by the Debt, and paying a debt
+        // writes a sale of its own for what is handed over then — so counting
+        // the full amount here as well would count the same cedi twice, and
+        // a 15,000 package part-paid at 5,000 would read as 25,000 of sales
+        // by the time it was settled.
         const sale = await createSaleWithInvoice({
           user_id: req.user._id,
           customer_name: (customer && customer.name) || 'Counter receipt',
           customer_phone: customer && customer.phone,
           form_ref: String(receiptNo || '').trim() || undefined,
-          subtotal: Number(subtotal) > 0 ? Number(subtotal) : amount,
-          discount: Number(discount) > 0 ? Number(discount) : 0,
+          subtotal: paid,
+          discount: 0,
           discount_type: 'fixed',
-          total_amount: amount,
-          cart_total: amount,
+          total_amount: paid,
+          cart_total: paid,
           debt_amount: owing,
           payment_status: owing > 0 ? 'partial' : 'paid',
           payment_method: ['cash', 'card', 'mobile_money'].includes(payment_method)
             ? payment_method : 'cash',
           items: [{
-            product_name: label,
+            // Named with what the package was worth, priced at what was taken,
+            // so the line and the takings agree.
+            product_name: owing > 0 ? `${label} — part payment of ${gh(amount)}` : label,
             quantity: 1,
-            unit_price: amount,
+            unit_price: paid,
             cost_price: 0,
-            total: amount,
+            total: paid,
           }],
         });
         invoiceNo = sale.invoice_no;
+        recordedAmount = paid;
 
         if (owing > 0) {
           const debt = await Debt.create({
@@ -185,6 +196,7 @@ router.post('/receipt', async (req, res) => {
     res.setHeader('Content-Disposition', 'inline; filename="receipt.pdf"');
     if (invoiceNo) res.setHeader('X-Invoice-No', invoiceNo);
     if (debtCreated) res.setHeader('X-Debt-Amount', String(debtCreated.amount));
+    if (recordedAmount != null) res.setHeader('X-Recorded-Amount', String(recordedAmount));
     return res.end(pdf);
   } catch (err) {
     console.error('Receipt form error:', err.stack || err.message);
