@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { createSaleWithInvoice } = require('../utils/generateInvoice');
+const Debt = require('../models/Debt');
 const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 const Settings = require('../models/Settings');
@@ -71,7 +72,7 @@ router.post('/receipt', async (req, res) => {
   try {
     const {
       rows, copies, items, customer, receiptNo, date,
-      discount, subtotal, grandTotal, record, payment_method,
+      discount, subtotal, grandTotal, record, payment_method, amountPaid,
     } = req.body || {};
 
     if (items && !Array.isArray(items)) {
@@ -85,6 +86,7 @@ router.post('/receipt', async (req, res) => {
       discount,
       subtotal,
       grandTotal,
+      amountPaid,
       receiptNo,
       date,
       customer,
@@ -104,9 +106,26 @@ router.post('/receipt', async (req, res) => {
     // a product the system knows, and anything that does should be rung up at
     // the till so it comes off the shelf exactly once.
     let invoiceNo = null;
+    let debtCreated = null;
     const amount = Number(grandTotal);
     if (record && Number.isFinite(amount) && amount > 0) {
       try {
+        // A customer can pay part of it now and owe the rest. Only what was
+        // actually handed over counts as takings; the remainder becomes a debt
+        // against their name, exactly as a short payment at the till does.
+        const paidNow = Number(amountPaid);
+        const paid = Number.isFinite(paidNow) && paidNow >= 0
+          ? Math.min(paidNow, amount)
+          : amount;
+        const owing = Number((amount - paid).toFixed(2));
+
+        if (owing > 0 && !(customer && String(customer.name || '').trim())) {
+          return res.status(400).json({
+            success: false,
+            message: 'Enter the customer\'s name — a balance has to be owed by somebody.',
+          });
+        }
+
         const names = (items || []).map((i) => String(i.name || '').trim()).filter(Boolean);
         const label = names.length
           ? (names.length === 1 ? names[0] : `${names[0]} and ${names.length - 1} more`)
@@ -122,8 +141,8 @@ router.post('/receipt', async (req, res) => {
           discount_type: 'fixed',
           total_amount: amount,
           cart_total: amount,
-          debt_amount: 0,
-          payment_status: 'paid',
+          debt_amount: owing,
+          payment_status: owing > 0 ? 'partial' : 'paid',
           payment_method: ['cash', 'card', 'mobile_money'].includes(payment_method)
             ? payment_method : 'cash',
           items: [{
@@ -135,6 +154,18 @@ router.post('/receipt', async (req, res) => {
           }],
         });
         invoiceNo = sale.invoice_no;
+
+        if (owing > 0) {
+          const debt = await Debt.create({
+            sale_id: sale._id,
+            customer_name: String(customer.name).trim(),
+            customer_phone: customer && customer.phone,
+            amount_owed: owing,
+            amount_paid: 0,
+            created_by: req.user._id,
+          });
+          debtCreated = { id: String(debt._id), amount: owing };
+        }
       } catch (saleErr) {
         // The sheet still prints. A receipt the customer is waiting for must
         // not be withheld over a bookkeeping failure, but it must be visible
@@ -147,6 +178,7 @@ router.post('/receipt', async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="receipt.pdf"');
     if (invoiceNo) res.setHeader('X-Invoice-No', invoiceNo);
+    if (debtCreated) res.setHeader('X-Debt-Amount', String(debtCreated.amount));
     return res.end(pdf);
   } catch (err) {
     console.error('Receipt form error:', err.stack || err.message);

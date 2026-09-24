@@ -50,6 +50,9 @@ export default function ReceiptForms() {
   // recorded — which is what a quote is.
   const [recordSale, setRecordSale] = useState(true)
   const [payMethod, setPayMethod] = useState('cash')
+  // What the customer actually handed over. Leave it empty and they paid the
+  // lot; type less than the grand total and the rest becomes a debt.
+  const [amountPaidInput, setAmountPaidInput] = useState('')
 
   // Acceptance letter for a student on attachment or internship. Only the name
   // is required — the letter is written from whatever is filled in.
@@ -212,6 +215,15 @@ export default function ReceiptForms() {
 
   const hasLines = lines.some(l => l.name.trim())
 
+  // Shown on screen so the consequence of a part payment is visible before
+  // printing. The server works it out again from the same two figures.
+  const owing = (() => {
+    const total = parseFloat(grandTotalInput)
+    const paid = parseFloat(amountPaidInput)
+    if (!Number.isFinite(total) || !Number.isFinite(paid)) return 0
+    return Math.max(0, +(total - paid).toFixed(2))
+  })()
+
   const print = async () => {
     setBusy(true)
     try {
@@ -226,6 +238,7 @@ export default function ReceiptForms() {
           grandTotal: grandTotalInput === '' ? undefined : parseFloat(grandTotalInput),
           record: recordSale,
           payment_method: payMethod,
+          amountPaid: amountPaidInput === '' ? undefined : parseFloat(amountPaidInput),
           receiptNo: receiptNo.trim() || undefined,
           date: new Date().toLocaleDateString('en-GB'),
           customer: {
@@ -246,10 +259,15 @@ export default function ReceiptForms() {
         // paper.
         if (recordSale && grandTotalInput !== '' && parseFloat(grandTotalInput) > 0) {
           setRecordSale(false)
+          const paidNow = amountPaidInput === ''
+            ? parseFloat(grandTotalInput)
+            : parseFloat(amountPaidInput)
           toast.success(
-            `${formatCurrency(parseFloat(grandTotalInput))} added to today's sales. `
-            + 'Printing again will not record it twice.',
-            { duration: 7000 }
+            owing > 0
+              ? `${formatCurrency(paidNow)} taken, ${formatCurrency(owing)} owed — the balance is now in Debts.`
+              : `${formatCurrency(parseFloat(grandTotalInput))} added to today's sales. `
+                + 'Printing again will not record it twice.',
+            { duration: 8000 }
           )
         }
       } else {
@@ -542,6 +560,30 @@ export default function ReceiptForms() {
                 </label>
 
                 {recordSale && (
+                  <>
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-gray-700">Paid now</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={amountPaidInput}
+                        onChange={e => setAmountPaidInput(e.target.value)}
+                        placeholder="leave blank if paid in full"
+                        className="w-44 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                    </div>
+                    {owing > 0 && (
+                      <p className="text-xs font-bold text-red-700 mt-1 text-right">
+                        {formatCurrency(owing)} goes to Debts under {customer.name.trim() || 'the customer'}
+                      </p>
+                    )}
+                    {owing > 0 && !customer.name.trim() && (
+                      <p className="text-xs text-red-600 mt-0.5 text-right">
+                        Enter the customer's name — a balance has to be owed by somebody.
+                      </p>
+                    )}
+                  </div>
+
                   <div className="flex gap-2">
                     {[['cash', 'Cash'], ['mobile_money', 'Mobile Money'], ['card', 'Card']].map(([v, label]) => (
                       <button
@@ -556,6 +598,7 @@ export default function ReceiptForms() {
                       </button>
                     ))}
                   </div>
+                  </>
                 )}
               </div>
             </div>
