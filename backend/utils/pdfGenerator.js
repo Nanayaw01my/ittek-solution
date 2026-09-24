@@ -1093,7 +1093,7 @@ const generateBlankReceiptForm = async (options = {}) => {
         // ── Title, receipt number and date ──────────────────────────────────
         y += 12;
         doc.fontSize(16).font('Helvetica-Bold').fillColor(ORANGE)
-          .text('OFFICIAL RECEIPT', ML, y, { width: 260 });
+          .text('PACKAGES RECEIPT', ML, y, { width: 260 });
         blankField('Receipt No.', ML + 275, y - 2, ML + W, 62);
         blankField('Date', ML + 275, y + 18, ML + W, 62);
         writeOnRule(options.receiptNo, ML + 275 + 62 + 4, y - 1, ML + W);
