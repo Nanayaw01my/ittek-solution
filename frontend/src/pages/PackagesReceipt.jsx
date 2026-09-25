@@ -37,6 +37,9 @@ export default function PackagesReceipt() {
   // recorded — which is what a quote is.
   const [recordSale, setRecordSale] = useState(true)
   const [payMethod, setPayMethod] = useState('cash')
+  // Goods picked from the catalogue come off the shelf. A hand-typed line
+  // names nothing the system knows, so there is nothing to take off for it.
+  const [takeStock, setTakeStock] = useState(true)
   // What the customer actually handed over. Leave it empty and they paid the
   // lot; type less than the grand total and the rest becomes a debt.
   const [amountPaidInput, setAmountPaidInput] = useState('')
@@ -103,6 +106,9 @@ export default function PackagesReceipt() {
 
   const hasLines = lines.some(l => l.name.trim())
 
+  // How many lines name a real product, and so can leave the shelf.
+  const fromCatalogue = lines.filter(l => l.product_id && (parseFloat(l.quantity) || 0) > 0).length
+
   // Typed money counts as a filled receipt too. Without this, a sheet with the
   // figures entered but no item line printed as a blank form and threw them
   // away.
@@ -140,6 +146,7 @@ export default function PackagesReceipt() {
           subtotal: subtotalInput === '' ? undefined : parseFloat(subtotalInput),
           grandTotal: grandTotalInput === '' ? undefined : parseFloat(grandTotalInput),
           record: recordSale,
+          deductStock: takeStock,
           payment_method: payMethod,
           amountPaid: amountPaidInput === '' ? undefined : parseFloat(amountPaidInput),
           balanceDue: balanceDueInput === '' ? undefined : parseFloat(balanceDueInput),
@@ -153,6 +160,7 @@ export default function PackagesReceipt() {
           items: lines
             .filter(l => l.name.trim())
             .map(l => ({
+              product_id: l.product_id,
               name: l.name.trim(),
               quantity: parseFloat(l.quantity) || 0,
             })),
@@ -163,6 +171,9 @@ export default function PackagesReceipt() {
         // paper.
         if (recordSale && grandTotalInput !== '' && parseFloat(grandTotalInput) > 0) {
           setRecordSale(false)
+          // Stock comes off with the sale, so it must not come off again on a
+          // reprint either.
+          setTakeStock(false)
           const paidNow = amountPaidInput === ''
             ? parseFloat(grandTotalInput)
             : parseFloat(amountPaidInput)
@@ -203,8 +214,9 @@ export default function PackagesReceipt() {
             blank pads for the counter, or fill it in to print one made out.
             <span className="font-bold"> The money is recorded</span> — what the customer
             pays goes into today's sales, and any balance goes to Debts under their name.
-            <span className="font-bold"> Stock is not touched</span>, so anything that must
-            come off the shelf still goes through the POS.
+            Goods picked from the catalogue<span className="font-bold"> come off the
+            shelf</span> too; lines typed by hand do not, because they name nothing the
+            system knows.
           </p>
         </div>
 
@@ -405,6 +417,27 @@ export default function PackagesReceipt() {
                     </span>
                   </span>
                 </label>
+
+                {/* Only worth asking about when something on the sheet came
+                    from the catalogue — there is nothing to take off the shelf
+                    for a line typed by hand. */}
+                {fromCatalogue > 0 && (
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={takeStock}
+                      onChange={e => setTakeStock(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 accent-orange-500"
+                    />
+                    <span className="text-sm text-gray-700">
+                      Take these off stock
+                      <span className="block text-xs text-gray-500">
+                        {fromCatalogue} line{fromCatalogue === 1 ? '' : 's'} from the catalogue
+                        will come off the shelf. Hand-typed lines are left alone.
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 {recordSale && (
                   <>

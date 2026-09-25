@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { createSaleWithInvoice } = require('../utils/generateInvoice');
 const Debt = require('../models/Debt');
+const { buildSaleItems, deductStock } = require('../utils/saleHelpers');
 const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 const Settings = require('../models/Settings');
@@ -73,6 +74,7 @@ router.post('/receipt', async (req, res) => {
     const {
       rows, copies, items, customer, receiptNo, date,
       discount, subtotal, grandTotal, record, payment_method, amountPaid, balanceDue,
+      deductStock: takeFromStock,
     } = req.body || {};
 
     if (items && !Array.isArray(items)) {
@@ -110,6 +112,7 @@ router.post('/receipt', async (req, res) => {
     let invoiceNo = null;
     let debtCreated = null;
     let recordedAmount = null;
+    let stockTaken = 0;
     const amount = Number(grandTotal);
     if (record && Number.isFinite(amount) && amount > 0) {
       try {
@@ -139,6 +142,45 @@ router.post('/receipt', async (req, res) => {
           ? (names.length === 1 ? names[0] : `${names[0]} and ${names.length - 1} more`)
           : 'Receipt form';
 
+        // ── The goods ─────────────────────────────────────────────────────
+        // Lines picked from the catalogue can come off the shelf; lines typed
+        // by hand name nothing the system knows, so there is nothing to
+        // deduct for them. buildSaleItems is the same check the till uses, so
+        // a receipt cannot take out stock the shop does not have, and it
+        // brings back each product's cost price — without which the profit on
+        // this sale would read as the whole amount.
+        const picked = (items || [])
+          .filter((i) => i && i.product_id && Number(i.quantity) > 0)
+          .map((i) => ({ product_id: i.product_id, quantity: Number(i.quantity) }));
+
+        let stockItems = [];
+        if (takeFromStock && picked.length > 0) {
+          const built = await buildSaleItems(picked);
+          if (built.error) {
+            return res.status(400).json({ success: false, message: built.error });
+          }
+          stockItems = built.items;
+        }
+
+        // What the sale is made of: the real products where they are known,
+        // and the hand-written lines beside them so the record reads like the
+        // sheet the customer holds.
+        const typed = (items || [])
+          .filter((i) => i && String(i.name || '').trim()
+            && !(takeFromStock && i.product_id && Number(i.quantity) > 0))
+          .map((i) => ({
+            product_name: String(i.name).trim(),
+            quantity: Math.max(1, Number(i.quantity) || 1),
+            unit_price: 0,
+            cost_price: 0,
+            total: 0,
+          }));
+
+        const goodsValue = stockItems.reduce((sum, i) => sum + i.total, 0);
+        const saleItems = stockItems.length || typed.length
+          ? [...stockItems, ...typed]
+          : [{ product_name: label, quantity: 1, unit_price: paid, cost_price: 0, total: paid }];
+
         // The takings record the money that changed hands, not the value of
         // the package. The balance is carried by the Debt, and paying a debt
         // writes a sale of its own for what is handed over then — so counting
@@ -150,27 +192,30 @@ router.post('/receipt', async (req, res) => {
           customer_name: (customer && customer.name) || 'Counter receipt',
           customer_phone: customer && customer.phone,
           form_ref: String(receiptNo || '').trim() || undefined,
-          subtotal: paid,
-          discount: 0,
+          // The list value of the goods where it is known, so the figures on
+          // the record and the stock that left agree.
+          subtotal: Number(subtotal) > 0 ? Number(subtotal) : (goodsValue || paid),
+          discount: Number(discount) > 0 ? Number(discount) : 0,
           discount_type: 'fixed',
+          // What was taken. The balance is the Debt's business, not the
+          // takings' — see the note above.
           total_amount: paid,
-          cart_total: paid,
+          cart_total: amount,
           debt_amount: owing,
           payment_status: owing > 0 ? 'partial' : 'paid',
           payment_method: ['cash', 'card', 'mobile_money'].includes(payment_method)
             ? payment_method : 'cash',
-          items: [{
-            // Named with what the package was worth, priced at what was taken,
-            // so the line and the takings agree.
-            product_name: owing > 0 ? `${label} — part payment of ${gh(amount)}` : label,
-            quantity: 1,
-            unit_price: paid,
-            cost_price: 0,
-            total: paid,
-          }],
+          items: saleItems,
         });
         invoiceNo = sale.invoice_no;
         recordedAmount = paid;
+
+        // Only once the sale is safely written. Stock taken off with no record
+        // of why is stock lost with nothing to explain it.
+        if (stockItems.length > 0) {
+          await deductStock(stockItems);
+          stockTaken = stockItems.reduce((sum, i) => sum + i.quantity, 0);
+        }
 
         if (owing > 0) {
           const debt = await Debt.create({
@@ -197,6 +242,7 @@ router.post('/receipt', async (req, res) => {
     if (invoiceNo) res.setHeader('X-Invoice-No', invoiceNo);
     if (debtCreated) res.setHeader('X-Debt-Amount', String(debtCreated.amount));
     if (recordedAmount != null) res.setHeader('X-Recorded-Amount', String(recordedAmount));
+    if (stockTaken > 0) res.setHeader('X-Stock-Deducted', String(stockTaken));
     return res.end(pdf);
   } catch (err) {
     console.error('Receipt form error:', err.stack || err.message);
