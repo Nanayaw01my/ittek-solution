@@ -38,6 +38,7 @@ import ServiceCharges from './pages/ServiceCharges'
 import FraudAlerts from './pages/FraudAlerts'
 import DeleteRecords from './pages/DeleteRecords'
 import ReceiptForms from './pages/ReceiptForms'
+import PackagesReceipt from './pages/PackagesReceipt'
 
 
 /**
@@ -160,6 +161,8 @@ export default function App() {
             Anyone may take an application; only an owner reads it back. */}
         <Route path="phone-sales" element={<ProtectedRoute minLevel={1}><PhoneSales /></ProtectedRoute>} />
         <Route path="service-charges" element={<ProtectedRoute minLevel={1}><ServiceCharges /></ProtectedRoute>} />
+        {/* Not a document: printing one records money. */}
+        <Route path="packages-receipt" element={<ProtectedRoute minLevel={2}><PackagesReceipt /></ProtectedRoute>} />
         <Route path="search" element={<ProtectedRoute minLevel={3} page="search"><Search /></ProtectedRoute>} />
 
         {/* CEO+ */}

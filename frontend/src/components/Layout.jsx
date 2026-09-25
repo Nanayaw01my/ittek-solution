@@ -35,6 +35,7 @@ const NAV_ITEMS = [
   { to: '/field-dispatch', label: 'Field Dispatch', icon: FiSend, minLevel: 1 },
   { to: '/phone-sales', label: 'Phone Credit Sales', icon: FiSmartphone, minLevel: 1 },
   { to: '/service-charges', label: 'Service Charges', icon: FiTool, minLevel: 1 },
+  { to: '/packages-receipt', label: 'Packages Receipt', icon: FiFileText, minLevel: 2 },
   // CEO+ only
   { to: '/debts', label: 'Debts', icon: FiAlertCircle, minLevel: 2 },
   { to: '/stock-requests', label: 'Stock Requests', icon: FiInbox, minLevel: 2 },
