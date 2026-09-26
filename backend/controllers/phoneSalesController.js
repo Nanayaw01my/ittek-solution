@@ -1,5 +1,4 @@
 const PhoneSale = require('../models/PhoneSale');
-const Debt = require('../models/Debt');
 const { buildSaleItems, deductStock } = require('../utils/saleHelpers');
 const { createSaleWithInvoice } = require('../utils/generateInvoice');
 
@@ -259,23 +258,14 @@ const approvePhoneSale = async (req, res) => {
       }
     }
 
-    // 3. The balance, as a debt due on the last instalment date, so it is
-    //    chased and paid off through the screen that already does that.
+    // 3. The balance stays on this record. It is not also written to Debts:
+    //    the instalments are collected with the Pay button here, and a balance
+    //    kept in two places is a balance chased twice and cleared once.
     if (owing > 0) {
       const due = new Date();
       if (sale.plan === 'weekly') due.setDate(due.getDate() + sale.installments * 7);
       else due.setMonth(due.getMonth() + sale.installments);
-
-      const debt = await Debt.create({
-        sale_id: sale.sale_id,
-        customer_name: sale.customer_name,
-        customer_phone: sale.customer_phone,
-        amount_owed: owing,
-        amount_paid: 0,
-        due_date: due,
-        created_by: req.user._id,
-      });
-      sale.debt_id = debt._id;
+      sale.final_due_date = due;
     }
 
     sale.status = 'approved';
@@ -286,7 +276,7 @@ const approvePhoneSale = async (req, res) => {
     const parts = [];
     if (sale.stock_deducted) parts.push('the phone is off stock');
     if (sale.invoice_no) parts.push(`${gh(down)} taken (${sale.invoice_no})`);
-    if (sale.debt_id) parts.push(`${gh(owing)} owed over ${sale.installments} ${sale.plan === 'weekly' ? 'weeks' : 'months'}`);
+    if (owing > 0) parts.push(`${gh(owing)} to collect over ${sale.installments} ${sale.plan === 'weekly' ? 'weeks' : 'months'}`);
 
     return res.status(200).json({
       success: true,
@@ -296,6 +286,101 @@ const approvePhoneSale = async (req, res) => {
   } catch (err) {
     console.error('Approve phone sale error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * POST /api/phone-sales/:id/pay
+ *
+ * An instalment coming in. It does two things and no more: writes the money
+ * into the day's takings like any other sale, and lands on this record so the
+ * next person to open it can see what has been paid and what is left.
+ */
+const payPhoneSale = async (req, res) => {
+  try {
+    const sale = await PhoneSale.findById(req.params.id);
+    if (!sale) {
+      return res.status(404).json({ success: false, message: 'Application not found.' });
+    }
+    if (!['approved', 'completed'].includes(sale.status)) {
+      return res.status(400).json({
+        success: false,
+        message: sale.status === 'pending'
+          ? 'Approve this application before taking payments on it.'
+          : `This application was ${sale.status}.`,
+      });
+    }
+
+    // Same rule as reading one: someone else's application is not theirs.
+    if (!isOwner(req.user) && String(sale.submitted_by) !== String(req.user._id)) {
+      return res.status(404).json({ success: false, message: 'Application not found.' });
+    }
+
+    const owing = Number(sale.balance) || 0;
+    if (owing <= 0) {
+      return res.status(400).json({ success: false, message: 'This one is fully paid.' });
+    }
+
+    const amount = Number(req.body.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Enter how much was paid.' });
+    }
+    // Overpaying is a typo far more often than a gift, and taking it would
+    // leave the record owing a negative amount.
+    if (amount > owing + 0.004) {
+      return res.status(400).json({
+        success: false,
+        message: `Only ${gh(owing)} is left on ${sale.reference}.`,
+      });
+    }
+
+    const method = ['cash', 'card', 'mobile_money'].includes(req.body.payment_method)
+      ? req.body.payment_method : 'cash';
+    const remaining = Number((owing - amount).toFixed(2));
+
+    // The money first — if this fails the payment is not recorded at all,
+    // rather than showing on the record with nothing behind it.
+    const written = await createSaleWithInvoice({
+      user_id: req.user._id,
+      customer_name: sale.customer_name,
+      customer_phone: sale.customer_phone,
+      form_ref: sale.reference,
+      subtotal: amount,
+      discount: 0,
+      discount_type: 'fixed',
+      total_amount: amount,
+      cart_total: amount,
+      debt_amount: 0,
+      payment_status: 'paid',
+      payment_method: method,
+      items: [{
+        product_name: `${sale.phone_model} — instalment on ${sale.reference}`,
+        quantity: 1,
+        unit_price: amount,
+        cost_price: 0,
+        total: amount,
+      }],
+    });
+
+    sale.payments.push({
+      amount,
+      method,
+      note: req.body.note,
+      paid_at: new Date(),
+      invoice_no: written.invoice_no,
+      recorded_by: req.user._id,
+    });
+    await sale.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `${gh(amount)} recorded on ${sale.reference} — `
+        + (remaining > 0 ? `${gh(remaining)} left.` : 'fully paid.'),
+      data: isOwner(req.user) ? sale : sale.withoutCustomerInfo(),
+    });
+  } catch (err) {
+    console.error('Phone sale payment error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: 'Could not record the payment.' });
   }
 };
 
@@ -362,5 +447,6 @@ module.exports = {
   getPhoneSale,
   createPhoneSale,
   approvePhoneSale,
+  payPhoneSale,
   rejectPhoneSale,
 };

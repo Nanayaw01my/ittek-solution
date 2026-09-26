@@ -4,7 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const { requireRoles } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
-  getPhoneSales, getPhoneSale, createPhoneSale, approvePhoneSale, rejectPhoneSale,
+  getPhoneSales, getPhoneSale, createPhoneSale, approvePhoneSale, payPhoneSale, rejectPhoneSale,
   deletePhoneSale,
 } = require('../controllers/phoneSalesController');
 
@@ -16,6 +16,11 @@ router.use(authenticate);
 router.get('/', getPhoneSales);
 router.get('/:id', getPhoneSale);
 router.post('/', auditLog('CREATE_PHONE_SALE', (req) => ({ customer: req.body.customer_name })), createPhoneSale);
+
+// Collecting an instalment is taking money over the counter — anyone who can
+// sign in may do it, on an application they are allowed to see. The controller
+// holds a non-owner to the ones they submitted themselves.
+router.post('/:id/pay', auditLog('PAY_PHONE_SALE', (req) => ({ id: req.params.id, amount: req.body.amount })), payPhoneSale);
 
 // Approving is the whole control. Nothing is sold on credit until an owner has
 // read the paperwork and agreed to it, so it stays with the two of them.

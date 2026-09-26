@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import {
   FiSmartphone, FiPlus, FiCamera, FiCheckCircle, FiXCircle, FiLock, FiUser, FiTrash2,
+  FiDollarSign,
 } from 'react-icons/fi'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -14,7 +15,8 @@ import { uploadImage } from '../api/upload'
 import { resizeImageToDataUrl, dataUrlToFile } from '../utils/resizeImage'
 import { getProducts } from '../api/products'
 import {
-  getPhoneSales, createPhoneSale, approvePhoneSale, rejectPhoneSale, deletePhoneSale,
+  getPhoneSales, createPhoneSale, approvePhoneSale, payPhoneSale, rejectPhoneSale,
+  deletePhoneSale,
 } from '../api/phoneSales'
 import useAuthStore from '../store/authStore'
 
@@ -22,12 +24,16 @@ const STATUS_STYLES = {
   pending: 'bg-amber-100 text-amber-700',
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
+  completed: 'bg-blue-100 text-blue-700',
 }
+
+const METHOD_LABELS = { cash: 'Cash', mobile_money: 'Mobile Money', card: 'Card' }
 
 const STATUS_LABELS = {
   pending: 'Waiting on approval',
   approved: 'Approved',
   rejected: 'Rejected',
+  completed: 'Fully paid',
 }
 
 /**
@@ -471,10 +477,16 @@ function NewApplicationModal({ onClose }) {
 }
 
 /** The paperwork, as only an owner sees it. */
-function DetailModal({ sale, onClose }) {
+function DetailModal({ sale: initial, onClose }) {
   const queryClient = useQueryClient()
+  // The record as it stands now. A payment replaces it with what the server
+  // sends back, so the paid and remaining figures move under the button that
+  // was just pressed instead of waiting for the modal to be reopened.
+  const [sale, setSale] = useState(initial)
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
+  const [payAmount, setPayAmount] = useState('')
+  const [payHow, setPayHow] = useState('cash')
   // How the down payment was taken. Asked at approval because that is the
   // moment the money actually changes hands.
   const [payMethod, setPayMethod] = useState('cash')
@@ -487,9 +499,17 @@ function DetailModal({ sale, onClose }) {
   const approve = useMutation({
     mutationFn: () => approvePhoneSale(sale._id, payMethod),
     onSuccess: (res) => {
-      // The server says exactly what moved — stock, money, debt — so an owner
-      // is not left guessing which of the three happened.
-      toast.success(res.data?.message || `${sale.reference} approved`, { duration: 9000 })
+      // Say exactly what moved, so an owner is not left guessing. Built here
+      // rather than read off the reply: the interceptor keeps only the record.
+      const moved = [
+        sale.product_id && 'the phone is off stock',
+        sale.down_payment > 0 && `${formatCurrency(sale.down_payment)} taken`,
+        sale.balance > 0 && `${formatCurrency(sale.balance)} left to collect`,
+      ].filter(Boolean)
+      toast.success(
+        `${sale.reference} approved${moved.length ? ' — ' + moved.join(', ') : ''}.`,
+        { duration: 9000 }
+      )
       queryClient.invalidateQueries({ queryKey: ['phone-sales'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
       queryClient.invalidateQueries({ queryKey: ['debts'] })
@@ -498,11 +518,43 @@ function DetailModal({ sale, onClose }) {
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Could not approve'),
   })
+  const pay = useMutation({
+    mutationFn: () => payPhoneSale(sale._id, {
+      amount: Number(payAmount),
+      payment_method: payHow,
+    }),
+    onSuccess: (res) => {
+      // The interceptor unwraps { success, data } — res.data is the record
+      // itself and the server's message did not survive the trip, so the
+      // confirmation is built from the record that came back.
+      const updated = res.data
+      const owing = Math.max(0, Number(updated?.balance ?? 0))
+      toast.success(
+        `${formatCurrency(Number(payAmount))} recorded — `
+        + (owing > 0 ? `${formatCurrency(owing)} left.` : 'fully paid.'),
+        { duration: 7000 }
+      )
+      if (updated?._id) setSale(updated)
+      setPayAmount('')
+      // The money is in the day's takings, so the dashboard is now stale.
+      queryClient.invalidateQueries({ queryKey: ['phone-sales'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not record the payment'),
+  })
+
   const reject = useMutation({
     mutationFn: () => rejectPhoneSale(sale._id, reason),
     onSuccess: () => done(`${sale.reference} rejected`),
     onError: (err) => toast.error(err.response?.data?.message || 'Could not reject'),
   })
+
+  // Everything the customer has handed over, and what is still owed on it.
+  const paid = Number(sale.amount_paid ?? sale.down_payment ?? 0)
+  const left = Math.max(0, Number(sale.balance ?? 0))
+  const progress = sale.total_amount > 0 ? (paid / sale.total_amount) * 100 : 0
+  // Payments only make sense once an owner has agreed to the deal.
+  const settled = ['approved', 'completed'].includes(sale.status)
 
   const Person = ({ title, name, phone, address, extra, extraLabel, id }) => (
     <section>
@@ -545,15 +597,127 @@ function DetailModal({ sale, onClose }) {
         </div>
 
         <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-3 gap-2 text-sm">
-          <div><p className="text-[11px] text-gray-500">Total</p><p className="font-black">{formatCurrency(sale.total_amount)}</p></div>
-          <div><p className="text-[11px] text-gray-500">Down</p><p className="font-black">{formatCurrency(sale.down_payment)}</p></div>
-          <div><p className="text-[11px] text-gray-500">Balance</p><p className="font-black text-orange-600">{formatCurrency(sale.balance)}</p></div>
+          <div><p className="text-[11px] text-gray-500">Phone price</p><p className="font-black">{formatCurrency(sale.total_amount)}</p></div>
+          <div><p className="text-[11px] text-gray-500">Paid so far</p><p className="font-black text-green-700">{formatCurrency(paid)}</p></div>
+          <div><p className="text-[11px] text-gray-500">Remaining</p><p className={`font-black ${left > 0 ? 'text-orange-600' : 'text-green-700'}`}>{formatCurrency(left)}</p></div>
+
+          {/* How far along the deal is, at a glance. */}
+          <div className="col-span-3">
+            <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+              <div
+                className={`h-full rounded-full ${left > 0 ? 'bg-orange-500' : 'bg-green-600'}`}
+                style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+              />
+            </div>
+          </div>
+
           <div className="col-span-3 text-xs text-gray-600">
-            {sale.installments} × {formatCurrency(sale.installment_amount)}
+            Deposit {formatCurrency(sale.down_payment)} · {sale.installments} ×{' '}
+            {formatCurrency(sale.installment_amount)}
             {sale.plan === 'weekly' ? ' weekly' : ' monthly'}
             {sale.imei ? ` · IMEI ${sale.imei}` : ''}
           </div>
         </div>
+
+        {/* ── What has been paid, and taking the next one ────────────────── */}
+        {settled && (
+          <section className="border border-gray-200 rounded-xl overflow-hidden">
+            <h3 className="text-xs font-black text-gray-500 uppercase tracking-wide px-3 py-2 bg-gray-50 border-b">
+              Payment record
+            </h3>
+
+            <ul className="divide-y text-sm">
+              {sale.down_payment > 0 && (
+                <li className="flex items-center justify-between px-3 py-2">
+                  <div>
+                    <p className="font-semibold text-gray-900">Deposit</p>
+                    <p className="text-[11px] text-gray-500">
+                      {sale.reviewed_at ? format(new Date(sale.reviewed_at), 'dd MMM yyyy') : '—'}
+                      {sale.invoice_no ? ` · ${sale.invoice_no}` : ''}
+                    </p>
+                  </div>
+                  <span className="font-black text-gray-900">{formatCurrency(sale.down_payment)}</span>
+                </li>
+              )}
+
+              {(sale.payments || []).map((p, i) => (
+                <li key={i} className="flex items-center justify-between px-3 py-2">
+                  <div>
+                    <p className="font-semibold text-gray-900">
+                      Payment {i + 1}
+                      <span className="ml-1 font-normal text-gray-500">{METHOD_LABELS[p.method] || p.method}</span>
+                    </p>
+                    <p className="text-[11px] text-gray-500">
+                      {p.paid_at ? format(new Date(p.paid_at), 'dd MMM yyyy') : '—'}
+                      {p.invoice_no ? ` · ${p.invoice_no}` : ''}
+                    </p>
+                  </div>
+                  <span className="font-black text-gray-900">{formatCurrency(p.amount)}</span>
+                </li>
+              ))}
+
+              {sale.down_payment <= 0 && (sale.payments || []).length === 0 && (
+                <li className="px-3 py-3 text-sm text-gray-500">Nothing paid yet.</li>
+              )}
+            </ul>
+
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-t text-sm">
+              <span className="font-bold text-gray-700">Paid {formatCurrency(paid)}</span>
+              <span className={`font-black ${left > 0 ? 'text-orange-600' : 'text-green-700'}`}>
+                {left > 0 ? `${formatCurrency(left)} remaining` : 'Fully paid'}
+              </span>
+            </div>
+
+            {left > 0 && (
+              <div className="p-3 border-t space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="number" step="0.01" min="0" max={left}
+                    value={payAmount} onChange={(e) => setPayAmount(e.target.value)}
+                    placeholder={`Amount (next is ${formatCurrency(sale.installment_amount)})`}
+                    className="flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                  />
+                  {/* The common case is the agreed instalment, or whatever is
+                      left if that is less than a full one. */}
+                  <button
+                    type="button"
+                    onClick={() => setPayAmount(String(Math.min(sale.installment_amount, left)))}
+                    className="px-3 py-2 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 whitespace-nowrap"
+                  >
+                    Instalment
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  {[['cash', 'Cash'], ['mobile_money', 'MoMo'], ['card', 'Card']].map(([v, l]) => (
+                    <button
+                      key={v} type="button" onClick={() => setPayHow(v)}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg border ${
+                        payHow === v
+                          ? 'bg-orange-500 text-white border-orange-500'
+                          : 'bg-white text-gray-600 border-gray-200'
+                      }`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => pay.mutate()}
+                  disabled={pay.isPending || !(Number(payAmount) > 0) || Number(payAmount) > left}
+                  className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm disabled:opacity-50"
+                >
+                  <FiDollarSign className="inline mr-1" />
+                  {pay.isPending ? 'Recording…' : 'Pay'}
+                </button>
+                <p className="text-[11px] text-gray-500 text-center">
+                  Goes straight into today's sales.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
 
         <Person title="Customer" name={sale.customer_name} phone={sale.customer_phone}
           address={sale.customer_address} extra={sale.customer_occupation} extraLabel="Work"
@@ -603,8 +767,9 @@ function DetailModal({ sale, onClose }) {
                   )}
                   {sale.balance > 0 && (
                     <li>
-                      • put {formatCurrency(sale.balance)} into Debts under {sale.customer_name},
-                      due over {sale.installments} {sale.plan === 'weekly' ? 'weeks' : 'months'}
+                      • leave {formatCurrency(sale.balance)} to collect over{' '}
+                      {sale.installments} {sale.plan === 'weekly' ? 'weeks' : 'months'} —
+                      take each instalment with the Pay button here
                     </li>
                   )}
                   {!sale.product_id && (
@@ -753,6 +918,12 @@ export default function PhoneSales() {
                   {formatCurrency(s.total_amount)} · {formatCurrency(s.down_payment)} down ·
                   {' '}{s.installments} × {formatCurrency(s.installment_amount)}
                   {s.plan === 'weekly' ? ' weekly' : ' monthly'}
+                  {/* On a live deal, what is still to come is the useful number. */}
+                  {['approved', 'completed'].includes(s.status) && (
+                    <span className={`ml-1 font-bold ${s.balance > 0 ? 'text-orange-600' : 'text-green-700'}`}>
+                      · {s.balance > 0 ? `${formatCurrency(s.balance)} left` : 'fully paid'}
+                    </span>
+                  )}
                 </p>
               </div>
 

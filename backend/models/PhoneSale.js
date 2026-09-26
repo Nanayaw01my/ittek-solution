@@ -53,13 +53,32 @@ const PhoneSaleSchema = new mongoose.Schema(
     installment_amount: { type: Number, default: 0 },
 
     /**
+     * Every payment taken against this deal, the deposit included, so the
+     * record answers "how much has he paid, how much is left" on its own
+     * rather than sending someone to another screen for half the answer.
+     */
+    payments: [
+      {
+        amount: { type: Number, required: true, min: 0 },
+        method: { type: String, enum: ['cash', 'card', 'mobile_money'], default: 'cash' },
+        reference: { type: String, trim: true },
+        note: { type: String, trim: true },
+        paid_at: { type: Date, default: Date.now },
+        invoice_no: { type: String, trim: true },
+        recorded_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        _id: false,
+      },
+    ],
+    amount_paid: { type: Number, default: 0, min: 0 },
+
+    /**
      * pending  — submitted, waiting on an owner
      * approved — an owner has agreed to it; the phone can be handed over
      * rejected — an owner has turned it down, with a reason
      */
     status: {
       type: String,
-      enum: ['pending', 'approved', 'rejected'],
+      enum: ['pending', 'approved', 'rejected', 'completed'],
       default: 'pending',
       required: true,
     },
@@ -69,6 +88,8 @@ const PhoneSaleSchema = new mongoose.Schema(
     sale_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale' },
     invoice_no: { type: String, trim: true },
     debt_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Debt' },
+    // When the last instalment falls due, worked out from the plan at approval.
+    final_due_date: { type: Date },
     stock_deducted: { type: Boolean, default: false },
 
     submitted_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -86,9 +107,21 @@ PhoneSaleSchema.index({ submitted_by: 1, submitted_at: -1 });
 PhoneSaleSchema.index({ customer_phone: 1 });
 
 PhoneSaleSchema.pre('save', function recalc(next) {
-  this.balance = Math.max(0, (this.total_amount || 0) - (this.down_payment || 0));
+  // What has been paid is the deposit plus everything taken since, so the
+  // balance falls as payments come in rather than standing at its opening
+  // figure for the life of the deal.
+  const taken = (this.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0);
+  this.amount_paid = Number(((this.down_payment || 0) + taken).toFixed(2));
+  this.balance = Math.max(0, Number(((this.total_amount || 0) - this.amount_paid).toFixed(2)));
+
+  // The instalment is worked out from the opening balance, not the shrinking
+  // one — it is what was agreed, not what is left over the remaining months.
+  const opening = Math.max(0, (this.total_amount || 0) - (this.down_payment || 0));
   const n = Math.max(1, this.installments || 1);
-  this.installment_amount = Number((this.balance / n).toFixed(2));
+  this.installment_amount = Number((opening / n).toFixed(2));
+
+  // Cleared deals drop out of the list of things to chase.
+  if (this.status === 'approved' && this.balance <= 0.004) this.status = 'completed';
   next();
 });
 
