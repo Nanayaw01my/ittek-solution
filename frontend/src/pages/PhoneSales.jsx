@@ -27,6 +27,57 @@ const STATUS_STYLES = {
   completed: 'bg-blue-100 text-blue-700',
 }
 
+/**
+ * The balance split across the agreed instalments — 12 of them on a weekly
+ * plan, 3 on a monthly one — each with the week it falls due and whether the
+ * money has come in yet.
+ *
+ * Payments are applied in order against the list rather than matched to a
+ * particular week: a customer who pays half this week and one and a half the
+ * next has still covered two instalments, and that is how the shop counts it.
+ */
+function buildSchedule(sale) {
+  const n = Math.max(1, Number(sale.installments) || 1)
+  const opening = Math.max(0, Number(sale.total_amount || 0) - Number(sale.down_payment || 0))
+  if (opening <= 0) return []
+
+  const each = Number((opening / n).toFixed(2))
+  // Whatever the rounding leaves over goes on the last one, so the twelve
+  // weeks add up to the balance exactly.
+  const amounts = Array.from({ length: n }, (_, i) =>
+    i === n - 1 ? Number((opening - each * (n - 1)).toFixed(2)) : each)
+
+  // The clock starts when the deal was approved; failing that, when it came in.
+  const start = new Date(sale.reviewed_at || sale.submitted_at || Date.now())
+
+  // Everything paid since the deposit, poured into the weeks from the top.
+  let pot = Math.max(0, Number(sale.amount_paid || 0) - Number(sale.down_payment || 0))
+  const today = new Date()
+
+  return amounts.map((amount, i) => {
+    const due = new Date(start)
+    if (sale.plan === 'weekly') due.setDate(due.getDate() + (i + 1) * 7)
+    else due.setMonth(due.getMonth() + (i + 1))
+
+    const covered = Math.min(pot, amount)
+    pot -= covered
+
+    let state = 'upcoming'
+    if (covered >= amount - 0.004) state = 'paid'
+    else if (covered > 0) state = 'part'
+    else if (due < today) state = 'overdue'
+
+    return { no: i + 1, due, amount, covered, state }
+  })
+}
+
+const SCHEDULE_STYLES = {
+  paid: 'text-green-700',
+  part: 'text-amber-700',
+  overdue: 'text-red-600',
+  upcoming: 'text-gray-500',
+}
+
 const METHOD_LABELS = { cash: 'Cash', mobile_money: 'Mobile Money', card: 'Card' }
 
 const STATUS_LABELS = {
@@ -555,6 +606,9 @@ function DetailModal({ sale: initial, onClose }) {
   const progress = sale.total_amount > 0 ? (paid / sale.total_amount) * 100 : 0
   // Payments only make sense once an owner has agreed to the deal.
   const settled = ['approved', 'completed'].includes(sale.status)
+  const schedule = buildSchedule(sale)
+  // The one the customer owes next — what the Pay button should be filling in.
+  const nextDue = schedule.find((w) => w.state !== 'paid')
 
   const Person = ({ title, name, phone, address, extra, extraLabel, id }) => (
     <section>
@@ -619,6 +673,52 @@ function DetailModal({ sale: initial, onClose }) {
           </div>
         </div>
 
+        {/* ── The balance, split into the weeks it is owed over ──────────── */}
+        {settled && schedule.length > 0 && (
+          <section className="border border-gray-200 rounded-xl overflow-hidden">
+            <h3 className="text-xs font-black text-gray-500 uppercase tracking-wide px-3 py-2 bg-gray-50 border-b flex items-center justify-between">
+              <span>
+                {sale.plan === 'weekly' ? 'Weekly' : 'Monthly'} payment plan
+              </span>
+              <span className="font-bold text-gray-400 normal-case tracking-normal">
+                {schedule.filter((w) => w.state === 'paid').length} of {schedule.length} cleared
+              </span>
+            </h3>
+
+            <ul className="divide-y text-sm max-h-60 overflow-y-auto">
+              {schedule.map((w) => (
+                <li key={w.no} className="flex items-center justify-between px-3 py-1.5">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900">
+                      {sale.plan === 'weekly' ? 'Week' : 'Month'} {w.no}
+                    </p>
+                    <p className="text-[11px] text-gray-500">
+                      due {format(w.due, 'dd MMM yyyy')}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-black text-gray-900">{formatCurrency(w.amount)}</p>
+                    <p className={`text-[11px] font-bold ${SCHEDULE_STYLES[w.state]}`}>
+                      {w.state === 'paid' && 'Paid'}
+                      {w.state === 'part' && `${formatCurrency(w.covered)} of it paid`}
+                      {w.state === 'overdue' && 'Overdue'}
+                      {w.state === 'upcoming' && 'Not yet due'}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {nextDue && (
+              <p className="px-3 py-2 bg-gray-50 border-t text-xs text-gray-600">
+                Next: {formatCurrency(nextDue.amount - nextDue.covered)} by{' '}
+                <span className="font-bold">{format(nextDue.due, 'dd MMM yyyy')}</span>
+                {nextDue.state === 'overdue' && <span className="text-red-600 font-bold"> — overdue</span>}
+              </p>
+            )}
+          </section>
+        )}
+
         {/* ── What has been paid, and taking the next one ────────────────── */}
         {settled && (
           <section className="border border-gray-200 rounded-xl overflow-hidden">
@@ -674,14 +774,19 @@ function DetailModal({ sale: initial, onClose }) {
                   <input
                     type="number" step="0.01" min="0" max={left}
                     value={payAmount} onChange={(e) => setPayAmount(e.target.value)}
-                    placeholder={`Amount (next is ${formatCurrency(sale.installment_amount)})`}
+                    placeholder={`Amount (next is ${formatCurrency(
+                      nextDue ? nextDue.amount - nextDue.covered : sale.installment_amount
+                    )})`}
                     className="flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                   />
                   {/* The common case is the agreed instalment, or whatever is
                       left if that is less than a full one. */}
                   <button
                     type="button"
-                    onClick={() => setPayAmount(String(Math.min(sale.installment_amount, left)))}
+                    onClick={() => setPayAmount(String(Math.min(
+                      nextDue ? Number((nextDue.amount - nextDue.covered).toFixed(2)) : sale.installment_amount,
+                      left
+                    )))}
                     className="px-3 py-2 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 whitespace-nowrap"
                   >
                     Instalment
