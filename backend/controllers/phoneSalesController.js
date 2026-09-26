@@ -1,4 +1,9 @@
 const PhoneSale = require('../models/PhoneSale');
+const Debt = require('../models/Debt');
+const { buildSaleItems, deductStock } = require('../utils/saleHelpers');
+const { createSaleWithInvoice } = require('../utils/generateInvoice');
+
+const gh = (n) => 'GHC' + Number(n || 0).toFixed(2);
 
 /** Only these two ever see a customer's address, card number or photographs. */
 const isOwner = (user) => ['CEO', 'Super Admin'].includes(user.role);
@@ -200,14 +205,92 @@ const approvePhoneSale = async (req, res) => {
       });
     }
 
+    // ── Approving is when it becomes real ───────────────────────────────
+    // Until now the application was paperwork. An owner agreeing to it is the
+    // moment the phone leaves the shop and the money starts moving, so that is
+    // where it is recorded — one decision rather than three jobs to remember.
+    const { payment_method } = req.body;
+    const down = Number(sale.down_payment) || 0;
+    const owing = Number(sale.balance) || 0;
+
+    // 1. The phone off the shelf, if the application named one from the
+    //    catalogue. Done first: if there is none left, nothing else should
+    //    happen either.
+    if (sale.product_id && !sale.stock_deducted) {
+      const built = await buildSaleItems([{ product_id: sale.product_id, quantity: 1 }]);
+      if (built.error) {
+        return res.status(400).json({ success: false, message: built.error });
+      }
+      await deductStock(built.items);
+      sale.stock_deducted = true;
+    }
+
+    // 2. The down payment, as takings. Only the money actually handed over —
+    //    the balance counts as it is paid, through the debt.
+    if (down > 0) {
+      try {
+        const written = await createSaleWithInvoice({
+          user_id: req.user._id,
+          customer_name: sale.customer_name,
+          customer_phone: sale.customer_phone,
+          form_ref: sale.reference,
+          subtotal: down,
+          discount: 0,
+          discount_type: 'fixed',
+          total_amount: down,
+          cart_total: sale.total_amount,
+          debt_amount: owing,
+          payment_status: owing > 0 ? 'partial' : 'paid',
+          payment_method: ['cash', 'card', 'mobile_money'].includes(payment_method)
+            ? payment_method : 'cash',
+          items: [{
+            product_id: sale.product_id || undefined,
+            product_name: `${sale.phone_model} — down payment on ${sale.reference}`,
+            quantity: 1,
+            unit_price: down,
+            cost_price: 0,
+            total: down,
+          }],
+        });
+        sale.sale_id = written._id;
+        sale.invoice_no = written.invoice_no;
+      } catch (saleErr) {
+        console.error('Phone sale down payment failed:', saleErr.stack || saleErr.message);
+      }
+    }
+
+    // 3. The balance, as a debt due on the last instalment date, so it is
+    //    chased and paid off through the screen that already does that.
+    if (owing > 0) {
+      const due = new Date();
+      if (sale.plan === 'weekly') due.setDate(due.getDate() + sale.installments * 7);
+      else due.setMonth(due.getMonth() + sale.installments);
+
+      const debt = await Debt.create({
+        sale_id: sale.sale_id,
+        customer_name: sale.customer_name,
+        customer_phone: sale.customer_phone,
+        amount_owed: owing,
+        amount_paid: 0,
+        due_date: due,
+        created_by: req.user._id,
+      });
+      sale.debt_id = debt._id;
+    }
+
     sale.status = 'approved';
     sale.reviewed_by = req.user._id;
     sale.reviewed_at = new Date();
     await sale.save();
 
+    const parts = [];
+    if (sale.stock_deducted) parts.push('the phone is off stock');
+    if (sale.invoice_no) parts.push(`${gh(down)} taken (${sale.invoice_no})`);
+    if (sale.debt_id) parts.push(`${gh(owing)} owed over ${sale.installments} ${sale.plan === 'weekly' ? 'weeks' : 'months'}`);
+
     return res.status(200).json({
       success: true,
-      message: `${sale.reference} approved. The phone can be handed over.`,
+      message: `${sale.reference} approved${parts.length ? ' — ' + parts.join(', ') : ''}.`,
       data: sale,
     });
   } catch (err) {

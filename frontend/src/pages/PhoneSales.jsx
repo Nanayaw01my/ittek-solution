@@ -12,6 +12,7 @@ import RefreshButton from '../components/RefreshButton'
 import { formatCurrency } from '../utils/helpers'
 import { uploadImage } from '../api/upload'
 import { resizeImageToDataUrl, dataUrlToFile } from '../utils/resizeImage'
+import { getProducts } from '../api/products'
 import {
   getPhoneSales, createPhoneSale, approvePhoneSale, rejectPhoneSale, deletePhoneSale,
 } from '../api/phoneSales'
@@ -170,8 +171,17 @@ function NewApplicationModal({ onClose }) {
   const [guarantor, setGuarantor] = useState({ name: '', phone: '', address: '', relationship: '' })
   const [guarantorId, setGuarantorId] = useState({})
   const [deal, setDeal] = useState({
-    phone_model: '', imei: '', total_amount: '', down_payment: '', plan: 'monthly', notes: '',
+    phone_model: '', product_id: '', imei: '', total_amount: '', down_payment: '',
+    plan: 'monthly', notes: '',
   })
+  const [phoneSearch, setPhoneSearch] = useState('')
+
+  const { data: phoneProducts } = useQuery({
+    queryKey: ['phone-products', phoneSearch],
+    queryFn: () => getProducts({ search: phoneSearch, limit: 6 }).then((r) => r.data),
+    enabled: phoneSearch.trim().length > 1 && !deal.product_id,
+  })
+  const phoneMatches = phoneProducts?.products || phoneProducts || []
   const setDealField = (k) => (e) => setDeal((p) => ({ ...p, [k]: e.target.value }))
 
   const total = parseFloat(deal.total_amount) || 0
@@ -215,6 +225,7 @@ function NewApplicationModal({ onClose }) {
       guarantor_relationship: guarantor.relationship,
       guarantor_id: guarantorId,
       phone_model: deal.phone_model,
+      product_id: deal.product_id || undefined,
       imei: deal.imei,
       total_amount: total,
       down_payment: down,
@@ -269,10 +280,54 @@ function NewApplicationModal({ onClose }) {
               <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Phone model *</label>
                 <input
-                  value={deal.phone_model} onChange={setDealField('phone_model')}
+                  value={deal.phone_model}
+                  onChange={(e) => {
+                    // Typing over a picked phone unlinks it — the name and the
+                    // product must not drift apart, or the wrong thing comes
+                    // off the shelf.
+                    setDeal((p) => ({ ...p, phone_model: e.target.value, product_id: '' }))
+                    setPhoneSearch(e.target.value)
+                  }}
                   placeholder="iPhone 12 Pro"
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
+
+                {/* Linking it to the catalogue is what lets the phone come off
+                    stock when the application is approved. Typed on its own it
+                    still works — the deal is recorded, the stock is not. */}
+                {deal.product_id ? (
+                  <p className="mt-1 text-xs font-semibold text-green-700">
+                    Linked to stock — this phone comes off the shelf when you approve it.
+                  </p>
+                ) : phoneMatches.length > 0 ? (
+                  <div className="mt-1 border border-gray-100 rounded-xl divide-y max-h-36 overflow-y-auto">
+                    {phoneMatches.map((p) => (
+                      <button
+                        key={p._id} type="button"
+                        onClick={() => {
+                          setDeal((d) => ({
+                            ...d,
+                            product_id: p._id,
+                            phone_model: p.name,
+                            total_amount: d.total_amount || String(p.selling_price ?? ''),
+                          }))
+                          setPhoneSearch('')
+                        }}
+                        className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-orange-50"
+                      >
+                        <span className="truncate">{p.name}</span>
+                        <span className="text-xs text-gray-500 flex-shrink-0">
+                          {p.quantity} in stock
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Type to search the catalogue. Not found? Leave it typed — the deal is
+                    still recorded, but no phone comes off stock.
+                  </p>
+                )}
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">IMEI / serial number</label>
@@ -420,6 +475,9 @@ function DetailModal({ sale, onClose }) {
   const queryClient = useQueryClient()
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
+  // How the down payment was taken. Asked at approval because that is the
+  // moment the money actually changes hands.
+  const [payMethod, setPayMethod] = useState('cash')
 
   const done = (msg) => {
     toast.success(msg)
@@ -427,8 +485,17 @@ function DetailModal({ sale, onClose }) {
     onClose()
   }
   const approve = useMutation({
-    mutationFn: () => approvePhoneSale(sale._id),
-    onSuccess: () => done(`${sale.reference} approved`),
+    mutationFn: () => approvePhoneSale(sale._id, payMethod),
+    onSuccess: (res) => {
+      // The server says exactly what moved — stock, money, debt — so an owner
+      // is not left guessing which of the three happened.
+      toast.success(res.data?.message || `${sale.reference} approved`, { duration: 9000 })
+      queryClient.invalidateQueries({ queryKey: ['phone-sales'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['debts'] })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      onClose()
+    },
     onError: (err) => toast.error(err.response?.data?.message || 'Could not approve'),
   })
   const reject = useMutation({
@@ -524,7 +591,53 @@ function DetailModal({ sale, onClose }) {
               </div>
             </div>
           ) : (
-            <div className="flex gap-2 pt-2 border-t">
+            <div className="pt-2 border-t space-y-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">
+                  Approving will
+                </p>
+                <ul className="text-sm text-amber-900 mt-1 space-y-0.5">
+                  {sale.product_id && <li>• take the phone off stock</li>}
+                  {sale.down_payment > 0 && (
+                    <li>• record {formatCurrency(sale.down_payment)} in today's sales</li>
+                  )}
+                  {sale.balance > 0 && (
+                    <li>
+                      • put {formatCurrency(sale.balance)} into Debts under {sale.customer_name},
+                      due over {sale.installments} {sale.plan === 'weekly' ? 'weeks' : 'months'}
+                    </li>
+                  )}
+                  {!sale.product_id && (
+                    <li className="text-amber-700">
+                      • nothing comes off stock — no catalogue phone was linked
+                    </li>
+                  )}
+                </ul>
+              </div>
+
+              {sale.down_payment > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-1.5">
+                    How was the deposit paid?
+                  </p>
+                  <div className="flex gap-2">
+                    {[['cash', 'Cash'], ['mobile_money', 'Mobile Money'], ['card', 'Card']].map(([v, l]) => (
+                      <button
+                        key={v} type="button" onClick={() => setPayMethod(v)}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg border ${
+                          payMethod === v
+                            ? 'bg-orange-500 text-white border-orange-500'
+                            : 'bg-white text-gray-600 border-gray-200'
+                        }`}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            <div className="flex gap-2">
               <button onClick={() => setRejecting(true)}
                 className="flex-1 py-2.5 border border-red-200 text-red-600 rounded-xl font-bold text-sm hover:bg-red-50">
                 <FiXCircle className="inline mr-1" /> Reject
@@ -533,6 +646,7 @@ function DetailModal({ sale, onClose }) {
                 className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm disabled:opacity-50">
                 <FiCheckCircle className="inline mr-1" /> {approve.isPending ? 'Approving…' : 'Approve'}
               </button>
+            </div>
             </div>
           )
         )}

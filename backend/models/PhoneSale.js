@@ -64,6 +64,13 @@ const PhoneSaleSchema = new mongoose.Schema(
       required: true,
     },
 
+    // Written when an owner approves it: the money and the goods both move at
+    // that moment, and these say where they went.
+    sale_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale' },
+    invoice_no: { type: String, trim: true },
+    debt_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Debt' },
+    stock_deducted: { type: Boolean, default: false },
+
     submitted_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     submitted_at: { type: Date, default: Date.now },
     reviewed_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
