@@ -7,6 +7,10 @@ import { login } from '../api/auth'
 import useAuthStore from '../store/authStore'
 import { describeApiError } from '../utils/apiError'
 import { getPendingCount } from '../utils/offlineQueue'
+import {
+  rememberCredentials, verifyOffline, offlineUsers, offlineAuthSupported,
+} from '../utils/offlineAuth'
+import useOnlineStatus from '../hooks/useOnlineStatus'
 
 const REMEMBER_KEY = 'ittek_remembered_user'
 
@@ -26,6 +30,12 @@ export default function Login() {
 
   // Read once: sales held on this device that have not reached the server.
   const [pendingOffline] = useState(() => getPendingCount())
+  // Who this device can let in with no internet. Read through the hook, not
+  // navigator.onLine directly: the connection usually drops while somebody is
+  // already sitting on this screen, and a value read once at render would
+  // never notice.
+  const isOnline = useOnlineStatus()
+  const [knownOffline] = useState(() => (offlineAuthSupported() ? offlineUsers() : []))
 
   const { register, handleSubmit, formState: { errors }, setError, setFocus } = useForm({
     defaultValues: { username: remembered },
@@ -36,6 +46,35 @@ export default function Login() {
     // filled in, skip ahead to the password.
     setFocus(remembered ? 'password' : 'username')
   }, [setFocus, remembered])
+
+  /**
+   * Signing in from what this device remembers.
+   *
+   * Only ever reached when the server could not be spoken to. A server that
+   * answers "wrong password" is the truth; this is for when nothing answers.
+   */
+  const signInOffline = async (data) => {
+    const attempt = await verifyOffline(data.username, data.password)
+
+    if (!attempt.ok) {
+      const why = {
+        unknown: `${data.username} has not signed in on this device before, so there is nothing to check against while offline.`,
+        expired: 'This device last remembered that sign-in too long ago. Connect to the internet once to sign in.',
+        wrong: 'That password does not match the one this device remembers.',
+        unsupported: 'This device cannot check a password offline.',
+      }[attempt.reason]
+      setErrorKind(attempt.reason === 'wrong' ? 'client' : 'connection')
+      setError('root', { message: `No connection. ${why}` })
+      return false
+    }
+
+    if (remember) localStorage.setItem(REMEMBER_KEY, data.username)
+    storeLogin(attempt.user, attempt.token)
+    toast.success(`Signed in offline — welcome back, ${attempt.user?.username || data.username}.`,
+      { duration: 7000 })
+    navigate('/welcome', { replace: true })
+    return true
+  }
 
   const onSubmit = async (data) => {
     setLoading(true)
@@ -54,6 +93,10 @@ export default function Login() {
         localStorage.removeItem(REMEMBER_KEY)
       }
 
+      // Remember this sign-in so the same password opens the till next time
+      // the internet is down. Never the password itself — a hash of it.
+      await rememberCredentials(data.username, data.password, user, token)
+
       storeLogin(user, token)
       toast.success(`Welcome back, ${user.username}!`)
       // Straight to the greeting, which shows their photo and then moves on
@@ -63,8 +106,17 @@ export default function Login() {
       // Never blame the password for a network or server fault — that sends
       // staff off resetting a password that was never wrong.
       const { message, kind } = describeApiError(err, 'Invalid credentials. Please try again.')
-      setErrorKind(kind)
-      setError('root', { message })
+
+      // Nothing answered. Fall back to what this device remembers — but only
+      // for a connection fault: a server that said "wrong password" has given
+      // the real answer, and must not be second-guessed locally.
+      if (kind === 'connection' && offlineAuthSupported()) {
+        const signedIn = await signInOffline(data)
+        if (signedIn) return
+      } else {
+        setErrorKind(kind)
+        setError('root', { message })
+      }
     } finally {
       setLoading(false)
     }
@@ -99,6 +151,19 @@ export default function Login() {
           the device — say so, because the natural fear at this screen is that
           signing out lost them.
         */}
+        {/* Only worth saying while the internet is actually down — otherwise it
+            is noise on every shift. */}
+        {!isOnline && knownOffline.length > 0 && (
+          <div className="mb-5 flex gap-2.5 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+            <FiWifiOff className="text-blue-500 flex-shrink-0 mt-0.5" size={17} />
+            <p className="text-xs text-blue-900">
+              <span className="font-bold">No internet — you can still sign in.</span>{' '}
+              This device remembers {knownOffline.map((u) => u.username).join(', ')}.
+              Selling works offline; the sales go to the server when it comes back.
+            </p>
+          </div>
+        )}
+
         {pendingOffline > 0 && (
           <div className="mb-5 flex gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl">
             <FiClock className="text-amber-500 flex-shrink-0 mt-0.5" size={17} />
