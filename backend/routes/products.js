@@ -8,7 +8,7 @@ const multer = require('multer');
 const {
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
   getLowStock, getByBarcode,
-  generateBarcode, getBarcodeSheet, commitStockCount, searchProducts, bulkImport, getProductSummary,
+  generateBarcode, generateAllBarcodes, getBarcodeSheet, commitStockCount, searchProducts, bulkImport, getProductSummary,
   getOfflineCatalogue, getDuplicateProducts, mergeDuplicateProducts, autoMergeDuplicates,
 } = require('../controllers/productsController');
 const { previewImport, commitImport } = require('../controllers/productImportController');
@@ -25,6 +25,14 @@ router.get('/low-stock', authenticate, requireLevel(3), getLowStock);
 router.get('/barcode/:barcode', authenticate, getByBarcode);
 // A code for stock that arrived without one.
 router.get('/generate-barcode', authenticate, generateBarcode);
+// Filling in every missing barcode changes the whole catalogue, so it stays
+// with the CEO. It never touches a product that already has one.
+router.post(
+  '/generate-barcodes',
+  [authenticate, requireLevel(3)],
+  auditLog('GENERATE_ALL_BARCODES', (req) => ({ dry_run: !!req.body?.dry_run })),
+  generateAllBarcodes
+);
 // Every product's barcode, drawn on a sheet to cut up and stick on.
 router.get('/barcode-sheet', authenticate, requireLevel(2), getBarcodeSheet);
 router.post('/search', authenticate, searchProducts);

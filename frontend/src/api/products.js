@@ -11,6 +11,9 @@ export const getProductByBarcode = (barcode) => api.get(`/products/barcode/${bar
 /** A fresh EAN-13 nothing is using, for stock that arrived without a barcode. */
 export const generateBarcode = () => api.get('/products/generate-barcode')
 
+/** Fills in every missing barcode. `dry_run` only counts what it would do. */
+export const generateAllBarcodes = (data = {}) => api.post('/products/generate-barcodes', data)
+
 /** Every product and its barcode, drawn on a sheet to cut up and stick on. */
 export const getBarcodeSheet = () => api.get('/products/barcode-sheet', { responseType: 'blob' })
 

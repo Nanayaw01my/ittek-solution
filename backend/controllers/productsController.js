@@ -2,7 +2,7 @@ const { validationResult } = require('express-validator');
 const Product = require('../models/Product');
 
 const { effectiveMode } = require('../config/pageAccess');
-const { nextFreeBarcode } = require('../utils/barcode');
+const { nextFreeBarcode, mintEan13 } = require('../utils/barcode');
 const { modules: eanModules } = require('../utils/ean13');
 const Settings = require('../models/Settings');
 const { generateBarcodeSheet } = require('../utils/pdfGenerator');
@@ -226,6 +226,86 @@ const generateBarcode = async (req, res) => {
   } catch (err) {
     console.error('Generate barcode error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * POST /api/products/generate-barcodes
+ *
+ * A code for every product that has none. Deliberately narrow: a product
+ * that already carries a barcode is left exactly as it is, because that code
+ * is usually the manufacturer's, printed on the box, and replacing it would
+ * mean the thing on the shelf no longer matches the thing in the system.
+ *
+ * `dry_run` answers "how many would this touch?" without touching anything,
+ * so the screen can say the number before somebody agrees to it.
+ */
+const generateAllBarcodes = async (req, res) => {
+  try {
+    const needs = await Product.find({
+      is_active: { $ne: false },
+      $or: [{ barcode: { $exists: false } }, { barcode: null }, { barcode: '' }],
+    }).select('name').sort({ name: 1 }).lean();
+
+    if (req.body?.dry_run) {
+      return res.status(200).json({
+        success: true,
+        data: { would_generate: needs.length },
+      });
+    }
+
+    if (needs.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'Every product already has a barcode.',
+        data: { generated: [], count: 0 },
+      });
+    }
+
+    // Every code already in use, read once. Asking the database per product
+    // would be a query each; this is one, and the set also catches codes
+    // minted earlier in this same run.
+    const all = await Product.find({}).select('barcode variants.barcode').lean();
+    const taken = new Set();
+    for (const p of all) {
+      if (p.barcode) taken.add(String(p.barcode).trim());
+      for (const v of p.variants || []) if (v.barcode) taken.add(String(v.barcode).trim());
+    }
+
+    const ops = [];
+    const generated = [];
+    for (const p of needs) {
+      let code = null;
+      for (let i = 0; i < 50 && !code; i++) {
+        const candidate = mintEan13();
+        if (!taken.has(candidate)) { taken.add(candidate); code = candidate; }
+      }
+      if (!code) continue;
+      ops.push({ updateOne: { filter: { _id: p._id }, update: { $set: { barcode: code } } } });
+      generated.push({ _id: p._id, name: p.name, barcode: code });
+    }
+
+    // Unordered: one product failing the unique index must not stop the rest.
+    let written = 0;
+    if (ops.length > 0) {
+      const result = await Product.bulkWrite(ops, { ordered: false })
+        .catch((err) => err?.result || null);
+      written = result?.modifiedCount ?? result?.nModified ?? ops.length;
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `${generated.length} product${generated.length === 1 ? '' : 's'} given a barcode.`,
+      data: {
+        generated,
+        count: generated.length,
+        written,
+        untouched: 'Products that already had a barcode were left alone.',
+      },
+    });
+  } catch (err) {
+    console.error('Bulk barcode error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not finish: ${err.message}` });
   }
 };
 
@@ -820,6 +900,7 @@ const autoMergeDuplicates = async (req, res) => {
 module.exports = {
   getDuplicateProducts, mergeDuplicateProducts, autoMergeDuplicates,
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
-  getLowStock, getByBarcode, generateBarcode, commitStockCount, searchProducts, bulkImport, getProductSummary,
+  getLowStock, getByBarcode, generateBarcode, generateAllBarcodes, getBarcodeSheet,
+  commitStockCount, searchProducts, bulkImport, getProductSummary,
   getOfflineCatalogue,
 };

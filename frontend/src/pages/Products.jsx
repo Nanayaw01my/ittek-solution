@@ -4,10 +4,11 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload, FiRefreshCw, FiCopy, FiZap, FiCrosshair, FiX, FiCheck, FiPrinter } from 'react-icons/fi'
 import { openPdfInNewTab } from '../utils/openPdf'
-import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary, generateBarcode, getProductByBarcode, commitStockCount, getBarcodeSheet } from '../api/products'
+import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary, generateBarcode, getProductByBarcode, commitStockCount, getBarcodeSheet, generateAllBarcodes } from '../api/products'
 import { formatCurrency, getRoleLevel } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
+import LoadingSpinner from '../components/LoadingSpinner'
 import Table from '../components/Table'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Badge from '../components/Badge'
@@ -458,6 +459,139 @@ function StockCountModal({ onClose }) {
   )
 }
 
+/**
+ * Filling in every missing barcode.
+ *
+ * It asks first with the real count, because this writes to most of the
+ * catalogue at once. Products that already carry a barcode are never
+ * touched: that code is usually the manufacturer's, printed on the box, and
+ * replacing it would leave the thing on the shelf disagreeing with the thing
+ * in the system.
+ */
+function AutoBarcodeModal({ onClose }) {
+  const queryClient = useQueryClient()
+  const [done, setDone] = useState(null)
+  const [sheetBusy, setSheetBusy] = useState(false)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['barcode-dry-run'],
+    queryFn: () => generateAllBarcodes({ dry_run: true }).then((r) => r.data),
+    enabled: !done,
+    staleTime: 0,
+  })
+  const willDo = data?.would_generate ?? 0
+
+  const run = useMutation({
+    mutationFn: () => generateAllBarcodes(),
+    onSuccess: (res) => {
+      setDone(res.data)
+      toast.success(`${res.data.count} product${res.data.count === 1 ? '' : 's'} given a barcode.`,
+        { duration: 8000 })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not generate them'),
+  })
+
+  const printSheet = async () => {
+    setSheetBusy(true)
+    try {
+      await openPdfInNewTab(getBarcodeSheet, 'product-barcodes.pdf')
+    } catch {
+      toast.error('Could not build the sheet')
+    } finally {
+      setSheetBusy(false)
+    }
+  }
+
+  return (
+    <Modal isOpen onClose={onClose} title="Barcode every product" size="md">
+      <div className="p-5 space-y-4">
+        {done ? (
+          <>
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+              <p className="font-bold text-green-900">
+                {done.count} product{done.count === 1 ? '' : 's'} given a barcode — saved.
+              </p>
+              <p className="text-xs text-green-800 mt-0.5">
+                Products that already had one were left alone.
+              </p>
+            </div>
+
+            {done.generated.length > 0 && (
+              <div className="border border-gray-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-[11px] uppercase text-gray-500 sticky top-0">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-bold">Product</th>
+                      <th className="text-right px-3 py-2 font-bold">Barcode</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {done.generated.map((g) => (
+                      <tr key={g._id}>
+                        <td className="px-3 py-1.5 text-gray-900">{g.name}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-gray-700">{g.barcode}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={onClose}
+                className="flex-1 py-2.5 border border-gray-200 rounded-xl font-semibold text-sm">
+                Close
+              </button>
+              <button onClick={printSheet} disabled={sheetBusy}
+                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+                <FiPrinter className="inline mr-1" size={14} />
+                {sheetBusy ? 'Building…' : 'Print the sheet'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {isLoading ? <LoadingSpinner /> : (
+              <>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-sm font-bold text-amber-900">
+                    {willDo === 0
+                      ? 'Every product already has a barcode.'
+                      : `${willDo} product${willDo === 1 ? '' : 's'} have no barcode.`}
+                  </p>
+                  {willDo > 0 && (
+                    <ul className="text-xs text-amber-900 mt-1 space-y-0.5">
+                      <li>• each gets its own code, saved on the product</li>
+                      <li>• products that already have a barcode are not touched</li>
+                      <li>• you can print them all on a sheet afterwards</li>
+                    </ul>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <button onClick={onClose}
+                    className="flex-1 py-2.5 border border-gray-200 rounded-xl font-semibold text-sm">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => run.mutate()}
+                    disabled={willDo === 0 || run.isPending}
+                    className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm disabled:opacity-50"
+                  >
+                    <FiZap className="inline mr-1" size={14} />
+                    {run.isPending ? 'Generating…' : `Generate ${willDo || ''}`.trim()}
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 export default function Products() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -475,6 +609,7 @@ export default function Products() {
   const [scanCode, setScanCode] = useState('')
   const [scanBusy, setScanBusy] = useState(false)
   const [sheetBusy, setSheetBusy] = useState(false)
+  const [showAutoBarcode, setShowAutoBarcode] = useState(false)
   const [page, setPage] = useState(1)
 
   const user = useAuthStore(s => s.user)
@@ -700,6 +835,15 @@ export default function Products() {
                 className="flex items-center gap-2 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-semibold text-sm transition-colors"
               >
                 <FiCopy size={16} /> <span className="hidden sm:inline">Duplicates</span>
+              </button>
+            )}
+            {userLevel >= 3 && (
+              <button
+                onClick={() => setShowAutoBarcode(true)}
+                title="Give every product without a barcode its own"
+                className="flex items-center gap-2 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-semibold text-sm transition-colors"
+              >
+                <FiZap size={16} /> <span className="hidden sm:inline">Barcode all</span>
               </button>
             )}
             <button
@@ -943,6 +1087,7 @@ export default function Products() {
 
       {/* Delete Confirm */}
       {showCount && <StockCountModal onClose={() => setShowCount(false)} />}
+      {showAutoBarcode && <AutoBarcodeModal onClose={() => setShowAutoBarcode(false)} />}
 
       <ConfirmDialog
         isOpen={!!deleteTarget}
