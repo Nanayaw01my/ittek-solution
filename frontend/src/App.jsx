@@ -36,6 +36,7 @@ import FieldDispatch from './pages/FieldDispatch'
 import PhoneSales from './pages/PhoneSales'
 import ServiceCharges from './pages/ServiceCharges'
 import DamagedGoods from './pages/DamagedGoods'
+import CashUp from './pages/CashUp'
 import FraudAlerts from './pages/FraudAlerts'
 import DeleteRecords from './pages/DeleteRecords'
 import ReceiptForms from './pages/ReceiptForms'
@@ -164,6 +165,8 @@ export default function App() {
         <Route path="service-charges" element={<ProtectedRoute minLevel={1}><ServiceCharges /></ProtectedRoute>} />
         {/* Whoever finds the broken thing writes it down; it comes off stock. */}
         <Route path="damaged-goods" element={<ProtectedRoute minLevel={1}><DamagedGoods /></ProtectedRoute>} />
+        {/* Somebody other than whoever took the money counts it. */}
+        <Route path="cash-up" element={<ProtectedRoute minLevel={2}><CashUp /></ProtectedRoute>} />
         {/* Not a document: printing one records money. */}
         <Route path="packages-receipt" element={<ProtectedRoute minLevel={2}><PackagesReceipt /></ProtectedRoute>} />
         <Route path="search" element={<ProtectedRoute minLevel={3} page="search"><Search /></ProtectedRoute>} />
