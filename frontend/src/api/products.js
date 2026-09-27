@@ -7,6 +7,9 @@ export const updateProduct = (id, data) => api.put(`/products/${id}`, data)
 export const deleteProduct = (id) => api.delete(`/products/${id}`)
 export const searchProducts = (query) => api.post('/products/search', { query })
 export const getProductByBarcode = (barcode) => api.get(`/products/barcode/${barcode}`)
+
+/** A fresh EAN-13 nothing is using, for stock that arrived without a barcode. */
+export const generateBarcode = () => api.get('/products/generate-barcode')
 export const getLowStockProducts = () => api.get('/products/low-stock')
 
 // The whole catalogue in one response, for the till to hold offline.

@@ -2,6 +2,7 @@ const { validationResult } = require('express-validator');
 const Product = require('../models/Product');
 
 const { effectiveMode } = require('../config/pageAccess');
+const { nextFreeBarcode } = require('../utils/barcode');
 
 /**
  * A user granted the Products page as 'inventory' is there to keep stock
@@ -199,6 +200,28 @@ const getByBarcode = async (req, res) => {
     return res.status(200).json({ success: true, data: product });
   } catch (err) {
     console.error('Get by barcode error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * GET /api/products/generate-barcode
+ *
+ * A code for something that arrived without one. See utils/barcode.js for why
+ * it is a real EAN-13 and why it starts with 2.
+ */
+const generateBarcode = async (req, res) => {
+  try {
+    const code = await nextFreeBarcode(Product);
+    if (!code) {
+      return res.status(503).json({
+        success: false,
+        message: 'Could not find a free barcode. Try again.',
+      });
+    }
+    return res.status(200).json({ success: true, data: { barcode: code } });
+  } catch (err) {
+    console.error('Generate barcode error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -670,6 +693,6 @@ const autoMergeDuplicates = async (req, res) => {
 module.exports = {
   getDuplicateProducts, mergeDuplicateProducts, autoMergeDuplicates,
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
-  getLowStock, getByBarcode, searchProducts, bulkImport, getProductSummary,
+  getLowStock, getByBarcode, generateBarcode, searchProducts, bulkImport, getProductSummary,
   getOfflineCatalogue,
 };

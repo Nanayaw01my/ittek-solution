@@ -7,7 +7,8 @@ const { auditLog } = require('../middleware/auditLogger');
 const multer = require('multer');
 const {
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
-  getLowStock, getByBarcode, searchProducts, bulkImport, getProductSummary,
+  getLowStock, getByBarcode,
+  generateBarcode, searchProducts, bulkImport, getProductSummary,
   getOfflineCatalogue, getDuplicateProducts, mergeDuplicateProducts, autoMergeDuplicates,
 } = require('../controllers/productsController');
 const { previewImport, commitImport } = require('../controllers/productImportController');
@@ -22,6 +23,8 @@ const uploadSheet = multer({
 // All authenticated users can list/view products (needed for POS)
 router.get('/low-stock', authenticate, requireLevel(3), getLowStock);
 router.get('/barcode/:barcode', authenticate, getByBarcode);
+// A code for stock that arrived without one.
+router.get('/generate-barcode', authenticate, generateBarcode);
 router.post('/search', authenticate, searchProducts);
 router.post('/bulk-import', authenticate, requireLevel(3), auditLog('BULK_IMPORT_PRODUCTS'), bulkImport);
 

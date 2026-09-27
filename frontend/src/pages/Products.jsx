@@ -2,8 +2,8 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload, FiRefreshCw, FiCopy } from 'react-icons/fi'
-import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary } from '../api/products'
+import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload, FiRefreshCw, FiCopy, FiZap } from 'react-icons/fi'
+import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary, generateBarcode } from '../api/products'
 import { formatCurrency, getRoleLevel } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -46,7 +46,8 @@ const toFormValues = (product) => {
 function ProductForm({ product, categories = [], suppliers = [], onSubmit, loading, restricted = false }) {
   const [imageUrl, setImageUrl] = useState(product?.image_url || null)
   const [variants, setVariants] = useState(product?.variants || [])
-  const { register, handleSubmit, watch, formState: { errors } } = useForm({
+  const [mintingBarcode, setMintingBarcode] = useState(false)
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm({
     defaultValues: toFormValues(product)
   })
   const costPrice = parseFloat(watch('costPrice') || 0)
@@ -74,11 +75,44 @@ function ProductForm({ product, categories = [], suppliers = [], onSubmit, loadi
 
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1">Barcode</label>
-          <input
-            {...register('barcode')}
-            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
-            placeholder="Scan or type barcode"
-          />
+          <div className="flex gap-2">
+            <input
+              {...register('barcode')}
+              className="flex-1 min-w-0 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
+              placeholder="Scan or type barcode"
+            />
+            {/* For stock that came without one — a bundle the shop made up, or
+                a label that rubbed off. Overwriting a code already on a product
+                would stop every label printed from it scanning, so it asks. */}
+            <button
+              type="button"
+              onClick={async () => {
+                const current = (watch('barcode') || '').trim()
+                if (current && !window.confirm(
+                  `This product already has barcode ${current}. Replace it? Labels already printed will stop working.`
+                )) return
+                setMintingBarcode(true)
+                try {
+                  const res = await generateBarcode()
+                  setValue('barcode', res.data.barcode, { shouldDirty: true })
+                  toast.success(`Barcode ${res.data.barcode} — save the product to keep it`)
+                } catch (err) {
+                  toast.error(err.response?.data?.message || 'Could not generate a barcode')
+                } finally {
+                  setMintingBarcode(false)
+                }
+              }}
+              disabled={mintingBarcode}
+              className="px-3 py-2.5 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 whitespace-nowrap disabled:opacity-50"
+            >
+              <FiZap className="inline mr-1" size={13} />
+              {mintingBarcode ? 'Making…' : 'Generate'}
+            </button>
+          </div>
+          <p className="mt-1 text-[11px] text-gray-500">
+            Leave the supplier's barcode where there is one. Generate a code only for
+            stock that came without.
+          </p>
         </div>
 
         <div>
