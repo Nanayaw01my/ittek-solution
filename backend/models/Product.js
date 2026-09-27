@@ -64,6 +64,14 @@ const ProductSchema = new mongoose.Schema(
       default: 5,
       min: [0, 'Low stock level cannot be negative'],
     },
+    // How long this is covered for after it is sold. 0 means no warranty.
+    // Registering one still asks, because suppliers change their terms and
+    // old stock keeps the terms it was bought under.
+    warranty_months: {
+      type: Number,
+      default: 0,
+      min: [0, 'Warranty months cannot be negative'],
+    },
     image_url: {
       type: String,
     },

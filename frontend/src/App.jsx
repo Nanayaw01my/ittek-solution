@@ -38,6 +38,7 @@ import ServiceCharges from './pages/ServiceCharges'
 import DamagedGoods from './pages/DamagedGoods'
 import CashUp from './pages/CashUp'
 import CustomerProfile from './pages/CustomerProfile'
+import Warranties from './pages/Warranties'
 import FraudAlerts from './pages/FraudAlerts'
 import DeleteRecords from './pages/DeleteRecords'
 import ReceiptForms from './pages/ReceiptForms'
@@ -170,6 +171,8 @@ export default function App() {
         <Route path="cash-up" element={<ProtectedRoute minLevel={2}><CashUp /></ProtectedRoute>} />
         {/* One person's money, gathered from the six places it lives. */}
         <Route path="customers" element={<ProtectedRoute minLevel={2}><CustomerProfile /></ProtectedRoute>} />
+        {/* Counter work: the customer is standing there with the unit. */}
+        <Route path="warranties" element={<ProtectedRoute minLevel={1}><Warranties /></ProtectedRoute>} />
         {/* Not a document: printing one records money. */}
         <Route path="packages-receipt" element={<ProtectedRoute minLevel={2}><PackagesReceipt /></ProtectedRoute>} />
         <Route path="search" element={<ProtectedRoute minLevel={3} page="search"><Search /></ProtectedRoute>} />

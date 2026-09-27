@@ -38,6 +38,7 @@ const NAV_ITEMS = [
   { to: '/damaged-goods', label: 'Damaged & Faulty', icon: FiAlertTriangle, minLevel: 1 },
   { to: '/cash-up', label: 'Cash Up', icon: FiLock, minLevel: 2 },
   { to: '/customers', label: 'Customers', icon: FiUsers, minLevel: 2 },
+  { to: '/warranties', label: 'Warranties', icon: FiShield, minLevel: 1 },
   { to: '/packages-receipt', label: 'Packages Receipt', icon: FiFileText, minLevel: 2 },
   // CEO+ only
   { to: '/debts', label: 'Debts', icon: FiAlertCircle, minLevel: 2 },
