@@ -13,6 +13,7 @@ const EXPENSE_CATEGORIES = [
   'Rent',
   'Utilities',
   'Transport',
+  'Motor Rider',
   'Salaries',
   'Commission',
   'Maintenance',

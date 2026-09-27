@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiTrash2, FiDollarSign } from 'react-icons/fi'
+import { FiPlus, FiEdit2, FiTrash2, FiDollarSign, FiTruck } from 'react-icons/fi'
 import { getExpenses, createExpense, updateExpense, deleteExpense, getExpenseSummary } from '../api/expenses'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
@@ -82,6 +82,90 @@ function ExpenseForm({ expense, onSubmit, loading }) {
   )
 }
 
+/**
+ * Paying the motor rider.
+ *
+ * It is an ordinary expense underneath — that is the point, because anything
+ * written as an Expense is in the day's expenses without a second path to
+ * keep in step. What this adds is the three things a delivery run actually
+ * has, which a category and a free-text box would leave to whoever is typing:
+ * who rode, where to, and for which customer.
+ */
+function RiderForm({ onSubmit, loading }) {
+  const [rider, setRider] = useState('')
+  const [destination, setDestination] = useState('')
+  const [customer, setCustomer] = useState('')
+  const [amount, setAmount] = useState('')
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+
+  const paid = Number(amount)
+  const ready = rider.trim() && destination.trim() && paid > 0
+
+  const submit = (e) => {
+    e.preventDefault()
+    if (!ready) return
+    // Composed into the one description field the expense already has, so the
+    // run reads back whole on the expenses list and every report that uses it.
+    const parts = [rider.trim(), `to ${destination.trim()}`]
+    if (customer.trim()) parts.push(`for ${customer.trim()}`)
+    onSubmit({
+      category: 'Motor Rider',
+      amount: paid,
+      description: parts.join(' — '),
+      expense_date: date,
+    })
+  }
+
+  const field = 'w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500'
+
+  return (
+    <form onSubmit={submit} className="p-5 space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Rider *</label>
+          <input value={rider} onChange={(e) => setRider(e.target.value)}
+            placeholder="Who rode" className={field} />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Amount (GH₵) *</label>
+          <input type="number" step="0.01" min="0.01" value={amount}
+            onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className={field} />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">Where to *</label>
+        <input value={destination} onChange={(e) => setDestination(e.target.value)}
+          placeholder="Tarkwa" className={field} />
+      </div>
+
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">
+          Customer <span className="font-normal text-gray-400">— optional</span>
+        </label>
+        <input value={customer} onChange={(e) => setCustomer(e.target.value)}
+          placeholder="Who the delivery was for" className={field} />
+      </div>
+
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">Date *</label>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={field} />
+      </div>
+
+      <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-xl p-3">
+        Goes into today's expenses under <span className="font-bold">Motor Rider</span>.
+      </p>
+
+      <button
+        type="submit" disabled={!ready || loading}
+        className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
+      >
+        {loading ? 'Saving...' : 'Record rider payment'}
+      </button>
+    </form>
+  )
+}
+
 export default function Expenses() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
@@ -91,6 +175,7 @@ export default function Expenses() {
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [categoryFilter, setCategoryFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [showRider, setShowRider] = useState(false)
   const [editExpense, setEditExpense] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [page, setPage] = useState(1)
@@ -117,7 +202,10 @@ export default function Expenses() {
       toast.success('Expense recorded!')
       queryClient.invalidateQueries(['expenses'])
       queryClient.invalidateQueries(['expense-summary'])
+      // The dashboard's expense total is now stale.
+      queryClient.invalidateQueries(['dashboard-stats'])
       setShowModal(false)
+      setShowRider(false)
     },
     onError: err => toast.error(err.response?.data?.message || 'Failed to record expense'),
   })
@@ -193,6 +281,12 @@ export default function Expenses() {
           <div className="flex gap-2">
           <RefreshButton keys={['expenses', 'expense-summary']} />
           <button
+            onClick={() => setShowRider(true)}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-xl font-semibold text-sm transition-colors"
+          >
+            <FiTruck size={16} /> Motor Rider
+          </button>
+          <button
             onClick={() => { setEditExpense(null); setShowModal(true) }}
             className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
           >
@@ -253,6 +347,18 @@ export default function Expenses() {
               createMutation.mutate(formData)
             }
           }}
+        />
+      </Modal>
+
+      <Modal
+        isOpen={showRider}
+        onClose={() => setShowRider(false)}
+        title="Motor rider payment"
+        size="md"
+      >
+        <RiderForm
+          loading={createMutation.isPending}
+          onSubmit={(data) => createMutation.mutate(data)}
         />
       </Modal>
 

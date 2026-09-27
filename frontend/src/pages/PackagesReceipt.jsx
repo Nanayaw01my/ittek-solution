@@ -4,6 +4,8 @@ import toast from 'react-hot-toast'
 import { FiPrinter, FiSearch, FiX, FiPlus, FiFileText } from 'react-icons/fi'
 import { getBlankReceiptForm, getFilledReceiptForm } from '../api/forms'
 import { getProducts } from '../api/products'
+import { getCachedProducts } from '../utils/offlineQueue'
+import useOnlineStatus from '../hooks/useOnlineStatus'
 import { openPdfInNewTab } from '../utils/openPdf'
 import { formatCurrency } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
@@ -49,12 +51,28 @@ export default function PackagesReceipt() {
   const [balanceTouched, setBalanceTouched] = useState(false)
 
 
+  const isOnline = useOnlineStatus()
+  // The catalogue the till saved for offline use. A receipt written during a
+  // network cut still has to come off the right products, so the search falls
+  // back to that copy rather than finding nothing.
+  const cached = React.useMemo(() => getCachedProducts() || [], [])
+
   const { data: productData, isFetching } = useQuery({
     queryKey: ['form-products', search],
     queryFn: () => getProducts({ search, limit: 8 }).then(r => r.data),
-    enabled: search.trim().length > 1,
+    enabled: isOnline && search.trim().length > 1,
   })
-  const results = productData?.products || productData?.data || productData || []
+
+  const offlineResults = React.useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (q.length < 2) return []
+    return cached
+      .filter((p) => `${p.name || ''} ${p.barcode || ''}`.toLowerCase().includes(q))
+      .slice(0, 8)
+  }, [cached, search])
+
+  const online = productData?.products || productData?.data || productData || []
+  const results = isOnline ? online : offlineResults
 
   const addProduct = (p) => {
     setLines(prev => {
@@ -234,12 +252,23 @@ export default function PackagesReceipt() {
               placeholder="Search a product to add…"
               className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
+            {!isOnline && cached.length > 0 && (
+              <p className="mt-1 text-[11px] text-amber-700">
+                Offline — searching the {cached.length} products saved on this device.
+              </p>
+            )}
             {search.trim().length > 1 && (
               <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
                 {isFetching ? (
                   <p className="px-3 py-3 text-xs text-gray-400">Searching…</p>
                 ) : results.length === 0 ? (
-                  <p className="px-3 py-3 text-xs text-gray-400">No products found</p>
+                  <p className="px-3 py-3 text-xs text-gray-400">
+                    {isOnline
+                      ? 'No products found'
+                      : cached.length > 0
+                        ? `Not in the ${cached.length} products saved for offline use`
+                        : 'No products saved for offline use — open the till while online to save them'}
+                  </p>
                 ) : results.map(p => {
                   const added = lines.some(
                     l => l.product_id === p._id || l.name.trim().toLowerCase() === p.name.trim().toLowerCase()
