@@ -2,8 +2,9 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload, FiRefreshCw, FiCopy, FiZap, FiCrosshair, FiX, FiCheck } from 'react-icons/fi'
-import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary, generateBarcode, getProductByBarcode, commitStockCount } from '../api/products'
+import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload, FiRefreshCw, FiCopy, FiZap, FiCrosshair, FiX, FiCheck, FiPrinter } from 'react-icons/fi'
+import { openPdfInNewTab } from '../utils/openPdf'
+import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary, generateBarcode, getProductByBarcode, commitStockCount, getBarcodeSheet } from '../api/products'
 import { formatCurrency, getRoleLevel } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -473,6 +474,7 @@ export default function Products() {
   const [newBarcode, setNewBarcode] = useState('')
   const [scanCode, setScanCode] = useState('')
   const [scanBusy, setScanBusy] = useState(false)
+  const [sheetBusy, setSheetBusy] = useState(false)
   const [page, setPage] = useState(1)
 
   const user = useAuthStore(s => s.user)
@@ -700,6 +702,24 @@ export default function Products() {
                 <FiCopy size={16} /> <span className="hidden sm:inline">Duplicates</span>
               </button>
             )}
+            <button
+              onClick={async () => {
+                setSheetBusy(true)
+                try {
+                  await openPdfInNewTab(getBarcodeSheet, 'product-barcodes.pdf')
+                } catch (err) {
+                  toast.error(err.response?.data?.message || 'Could not build the sheet')
+                } finally {
+                  setSheetBusy(false)
+                }
+              }}
+              disabled={sheetBusy}
+              title="Every product and its barcode, on a sheet to cut up"
+              className="flex items-center gap-2 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-semibold text-sm transition-colors disabled:opacity-50"
+            >
+              <FiPrinter size={16} />
+              <span className="hidden sm:inline">{sheetBusy ? 'Building…' : 'Barcodes'}</span>
+            </button>
             <button
               onClick={() => setShowCount(true)}
               title="Scan a delivery in, or count the shelf"

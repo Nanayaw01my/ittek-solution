@@ -8,7 +8,7 @@ const multer = require('multer');
 const {
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
   getLowStock, getByBarcode,
-  generateBarcode, commitStockCount, searchProducts, bulkImport, getProductSummary,
+  generateBarcode, getBarcodeSheet, commitStockCount, searchProducts, bulkImport, getProductSummary,
   getOfflineCatalogue, getDuplicateProducts, mergeDuplicateProducts, autoMergeDuplicates,
 } = require('../controllers/productsController');
 const { previewImport, commitImport } = require('../controllers/productImportController');
@@ -25,6 +25,8 @@ router.get('/low-stock', authenticate, requireLevel(3), getLowStock);
 router.get('/barcode/:barcode', authenticate, getByBarcode);
 // A code for stock that arrived without one.
 router.get('/generate-barcode', authenticate, generateBarcode);
+// Every product's barcode, drawn on a sheet to cut up and stick on.
+router.get('/barcode-sheet', authenticate, requireLevel(2), getBarcodeSheet);
 router.post('/search', authenticate, searchProducts);
 // A whole scanning session at once. Same permission as correcting stock by
 // hand, since that is what it is — only faster.

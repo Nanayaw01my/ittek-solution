@@ -3,6 +3,9 @@ const Product = require('../models/Product');
 
 const { effectiveMode } = require('../config/pageAccess');
 const { nextFreeBarcode } = require('../utils/barcode');
+const { modules: eanModules } = require('../utils/ean13');
+const Settings = require('../models/Settings');
+const { generateBarcodeSheet } = require('../utils/pdfGenerator');
 
 /**
  * A user granted the Products page as 'inventory' is there to keep stock
@@ -223,6 +226,49 @@ const generateBarcode = async (req, res) => {
   } catch (err) {
     console.error('Generate barcode error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * GET /api/products/barcode-sheet
+ *
+ * Every product and its barcode, drawn so it can be cut out and stuck on.
+ */
+const getBarcodeSheet = async (req, res) => {
+  try {
+    const products = await Product.find({ is_active: { $ne: false } })
+      .select('name barcode')
+      .sort({ name: 1 })
+      .lean();
+
+    const items = [];
+    const missing = [];
+    for (const p of products) {
+      const code = (p.barcode || '').trim();
+      if (!code) { missing.push(p.name); continue; }
+      items.push({ name: p.name, barcode: code, bits: eanModules(code) });
+    }
+
+    const settings = await Settings.findOne().lean();
+    const pdf = await generateBarcodeSheet({
+      items,
+      missing,
+      logoUrl: settings?.logo_url || null,
+      company: {
+        name: settings?.company_name,
+        address: settings?.company_address,
+        phone: settings?.company_phone,
+      },
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="product-barcodes.pdf"');
+    res.setHeader('X-Barcode-Count', String(items.length));
+    res.setHeader('X-Missing-Count', String(missing.length));
+    return res.send(pdf);
+  } catch (err) {
+    console.error('Barcode sheet error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: 'Could not build the sheet.' });
   }
 };
 

@@ -3067,7 +3067,148 @@ const generateInternshipCertificate = async (options = {}) => {
 };
 
 
+/**
+ * A sheet of every product and its barcode, drawn so it can be scanned.
+ *
+ * The point is to cut them up and stick them on stock that came without a
+ * label, so the code is drawn at a size a cheap scanner reads: bars a third
+ * of a millimetre wide and about 18mm tall. Below the minimum and a laser
+ * scanner starts missing reads, which is the one failure that makes the
+ * whole exercise pointless.
+ *
+ * Products whose code cannot be drawn as an EAN-13 still appear, with the
+ * number printed as text — better than a picture of a barcode that scans as
+ * nothing. Products with no code at all are listed at the end, because that
+ * list is what tells the shop what is left to do.
+ */
+const generateBarcodeSheet = async (options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+  const items = options.items || [];
+  const missing = options.missing || [];
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 36, bottom: 36, left: 36, right: 36 } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 36;
+      const W = 523;
+      const PAGE_BOTTOM = 806;
+      const LGRAY = '#777777';
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+
+      // No watermark on this one. Everything else the shop prints is a
+      // document a person reads; this is read by a machine, and anything
+      // crossing the bars is something the scanner has to see past.
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      // Three labels across the page.
+      const COLS = 3;
+      const CELL_W = W / COLS;
+      const CELL_H = 96;
+      const BAR_UNIT = 0.95;   // points per module — about 0.33mm
+      const BAR_H = 50;
+
+      const drawBars = (bits, x, y) => {
+        doc.fillColor('#000000');
+        let run = 0;
+        for (let i = 0; i <= bits.length; i++) {
+          if (bits[i] === '1') { run++; continue; }
+          if (run > 0) {
+            // Guard bars run a little longer, as printed barcodes do.
+            const guard = (i - run) < 3 || (i > 45 && i - run < 50) || i > 92;
+            doc.rect((x + (i - run) * BAR_UNIT), y, run * BAR_UNIT,
+              BAR_H + (guard ? 5 : 0)).fill();
+          }
+          run = 0;
+        }
+        reset();
+      };
+
+      let page = 0;
+      const header = () => {
+        page += 1;
+        let hy = 36;
+        if (logoBuf) {
+          try { doc.image(logoBuf, ML, hy, { width: 38 }); } catch { /* keep the gap */ }
+        }
+        doc.fillColor('#000000').font('Helvetica-Bold').fontSize(12)
+          .text(companyName, logoBuf ? ML + 48 : ML, hy + 2);
+        doc.font('Helvetica').fontSize(8).fillColor(LGRAY)
+          .text(`Product barcodes · ${items.length} product${items.length === 1 ? '' : 's'}`
+            + ` · ${new Date().toLocaleDateString('en-GB')}`, logoBuf ? ML + 48 : ML, hy + 18);
+        reset();
+        return 78;
+      };
+
+      let y = header();
+
+      items.forEach((item, idx) => {
+        const col = idx % COLS;
+        if (col === 0 && idx > 0) {
+          y += CELL_H;
+          if (y + CELL_H > PAGE_BOTTOM) { doc.addPage(); y = header(); }
+        }
+        const x = ML + col * CELL_W;
+
+        // The name, cut to one line so every label is the same height.
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000000')
+          .text(String(item.name || '').slice(0, 34), x, y, {
+            width: CELL_W - 10, height: 10, ellipsis: true, lineBreak: false,
+          });
+
+        const bits = item.bits;
+        if (bits) {
+          const barW = bits.length * BAR_UNIT;
+          drawBars(bits, x + (CELL_W - 10 - barW) / 2, y + 12);
+          doc.font('Courier').fontSize(8).fillColor('#000000')
+            .text(item.barcode, x, y + 12 + BAR_H + 7, { width: CELL_W - 10, align: 'center' });
+        } else {
+          doc.font('Courier').fontSize(9).fillColor('#000000')
+            .text(item.barcode, x, y + 34, { width: CELL_W - 10, align: 'center' });
+          doc.font('Helvetica').fontSize(6.5).fillColor(LGRAY)
+            .text('not an EAN-13 — cannot be drawn', x, y + 48, {
+              width: CELL_W - 10, align: 'center',
+            });
+        }
+        reset();
+      });
+
+      if (items.length > 0) y += CELL_H;
+
+      // What is still to do.
+      if (missing.length > 0) {
+        if (y + 60 > PAGE_BOTTOM) { doc.addPage(); y = header(); }
+        doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000')
+          .text(`${missing.length} product${missing.length === 1 ? '' : 's'} with no barcode yet`, ML, y);
+        y += 16;
+        doc.font('Helvetica').fontSize(8).fillColor('#333333');
+        missing.forEach((name) => {
+          if (y + 12 > PAGE_BOTTOM) { doc.addPage(); y = header(); doc.font('Helvetica').fontSize(8); }
+          doc.text(`\u2022 ${name}`, ML, y, { width: W });
+          y += 11;
+        });
+      }
+
+      if (items.length === 0 && missing.length === 0) {
+        doc.font('Helvetica').fontSize(10).fillColor(LGRAY)
+          .text('No products.', ML, y);
+      }
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 module.exports = {
+  generateBarcodeSheet,
   generateReceipt, generateCreditAgreement, generateLayawayAgreement,
   generatePriceList, generateReport, generateBlankReceiptForm,
   generateInstallmentPlanSheet, generateInstallmentTable, generateTableReport,
