@@ -39,6 +39,8 @@ const NAV_ITEMS = [
   { to: '/cash-up', label: 'Cash Up', icon: FiLock, minLevel: 2 },
   { to: '/customers', label: 'Customers', icon: FiUsers, minLevel: 2 },
   { to: '/warranties', label: 'Warranties', icon: FiShield, minLevel: 1 },
+  { to: '/quotations', label: 'Quotations', icon: FiFileText, minLevel: 1 },
+  { to: '/reorder', label: 'What to Order', icon: FiTrendingUp, minLevel: 2 },
   { to: '/packages-receipt', label: 'Packages Receipt', icon: FiFileText, minLevel: 2 },
   // CEO+ only
   { to: '/debts', label: 'Debts', icon: FiAlertCircle, minLevel: 2 },
