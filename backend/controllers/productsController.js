@@ -227,6 +227,87 @@ const generateBarcode = async (req, res) => {
 };
 
 /**
+ * POST /api/products/stock-count
+ *
+ * A whole scanning session committed at once — receiving a delivery, or
+ * counting the shelf.
+ *
+ *   mode 'add' — what was scanned arrived, so it is added to what is there
+ *   mode 'set' — what was scanned is everything there is, so it replaces the
+ *                count, and the difference is what went missing
+ *
+ * One call for the session rather than one per scan: a stock-take that saves
+ * forty times can fail on the twentieth and leave the shelf half-corrected,
+ * and nobody would know which half.
+ */
+const commitStockCount = async (req, res) => {
+  try {
+    const { mode, lines } = req.body;
+    const setting = mode === 'set';
+
+    const clean = (lines || [])
+      .filter((l) => l && l.product_id && Number.isFinite(Number(l.quantity)))
+      .map((l) => ({ product_id: l.product_id, quantity: Math.max(0, Number(l.quantity)) }));
+
+    if (clean.length === 0) {
+      return res.status(400).json({ success: false, message: 'Nothing was scanned.' });
+    }
+
+    const products = await Product.find({ _id: { $in: clean.map((l) => l.product_id) } })
+      .select('name quantity has_variants');
+    const byId = new Map(products.map((p) => [String(p._id), p]));
+
+    // Variant products keep their counts on the variants, so a flat number
+    // written to the parent would be a lie. They are refused, not guessed at.
+    const missing = clean.filter((l) => !byId.has(String(l.product_id)));
+    if (missing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `${missing.length} scanned product${missing.length === 1 ? '' : 's'} no longer exist${missing.length === 1 ? 's' : ''}.`,
+      });
+    }
+
+    const results = [];
+    for (const line of clean) {
+      const product = byId.get(String(line.product_id));
+      if (product.has_variants) {
+        results.push({
+          product_id: product._id, name: product.name, skipped: 'has variants',
+          before: product.quantity, after: product.quantity, change: 0,
+        });
+        continue;
+      }
+      const before = product.quantity || 0;
+      const after = setting ? line.quantity : before + line.quantity;
+      product.quantity = after;
+      await product.save();
+      results.push({
+        product_id: product._id,
+        name: product.name,
+        before,
+        after,
+        change: after - before,
+      });
+    }
+
+    const touched = results.filter((r) => !r.skipped);
+    const units = touched.reduce((t, r) => t + r.change, 0);
+
+    return res.status(200).json({
+      success: true,
+      message: setting
+        ? `Counted ${touched.length} product${touched.length === 1 ? '' : 's'}`
+          + (units === 0 ? ' — the shelf matched.' : ` — ${units > 0 ? 'found' : 'missing'} ${Math.abs(units)}.`)
+        : `Added ${units} item${units === 1 ? '' : 's'} across ${touched.length} product${touched.length === 1 ? '' : 's'}.`,
+      data: { mode: setting ? 'set' : 'add', results, units, products: touched.length },
+    });
+  } catch (err) {
+    console.error('Stock count error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not save the count: ${err.message}` });
+  }
+};
+
+/**
  * POST /api/products/search
  */
 const searchProducts = async (req, res) => {
@@ -693,6 +774,6 @@ const autoMergeDuplicates = async (req, res) => {
 module.exports = {
   getDuplicateProducts, mergeDuplicateProducts, autoMergeDuplicates,
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
-  getLowStock, getByBarcode, generateBarcode, searchProducts, bulkImport, getProductSummary,
+  getLowStock, getByBarcode, generateBarcode, commitStockCount, searchProducts, bulkImport, getProductSummary,
   getOfflineCatalogue,
 };

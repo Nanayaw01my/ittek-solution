@@ -2,8 +2,8 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload, FiRefreshCw, FiCopy, FiZap } from 'react-icons/fi'
-import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary, generateBarcode } from '../api/products'
+import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload, FiRefreshCw, FiCopy, FiZap, FiCrosshair, FiX, FiCheck } from 'react-icons/fi'
+import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary, generateBarcode, getProductByBarcode, commitStockCount } from '../api/products'
 import { formatCurrency, getRoleLevel } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -43,19 +43,30 @@ const toFormValues = (product) => {
   }
 }
 
-function ProductForm({ product, categories = [], suppliers = [], onSubmit, loading, restricted = false }) {
+function ProductForm({ product, categories = [], suppliers = [], onSubmit, loading, restricted = false, initialBarcode = '' }) {
   const [imageUrl, setImageUrl] = useState(product?.image_url || null)
   const [variants, setVariants] = useState(product?.variants || [])
   const [mintingBarcode, setMintingBarcode] = useState(false)
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm({
-    defaultValues: toFormValues(product)
+    // A scanned code that matched nothing opens this form already carrying it.
+    defaultValues: product ? toFormValues(product) : { barcode: initialBarcode }
   })
   const costPrice = parseFloat(watch('costPrice') || 0)
   const sellingPrice = parseFloat(watch('sellingPrice') || 0)
   const margin = costPrice > 0 ? (((sellingPrice - costPrice) / costPrice) * 100).toFixed(1) : 0
 
   return (
-    <form onSubmit={handleSubmit(data => onSubmit({ ...data, image_url: imageUrl || undefined, variants }))} className="p-5 space-y-4">
+    <form
+      onSubmit={handleSubmit(data => onSubmit({ ...data, image_url: imageUrl || undefined, variants }))}
+      /* A barcode scanner types the code and then presses Enter. Without this
+         the Enter saves the product the moment the code lands — before the
+         name and the prices have been typed. The Save button is the only way
+         out of this form. */
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault()
+      }}
+      className="p-5 space-y-4"
+    >
       <ImageUpload
         value={imageUrl}
         onChange={setImageUrl}
@@ -267,6 +278,185 @@ function StockAdjustForm({ product, onSubmit, loading }) {
   )
 }
 
+/**
+ * A scanning session: receiving a delivery, or counting the shelf.
+ *
+ * Scans are tallied here and written in one go at the end. Saving each scan
+ * as it happens means a stock-take that dies halfway leaves the shelf
+ * half-corrected, with nobody able to say which half.
+ */
+function StockCountModal({ onClose }) {
+  const queryClient = useQueryClient()
+  const [mode, setMode] = useState('add')
+  const [code, setCode] = useState('')
+  const [lines, setLines] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [lastMsg, setLastMsg] = useState(null)
+  const boxRef = React.useRef(null)
+
+  const scan = async (barcode) => {
+    const wanted = barcode.trim()
+    if (!wanted) return
+    setCode('')
+
+    // Already in the tally? Then this is the same item again — count it.
+    const seen = lines.find((l) => l.barcode === wanted)
+    if (seen) {
+      setLines((prev) => prev.map((l) =>
+        l.barcode === wanted ? { ...l, quantity: l.quantity + 1 } : l))
+      setLastMsg({ ok: true, text: `${seen.name} — ${seen.quantity + 1}` })
+      return
+    }
+
+    setBusy(true)
+    try {
+      const res = await getProductByBarcode(wanted)
+      const p = res.data
+      if (p.has_variants) {
+        setLastMsg({ ok: false, text: `${p.name} has variants — count it by hand.` })
+        return
+      }
+      setLines((prev) => [...prev, {
+        product_id: p._id, name: p.name, barcode: wanted,
+        on_hand: p.quantity ?? 0, quantity: 1,
+      }])
+      setLastMsg({ ok: true, text: `${p.name} — 1` })
+    } catch {
+      // An unknown code stops the session rather than being silently dropped.
+      setLastMsg({ ok: false, text: `Nothing matches ${wanted}. Add it as a product first.` })
+    } finally {
+      setBusy(false)
+      boxRef.current?.focus()
+    }
+  }
+
+  const setQty = (barcode, v) => setLines((prev) => prev.map((l) =>
+    l.barcode === barcode ? { ...l, quantity: Math.max(0, Number(v) || 0) } : l))
+  const drop = (barcode) => setLines((prev) => prev.filter((l) => l.barcode !== barcode))
+
+  const commit = useMutation({
+    mutationFn: () => commitStockCount({
+      mode,
+      lines: lines.map((l) => ({ product_id: l.product_id, quantity: l.quantity })),
+    }),
+    onSuccess: (res) => {
+      const d = res.data
+      toast.success(
+        mode === 'set'
+          ? `Counted ${d.products} product${d.products === 1 ? '' : 's'}`
+            + (d.units === 0 ? ' — the shelf matched.' : ` — ${d.units > 0 ? 'found' : 'missing'} ${Math.abs(d.units)}.`)
+          : `Added ${d.units} item${d.units === 1 ? '' : 's'} across ${d.products} product${d.products === 1 ? '' : 's'}.`,
+        { duration: 9000 }
+      )
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['product-summary'] })
+      onClose()
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not save the count'),
+  })
+
+  const units = lines.reduce((t, l) => t + l.quantity, 0)
+
+  return (
+    <Modal isOpen onClose={onClose} title="Scan stock in" size="lg">
+      <div className="p-5 space-y-4">
+        <div className="flex gap-2">
+          {[['add', 'Receiving a delivery'], ['set', 'Counting the shelf']].map(([v, l]) => (
+            <button key={v} type="button" onClick={() => setMode(v)}
+              className={`flex-1 py-2.5 text-xs font-bold rounded-xl border ${
+                mode === v ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-white text-gray-600 border-gray-200'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-600">
+          {mode === 'add'
+            ? 'What you scan is added to what is already on the shelf.'
+            : 'What you scan replaces the count — anything you do not scan stays as it is.'}
+        </p>
+
+        <input
+          ref={boxRef} autoFocus value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); scan(code) } }}
+          placeholder="Scan an item…"
+          className="w-full px-3 py-3 border-2 border-orange-300 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400"
+        />
+        {lastMsg && (
+          <p className={`text-xs font-semibold ${lastMsg.ok ? 'text-green-700' : 'text-red-600'}`}>
+            {busy ? 'Looking…' : lastMsg.text}
+          </p>
+        )}
+
+        {lines.length === 0 ? (
+          <p className="text-sm text-gray-500 text-center py-6">
+            Nothing scanned yet. Scan the same item twice and it counts two.
+          </p>
+        ) : (
+          <div className="border border-gray-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-[11px] uppercase text-gray-500 sticky top-0">
+                <tr>
+                  <th className="text-left px-3 py-2 font-bold">Product</th>
+                  <th className="text-right px-3 py-2 font-bold">On hand</th>
+                  <th className="px-3 py-2 font-bold w-20">{mode === 'add' ? 'Adding' : 'Counted'}</th>
+                  <th className="text-right px-3 py-2 font-bold">After</th>
+                  <th className="w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {lines.map((l) => {
+                  const after = mode === 'add' ? l.on_hand + l.quantity : l.quantity
+                  const diff = after - l.on_hand
+                  return (
+                    <tr key={l.barcode}>
+                      <td className="px-3 py-1.5">
+                        <p className="font-semibold text-gray-900">{l.name}</p>
+                        <p className="text-[11px] text-gray-400 font-mono">{l.barcode}</p>
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-gray-600">{l.on_hand}</td>
+                      <td className="px-3 py-1.5">
+                        <input type="number" min="0" value={l.quantity}
+                          onChange={(e) => setQty(l.barcode, e.target.value)}
+                          className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm" />
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        <span className="font-black text-gray-900">{after}</span>
+                        {diff !== 0 && (
+                          <span className={`ml-1 text-[11px] font-bold ${diff > 0 ? 'text-green-700' : 'text-red-600'}`}>
+                            {diff > 0 ? `+${diff}` : diff}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-1">
+                        <button type="button" onClick={() => drop(l.barcode)}
+                          className="p-1 text-gray-400 hover:text-red-600"><FiX size={14} /></button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl font-semibold text-sm">
+            Cancel
+          </button>
+          <button onClick={() => commit.mutate()} disabled={lines.length === 0 || commit.isPending}
+            className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+            <FiCheck className="inline mr-1" size={14} />
+            {commit.isPending ? 'Saving…'
+              : `Save ${lines.length} product${lines.length === 1 ? '' : 's'} (${units} item${units === 1 ? '' : 's'})`}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 export default function Products() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -278,6 +468,11 @@ export default function Products() {
   const [stockTarget, setStockTarget] = useState(null)
   const [showImport, setShowImport] = useState(false)
   const [showDuplicates, setShowDuplicates] = useState(false)
+  const [showCount, setShowCount] = useState(false)
+  // A code scanned that matched nothing — the new-product form opens with it.
+  const [newBarcode, setNewBarcode] = useState('')
+  const [scanCode, setScanCode] = useState('')
+  const [scanBusy, setScanBusy] = useState(false)
   const [page, setPage] = useState(1)
 
   const user = useAuthStore(s => s.user)
@@ -506,7 +701,14 @@ export default function Products() {
               </button>
             )}
             <button
-              onClick={() => { setEditProduct(null); setShowModal(true) }}
+              onClick={() => setShowCount(true)}
+              title="Scan a delivery in, or count the shelf"
+              className="flex items-center gap-2 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-semibold text-sm transition-colors"
+            >
+              <FiCrosshair size={16} /> <span className="hidden sm:inline">Scan stock</span>
+            </button>
+            <button
+              onClick={() => { setEditProduct(null); setNewBarcode(''); setShowModal(true) }}
               className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
             >
               <FiPlus size={16} /> Add Product
@@ -514,6 +716,40 @@ export default function Products() {
           </div>
         }
       />
+
+      {/* Scan to open: a known code opens the product, an unknown one starts
+          a new one already carrying the barcode. */}
+      <div className="mb-4 relative">
+        <FiCrosshair className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-400" size={16} />
+        <input
+          value={scanCode}
+          onChange={(e) => setScanCode(e.target.value)}
+          onKeyDown={async (e) => {
+            if (e.key !== 'Enter') return
+            e.preventDefault()
+            const code = scanCode.trim()
+            if (!code) return
+            setScanCode('')
+            setScanBusy(true)
+            try {
+              const res = await getProductByBarcode(code)
+              setEditProduct(res.data)
+              setNewBarcode('')
+              setShowModal(true)
+              toast.success(`${res.data.name} — ${res.data.quantity} on hand`)
+            } catch {
+              setEditProduct(null)
+              setNewBarcode(code)
+              setShowModal(true)
+              toast(`${code} is new — fill in the rest`, { icon: '🆕' })
+            } finally {
+              setScanBusy(false)
+            }
+          }}
+          placeholder={scanBusy ? 'Looking…' : 'Scan a barcode to open or add a product…'}
+          className="w-full pl-9 pr-3 py-2.5 border border-orange-200 bg-orange-50/40 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400"
+        />
+      </div>
 
       {/* What the list adds up to */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
@@ -589,15 +825,16 @@ export default function Products() {
       {/* Add/Edit Modal */}
       <Modal
         isOpen={showModal}
-        onClose={() => { setShowModal(false); setEditProduct(null) }}
+        onClose={() => { setShowModal(false); setEditProduct(null); setNewBarcode('') }}
         title={editProduct ? 'Edit Product' : 'Add New Product'}
         size="lg"
       >
         <ProductForm
           /* Remount per product: useForm reads defaultValues once, so without
              this the form kept whatever the previously opened product left. */
-          key={editProduct?._id || 'new'}
+          key={editProduct?._id || `new-${newBarcode}`}
           product={editProduct}
+          initialBarcode={newBarcode}
           restricted={inventoryOnly}
           categories={categories}
           suppliers={suppliers}
@@ -685,6 +922,8 @@ export default function Products() {
       </Modal>
 
       {/* Delete Confirm */}
+      {showCount && <StockCountModal onClose={() => setShowCount(false)} />}
+
       <ConfirmDialog
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}

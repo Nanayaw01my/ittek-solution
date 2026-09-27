@@ -8,7 +8,7 @@ const multer = require('multer');
 const {
   getProducts, createProduct, getProduct, updateProduct, deleteProduct,
   getLowStock, getByBarcode,
-  generateBarcode, searchProducts, bulkImport, getProductSummary,
+  generateBarcode, commitStockCount, searchProducts, bulkImport, getProductSummary,
   getOfflineCatalogue, getDuplicateProducts, mergeDuplicateProducts, autoMergeDuplicates,
 } = require('../controllers/productsController');
 const { previewImport, commitImport } = require('../controllers/productImportController');
@@ -26,6 +26,14 @@ router.get('/barcode/:barcode', authenticate, getByBarcode);
 // A code for stock that arrived without one.
 router.get('/generate-barcode', authenticate, generateBarcode);
 router.post('/search', authenticate, searchProducts);
+// A whole scanning session at once. Same permission as correcting stock by
+// hand, since that is what it is — only faster.
+router.post(
+  '/stock-count',
+  [authenticate, requirePage('products', 'inventory', 'full')],
+  auditLog('STOCK_COUNT', (req) => ({ mode: req.body.mode, lines: (req.body.lines || []).length })),
+  commitStockCount
+);
 router.post('/bulk-import', authenticate, requireLevel(3), auditLog('BULK_IMPORT_PRODUCTS'), bulkImport);
 
 // Reading a file writes nothing, so it is separated from the commit that does.

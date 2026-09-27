@@ -10,6 +10,9 @@ export const getProductByBarcode = (barcode) => api.get(`/products/barcode/${bar
 
 /** A fresh EAN-13 nothing is using, for stock that arrived without a barcode. */
 export const generateBarcode = () => api.get('/products/generate-barcode')
+
+/** A whole scanning session at once: mode 'add' (a delivery) or 'set' (a count). */
+export const commitStockCount = (data) => api.post('/products/stock-count', data)
 export const getLowStockProducts = () => api.get('/products/low-stock')
 
 // The whole catalogue in one response, for the till to hold offline.
