@@ -71,6 +71,18 @@ const SettingsSchema = new mongoose.Schema(
         enum: ['off', 'important', 'all'],
         default: 'important',
       },
+
+      /**
+       * Sales and expenses separately, because they are the two things that
+       * happen all day and the right amount of noise for them is a matter of
+       * taste rather than a rule.
+       *
+       * 'all'   — every one buzzes the phone
+       * 'large' — only those at or above the threshold below
+       * 'off'   — the app only
+       */
+      sale_alerts: { type: String, enum: ['all', 'large', 'off'], default: 'all' },
+      expense_alerts: { type: String, enum: ['all', 'large', 'off'], default: 'all' },
     },
 
     // ─── Multi-currency ────────────────────────────────────────────────────

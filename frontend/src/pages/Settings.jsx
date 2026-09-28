@@ -156,6 +156,8 @@ function NotificationsTab({ settings, onSave, loading }) {
       largeSaleThreshold: settings?.notification_settings?.large_sale_threshold ?? '',
       expenseThreshold: settings?.notification_settings?.expense_threshold ?? '',
       activityAlerts: settings?.notification_settings?.activity_alerts ?? 'important',
+      saleAlerts: settings?.notification_settings?.sale_alerts ?? 'all',
+      expenseAlerts: settings?.notification_settings?.expense_alerts ?? 'all',
     },
   })
   return (
@@ -165,6 +167,8 @@ function NotificationsTab({ settings, onSave, loading }) {
           large_sale_threshold: Number(data.largeSaleThreshold) || 0,
           expense_threshold: Number(data.expenseThreshold) || 0,
           activity_alerts: data.activityAlerts,
+          sale_alerts: data.saleAlerts,
+          expense_alerts: data.expenseAlerts,
         },
       }))}
       className="space-y-5 max-w-lg"
@@ -187,19 +191,46 @@ function NotificationsTab({ settings, onSave, loading }) {
         </p>
       </div>
 
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-1">Large Sale Alert Threshold (GH₵)</label>
-        <input type="number" min="0" step="0.01" {...register('largeSaleThreshold')}
-          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-          placeholder="10000" />
-        <p className="text-xs text-gray-500 mt-1">Alert when a single sale exceeds this amount</p>
+      {/* Sales and expenses happen all day, so they get their own dial. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Sales on my phone</label>
+          <select {...register('saleAlerts')}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500">
+            <option value="all">Every sale</option>
+            <option value="large">Only large ones</option>
+            <option value="off">None — app only</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Large sale is over (GH₵)</label>
+          <input type="number" min="0" step="0.01" {...register('largeSaleThreshold')}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            placeholder="5000" />
+        </div>
       </div>
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-1">Expense Alert Threshold (GH₵)</label>
-        <input type="number" min="0" step="0.01" {...register('expenseThreshold')}
-          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-          placeholder="5000" />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Expenses on my phone</label>
+          <select {...register('expenseAlerts')}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500">
+            <option value="all">Every expense</option>
+            <option value="large">Only large ones</option>
+            <option value="off">None — app only</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Large expense is over (GH₵)</label>
+          <input type="number" min="0" step="0.01" {...register('expenseThreshold')}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            placeholder="1000" />
+        </div>
       </div>
+      <p className="text-xs text-gray-500 -mt-2">
+        A large one is announced as large whichever setting you choose, so it stands
+        out from the ordinary run of the day.
+      </p>
       <div className="space-y-3">
         {[
           { name: 'notifyOnLargeSale', label: 'Notify on large sales' },
