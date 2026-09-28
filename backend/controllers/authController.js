@@ -4,6 +4,69 @@ const User = require('../models/User');
 /**
  * POST /api/auth/login
  */
+/**
+ * Recording who tried to get in.
+ *
+ * This cannot go through the audit middleware: that needs req.user, and the
+ * whole point of a sign-in is that there is no user yet. So it is written
+ * here, and a failure is recorded as carefully as a success — a password
+ * being guessed is the one thing at this door worth waking somebody for.
+ */
+const recordAttempt = async ({ req, action, username, user, message }) => {
+  try {
+    const AuditLog = require('../models/AuditLog');
+    const { describe } = require('../config/auditEvents');
+    const { notifyOwners } = require('../utils/notify');
+
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    const details = { username, ip };
+
+    await AuditLog.create({
+      user_id: user?._id,
+      username: user?.username || String(username || '').toLowerCase(),
+      role: user?.role || 'unknown',
+      action,
+      details,
+      ip_address: ip,
+      timestamp: new Date(),
+    });
+
+    const Settings = require('../models/Settings');
+    const settings = await Settings.findOne().select('notification_settings').lean();
+    const level = settings?.notification_settings?.activity_alerts || 'important';
+    if (level === 'off') return;
+
+    let { label, level: severity } = describe(action);
+
+    // One wrong password is a typo; several in a row is somebody guessing.
+    // Only the run is worth a phone buzzing at night.
+    if (action === 'FAILED_LOGIN') {
+      const since = new Date(Date.now() - 15 * 60 * 1000);
+      const recent = await AuditLog.countDocuments({
+        action: 'FAILED_LOGIN',
+        'details.username': String(username || '').toLowerCase(),
+        timestamp: { $gte: since },
+      });
+      if (recent < 3) return;
+      label = `failed to sign in ${recent} times in 15 minutes`;
+      severity = 'high';
+    }
+
+    await notifyOwners({
+      type: severity === 'high' ? 'critical' : 'info',
+      title: `${user?.username || username} ${label}`,
+      message: message || `from ${ip}`,
+      link: '/audit-logs',
+      silent: !(level === 'all' || severity === 'high'),
+      tag: action === 'LOGIN' ? 'activity-low' : 'security',
+      exclude_user_id: user?._id,
+    });
+  } catch (err) {
+    // Never let recording a sign-in stop somebody signing in.
+    console.error('[auth] could not record attempt:', err.message);
+  }
+};
+
 const login = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -22,15 +85,23 @@ const login = async (req, res) => {
     }).select('+password');
 
     if (!user) {
+      // No such person. Recorded under the name that was tried, which is the
+      // part worth seeing when somebody is working through guesses.
+      await recordAttempt({ req, action: 'FAILED_LOGIN', username, message: 'no such user' });
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
     if (!user.is_active) {
+      await recordAttempt({
+        req, action: 'LOGIN_BLOCKED', username, user,
+        message: 'the account is disabled',
+      });
       return res.status(403).json({ success: false, message: 'Account deactivated. Contact administrator.' });
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
+      await recordAttempt({ req, action: 'FAILED_LOGIN', username, user, message: 'wrong password' });
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
@@ -40,6 +111,11 @@ const login = async (req, res) => {
     await user.save();
 
     const token = user.generateJWT();
+
+    await recordAttempt({
+      req, action: 'LOGIN', username, user,
+      message: `${user.role} · ${req.ip || 'unknown'}`,
+    });
 
     return res.status(200).json({
       success: true,

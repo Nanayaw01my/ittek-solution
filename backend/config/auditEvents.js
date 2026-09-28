@@ -108,7 +108,10 @@ const EVENTS = {
   TOGGLE_USER_ACTIVE: ['enabled or disabled a user', 'high'],
   RESET_USER_PASSWORD: ["reset somebody's password", 'high'],
   CHANGE_PASSWORD: ['changed their own password', 'high'],
+  LOGIN: ['signed in', 'low'],
   LOGOUT: ['signed out', 'low'],
+  FAILED_LOGIN: ['failed to sign in', 'high'],
+  LOGIN_BLOCKED: ['tried to sign in to a disabled account', 'high'],
   REVIEW_FRAUD_ALERT: ['reviewed a fraud alert', 'high'],
   ADJUST_LOYALTY_POINTS: ['adjusted loyalty points', 'high'],
 
