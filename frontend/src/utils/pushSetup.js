@@ -47,9 +47,14 @@ export const enablePush = async () => {
   try {
     const { data } = await getPushKey()
     if (!data?.enabled || !data?.key) {
+      // Name the missing variables. "Not set up" alone leaves somebody
+      // checking three settings without knowing which one is wrong.
+      const missing = data?.missing || []
       return {
         ok: false,
-        message: 'Push is not set up on the server yet (VAPID keys are missing).',
+        message: missing.length
+          ? `The server is missing ${missing.join(' and ')}. Add ${missing.length === 1 ? 'it' : 'them'} in Render, then restart the service.`
+          : 'Push is not set up on the server yet. Check the VAPID variables in Render and restart the service.',
       }
     }
 

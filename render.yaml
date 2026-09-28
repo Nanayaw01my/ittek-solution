@@ -28,6 +28,14 @@ services:
         sync: false
       - key: SIMPLEMDM_API_KEY
         sync: false
+      # Web push. Generate once with `npm run vapid` in backend/.
+      # Listed here so a blueprint sync cannot quietly drop them.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
       - key: EMAIL_HOST
         value: smtp.gmail.com
       - key: EMAIL_PORT

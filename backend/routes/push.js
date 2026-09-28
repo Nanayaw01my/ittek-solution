@@ -6,11 +6,26 @@ const { isConfigured, publicKey } = require('../utils/push');
 
 router.use(authenticate);
 
-/** The key the browser needs before it can subscribe. */
-router.get('/public-key', (req, res) => res.status(200).json({
-  success: true,
-  data: { key: publicKey(), enabled: isConfigured() },
-}));
+/**
+ * The key the browser needs before it can subscribe.
+ *
+ * When it is not set up, it says which variables are missing by name. Only
+ * the names — never a value — because "push is not configured" with no way to
+ * see which of three variables is absent is a afternoon of guessing.
+ */
+router.get('/public-key', (req, res) => {
+  const missing = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY']
+    .filter((k) => !process.env[k]);
+  return res.status(200).json({
+    success: true,
+    data: {
+      key: publicKey(),
+      enabled: isConfigured(),
+      missing,
+      subject_set: !!process.env.VAPID_SUBJECT,
+    },
+  });
+});
 
 /** This device would like to be told things. */
 router.post('/subscribe', async (req, res) => {
