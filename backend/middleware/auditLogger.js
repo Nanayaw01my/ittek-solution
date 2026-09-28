@@ -98,10 +98,19 @@ const summarise = (details) => {
  */
 const auditLog = (action, getDetails = null) => {
   return async (req, res, next) => {
+    // Every way a route can answer, not just res.json. A backup downloads the
+    // whole database through res.end, and hooking only json meant the one
+    // action most worth knowing about was the one nothing recorded.
     const originalJson = res.json.bind(res);
+    const originalSend = res.send.bind(res);
+    const originalEnd = res.end.bind(res);
+    let recorded = false;
 
-    res.json = async function (body) {
-      originalJson(body);
+    const record = async (body) => {
+      // res.json calls res.send, which calls res.end — so without this the
+      // same action would be logged three times.
+      if (recorded) return;
+      recorded = true;
 
       // Only log successful operations (2xx status codes)
       if (res.statusCode >= 200 && res.statusCode < 300 && req.user) {
@@ -109,7 +118,7 @@ const auditLog = (action, getDetails = null) => {
           let details = {};
 
           if (getDetails && typeof getDetails === 'function') {
-            details = await getDetails(req, body);
+            details = await getDetails(req, body) || {};
           } else {
             details = {
               params: req.params,
@@ -133,6 +142,22 @@ const auditLog = (action, getDetails = null) => {
           console.error('Audit log error:', err.message);
         }
       }
+    };
+
+    res.json = function (body) {
+      const out = originalJson(body);
+      record(body);
+      return out;
+    };
+    res.send = function (body) {
+      const out = originalSend(body);
+      record(body);
+      return out;
+    };
+    res.end = function (...args) {
+      const out = originalEnd(...args);
+      record(null);
+      return out;
     };
 
     next();

@@ -37,6 +37,7 @@ const when = (d) => (d ? format(new Date(d), 'dd MMM yyyy, HH:mm') : '—')
 function PhoneNotifications() {
   const [on, setOn] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [notes, setNotes] = useState([])
   const state = pushState()
 
   useEffect(() => { isPushOn().then(setOn) }, [])
@@ -65,8 +66,14 @@ function PhoneNotifications() {
     try {
       const res = await testPush()
       const d = res.data
-      if (d.ok) toast.success(`${d.message} It should arrive in a few seconds.`, { duration: 9000 })
-      else toast.error(d.message, { duration: 12000 })
+      if (d.ok) {
+        toast.success(`${d.message} It should arrive in a few seconds.`, { duration: 7000 })
+        // Push can be working perfectly while nothing ever notifies you.
+        setNotes(d.notes || [])
+      } else {
+        toast.error(d.message, { duration: 12000 })
+        setNotes(d.notes || [])
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'The test could not run', { duration: 9000 })
     } finally {
@@ -75,6 +82,7 @@ function PhoneNotifications() {
   }
 
   return (
+    <div className="space-y-2">
     <div className={`flex items-center justify-between gap-3 rounded-xl p-3 border ${
       on ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
     }`}>
@@ -105,6 +113,15 @@ function PhoneNotifications() {
           Send a test
         </button>
       </div>
+    </div>
+
+    {notes.length > 0 && (
+      <ul className="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-1.5">
+        {notes.map((n, i) => (
+          <li key={i} className="text-xs text-gray-700">• {n}</li>
+        ))}
+      </ul>
+    )}
     </div>
   )
 }

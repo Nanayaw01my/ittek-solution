@@ -119,6 +119,38 @@ router.post('/test', async (req, res) => {
       tag: 'test',
     });
 
+    // Push working and "nothing ever notifies me" are both true at once when
+    // the CEO is testing on his own account. Say so here rather than leaving
+    // somebody to conclude the whole thing is broken.
+    const notes = [];
+    try {
+      const Settings = require('../models/Settings');
+      const User = require('../models/User');
+      const { ROLE_LEVELS } = require('../config/pageAccess');
+
+      const s = await Settings.findOne().select('notification_settings').lean();
+      const level = s?.notification_settings?.activity_alerts || 'important';
+
+      if (level === 'off') {
+        notes.push('Activity alerts are switched off in Settings, so nothing staff do will reach you.');
+      } else if (level === 'important') {
+        notes.push('Only notable actions reach your phone — deletions, refunds, stock corrections, '
+          + 'user changes. Ordinary sales and edits stay in the app. Change this in Settings.');
+      }
+
+      if ((ROLE_LEVELS[req.user.role] || 0) >= 3) {
+        const others = await User.countDocuments({
+          role: { $in: ['CEO', 'Super Admin'] },
+          is_active: { $ne: false },
+          _id: { $ne: req.user._id },
+        });
+        notes.push(others === 0
+          ? 'You are the only owner, and your own actions never notify you — so testing by '
+            + 'doing things yourself will show nothing. Have a member of staff do something.'
+          : 'Your own actions never notify you, only other people\'s.');
+      }
+    } catch { /* the test still reports what it did */ }
+
     const failed = report.results.filter((r) => !r.ok);
     return res.status(200).json({
       success: true,
@@ -135,6 +167,7 @@ router.post('/test', async (req, res) => {
         devices: report.devices,
         sent: report.sent,
         results: report.results,
+        notes,
       },
     });
   } catch (err) {
