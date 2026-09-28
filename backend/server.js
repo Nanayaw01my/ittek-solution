@@ -250,6 +250,8 @@ app.use('/api/customer-lookup', require('./routes/customerLookup'));
 app.use('/api/warranties', require('./routes/warranties'));
 app.use('/api/quotations', require('./routes/quotations'));
 app.use('/api/reorder', require('./routes/reorder'));
+app.use('/api/push', require('./routes/push'));
+app.use('/api/receipt-approvals', require('./routes/receiptApprovals'));
 app.use('/api/credit-agreements', require('./routes/creditAgreements'));
 app.use('/api/financial', require('./routes/financial'));
 app.use('/api/reports', require('./routes/reports'));

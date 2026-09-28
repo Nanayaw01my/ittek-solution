@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiPrinter, FiSearch, FiX, FiPlus, FiFileText } from 'react-icons/fi'
+import { FiPrinter, FiSearch, FiX, FiPlus, FiFileText, FiSend } from 'react-icons/fi'
 import { getBlankReceiptForm, getFilledReceiptForm } from '../api/forms'
+import { requestReceiptApproval, getReceiptApprovals } from '../api/receiptApprovals'
+import useAuthStore from '../store/authStore'
+import { getRoleLevel } from '../utils/helpers'
 import { getProducts } from '../api/products'
 import { getCachedProducts } from '../utils/offlineQueue'
 import useOnlineStatus from '../hooks/useOnlineStatus'
@@ -50,6 +53,13 @@ export default function PackagesReceipt() {
   const [balanceDueInput, setBalanceDueInput] = useState('')
   const [balanceTouched, setBalanceTouched] = useState(false)
 
+
+  const { user } = useAuthStore()
+  // The CEO and Super Admin are the ones who would be approving it, so they
+  // print straight away. Everybody else sends it up first.
+  const needsApproval = getRoleLevel(user?.role) < 3
+  // An approval that has come back agreed, ready to print under.
+  const [approval, setApproval] = useState(null)
 
   const isOnline = useOnlineStatus()
   // The catalogue the till saved for offline use. A receipt written during a
@@ -151,6 +161,71 @@ export default function PackagesReceipt() {
   // What actually goes to Debts: whatever is in the balance box.
   const owing = Math.max(0, parseFloat(balanceDueInput) || 0)
 
+  /** Exactly what will be printed — sent for approval, then printed as-is. */
+  const buildPayload = () => ({
+    rows: Number(rows),
+    copies: 1,
+    discount: discount === '' ? undefined : parseFloat(discount),
+    subtotal: subtotalInput === '' ? undefined : parseFloat(subtotalInput),
+    grandTotal: grandTotalInput === '' ? undefined : parseFloat(grandTotalInput),
+    record: recordSale,
+    deductStock: takeStock,
+    payment_method: payMethod,
+    amountPaid: amountPaidInput === '' ? undefined : parseFloat(amountPaidInput),
+    balanceDue: balanceDueInput === '' ? undefined : parseFloat(balanceDueInput),
+    receiptNo: receiptNo.trim() || undefined,
+    date: new Date().toLocaleDateString('en-GB'),
+    customer: {
+      name: customer.name.trim() || undefined,
+      phone: customer.phone.trim() || undefined,
+      address: customer.address.trim() || undefined,
+    },
+    items: lines
+      .filter(l => l.name.trim())
+      .map(l => ({
+        product_id: l.product_id,
+        name: l.name.trim(),
+        quantity: parseFloat(l.quantity) || 0,
+      })),
+  })
+
+  /** Up to the CEO. Nothing prints, no money moves, no stock moves. */
+  const sendForApproval = async () => {
+    setBusy(true)
+    try {
+      const res = await requestReceiptApproval(buildPayload())
+      setApproval(res.data)
+      toast.success(
+        `Sent to the CEO as ${res.data.reference}. You will be told when it is approved.`,
+        { duration: 9000 }
+      )
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not send it for approval')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Has the one we sent come back yet? */
+  const checkApproval = async () => {
+    if (!approval) return
+    setBusy(true)
+    try {
+      const res = await getReceiptApprovals({ status: undefined })
+      const mine = (res.data?.approvals || []).find((a) => a._id === approval._id)
+      if (mine) setApproval(mine)
+      if (mine?.status === 'approved') toast.success('Approved — you can print it now.')
+      else if (mine?.status === 'rejected') {
+        toast.error(`Turned down${mine.rejection_reason ? `: ${mine.rejection_reason}` : '.'}`,
+          { duration: 9000 })
+      } else toast('Still waiting on the CEO.', { icon: '⏳' })
+    } catch {
+      toast.error('Could not check')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const print = async () => {
     setBusy(true)
     try {
@@ -158,30 +233,10 @@ export default function PackagesReceipt() {
       // request so the browser does not treat it as an unsolicited popup.
       if (isFilled) {
         await openPdfInNewTab(() => getFilledReceiptForm({
-          rows: Number(rows),
-          copies: 1,
-          discount: discount === '' ? undefined : parseFloat(discount),
-          subtotal: subtotalInput === '' ? undefined : parseFloat(subtotalInput),
-          grandTotal: grandTotalInput === '' ? undefined : parseFloat(grandTotalInput),
-          record: recordSale,
-          deductStock: takeStock,
-          payment_method: payMethod,
-          amountPaid: amountPaidInput === '' ? undefined : parseFloat(amountPaidInput),
-          balanceDue: balanceDueInput === '' ? undefined : parseFloat(balanceDueInput),
-          receiptNo: receiptNo.trim() || undefined,
-          date: new Date().toLocaleDateString('en-GB'),
-          customer: {
-            name: customer.name.trim() || undefined,
-            phone: customer.phone.trim() || undefined,
-            address: customer.address.trim() || undefined,
-          },
-          items: lines
-            .filter(l => l.name.trim())
-            .map(l => ({
-              product_id: l.product_id,
-              name: l.name.trim(),
-              quantity: parseFloat(l.quantity) || 0,
-            })),
+          ...buildPayload(),
+          // The server checks this, not the screen: below CEO, an approval an
+          // owner actually agreed to is what allows the print.
+          approval_id: approval?._id,
         }), 'receipt.pdf')
 
         // Printing a second copy must not book the money twice. The switch
@@ -541,18 +596,88 @@ export default function PackagesReceipt() {
           </div>
         </div>
 
-        <button
-          onClick={print}
-          disabled={busy}
-          className="w-full flex items-center justify-center gap-2 py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
-        >
-          <FiPrinter size={16} />
-          {busy ? 'Preparing…' : isFilled ? 'Print this receipt' : 'Print blank receipt forms'}
-        </button>
+        {/* Blank pads need nobody's permission — they are empty paper. Only a
+            filled-in receipt takes money and stock. */}
+        {needsApproval && isFilled ? (
+          <div className="space-y-2">
+            {approval && (
+              <div className={`rounded-xl p-3 border text-sm ${
+                approval.status === 'approved' ? 'bg-green-50 border-green-200'
+                  : approval.status === 'rejected' ? 'bg-red-50 border-red-200'
+                    : 'bg-amber-50 border-amber-200'
+              }`}>
+                <p className="font-bold text-gray-900">
+                  {approval.reference} —{' '}
+                  {approval.status === 'approved' ? 'approved, ready to print'
+                    : approval.status === 'rejected' ? 'turned down'
+                      : approval.status === 'used' ? 'already printed'
+                        : 'waiting on the CEO'}
+                </p>
+                {approval.rejection_reason && (
+                  <p className="text-xs text-red-700 mt-0.5">{approval.rejection_reason}</p>
+                )}
+                {approval.status === 'pending' && (
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Do not change the sheet — the CEO is agreeing to it as it was sent.
+                  </p>
+                )}
+              </div>
+            )}
 
-        <p className="text-xs text-gray-400 text-center">
-          Opens in a new tab — print it from there on your A4 printer.
-        </p>
+            {approval?.status === 'approved' || approval?.status === 'used' ? (
+              <button
+                onClick={print} disabled={busy}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
+              >
+                <FiPrinter size={16} />
+                {busy ? 'Preparing…' : approval.status === 'used' ? 'Print another copy' : 'Print this receipt'}
+              </button>
+            ) : approval?.status === 'pending' ? (
+              <button
+                onClick={checkApproval} disabled={busy}
+                className="w-full py-3 border border-gray-200 rounded-xl font-bold text-sm text-gray-700 disabled:opacity-60"
+              >
+                {busy ? 'Checking…' : 'Has it been approved yet?'}
+              </button>
+            ) : (
+              <button
+                onClick={sendForApproval} disabled={busy}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
+              >
+                <FiSend size={16} />
+                {busy ? 'Sending…' : 'Send to the CEO for approval'}
+              </button>
+            )}
+
+            {approval?.status === 'rejected' && (
+              <button
+                onClick={() => setApproval(null)}
+                className="w-full py-2 text-xs font-bold text-gray-600 underline"
+              >
+                Change it and send again
+              </button>
+            )}
+
+            <p className="text-xs text-gray-500 text-center">
+              A receipt takes money and stock, so the CEO agrees to it before it prints.
+            </p>
+          </div>
+        ) : (
+          <>
+            <button
+              onClick={print}
+              disabled={busy}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
+            >
+              <FiPrinter size={16} />
+              {busy ? 'Preparing…' : isFilled ? 'Print this receipt' : 'Print blank receipt forms'}
+            </button>
+
+            <p className="text-xs text-gray-400 text-center">
+              Opens in a new tab — print it from there on your A4 printer.
+            </p>
+          </>
+        )}
       </div>
     </div>
   )

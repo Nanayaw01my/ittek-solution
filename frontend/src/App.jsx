@@ -41,6 +41,7 @@ import CustomerProfile from './pages/CustomerProfile'
 import Warranties from './pages/Warranties'
 import Quotations from './pages/Quotations'
 import Reorder from './pages/Reorder'
+import ReceiptApprovals from './pages/ReceiptApprovals'
 import FraudAlerts from './pages/FraudAlerts'
 import DeleteRecords from './pages/DeleteRecords'
 import ReceiptForms from './pages/ReceiptForms'
@@ -178,6 +179,8 @@ export default function App() {
         {/* Quoting is selling; ordering shows cost prices, so it is not. */}
         <Route path="quotations" element={<ProtectedRoute minLevel={1}><Quotations /></ProtectedRoute>} />
         <Route path="reorder" element={<ProtectedRoute minLevel={2}><Reorder /></ProtectedRoute>} />
+        {/* The requester sees their own; the CEO sees everybody's. */}
+        <Route path="receipt-approvals" element={<ProtectedRoute minLevel={2}><ReceiptApprovals /></ProtectedRoute>} />
         {/* Not a document: printing one records money. */}
         <Route path="packages-receipt" element={<ProtectedRoute minLevel={2}><PackagesReceipt /></ProtectedRoute>} />
         <Route path="search" element={<ProtectedRoute minLevel={3} page="search"><Search /></ProtectedRoute>} />

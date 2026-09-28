@@ -18,11 +18,15 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
         // Don't runtime-cache API responses — only precache build assets
         runtimeCaching: [],
+        // Push arrives when no page is open, so its handling has to live in
+        // the worker. The rest of the worker is generated, so this is pulled
+        // in rather than replacing it.
+        importScripts: ['push-sw.js'],
         cleanupOutdatedCaches: true,
       },
       // Static assets that aren't Vite build output still need precaching,
       // or the installed app has no icon while offline.
-      includeAssets: ['icons/*.png'],
+      includeAssets: ['icons/*.png', 'push-sw.js'],
       manifest: {
         id: '/',
         name: 'ITTEK Solution — DAN & DOR SOLAR',

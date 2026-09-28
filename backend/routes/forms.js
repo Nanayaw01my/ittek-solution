@@ -74,8 +74,51 @@ router.post('/receipt', async (req, res) => {
     const {
       rows, copies, items, customer, receiptNo, date,
       discount, subtotal, grandTotal, record, payment_method, amountPaid, balanceDue,
-      deductStock: takeFromStock,
+      deductStock: takeFromStock, approval_id,
     } = req.body || {};
+
+    // ── The owner's say-so ──────────────────────────────────────────────
+    // Printing one of these takes money and stock, so below CEO it needs an
+    // approval that an owner actually agreed to. The check is here, at the
+    // only place that prints, rather than on the screen — a screen can be
+    // worked around and this cannot.
+    const { ROLE_LEVELS } = require('../config/pageAccess');
+    const isOwner = (ROLE_LEVELS[req.user?.role] || 0) >= 3;
+    let approval = null;
+    let alreadyRecorded = false;
+
+    if (!isOwner) {
+      if (!approval_id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Send this receipt to the CEO for approval before printing it.',
+          code: 'approval_required',
+        });
+      }
+      const ReceiptApproval = require('../models/ReceiptApproval');
+      approval = await ReceiptApproval.findById(approval_id);
+      if (!approval || String(approval.requested_by) !== String(req.user._id)) {
+        return res.status(404).json({ success: false, message: 'Approval not found.' });
+      }
+      if (approval.status === 'pending') {
+        return res.status(403).json({
+          success: false,
+          message: `${approval.reference} is still waiting on the CEO.`,
+          code: 'approval_pending',
+        });
+      }
+      if (approval.status === 'rejected') {
+        return res.status(403).json({
+          success: false,
+          message: `${approval.reference} was turned down`
+            + (approval.rejection_reason ? `: ${approval.rejection_reason}` : '.'),
+          code: 'approval_rejected',
+        });
+      }
+      // Already printed once. A reprint is fair — paper jams — but the money
+      // was recorded then, and recording it again would double the day.
+      if (approval.status === 'used') alreadyRecorded = true;
+    }
 
     if (items && !Array.isArray(items)) {
       return res.status(400).json({ success: false, message: 'Items must be a list.' });
@@ -114,7 +157,8 @@ router.post('/receipt', async (req, res) => {
     let recordedAmount = null;
     let stockTaken = 0;
     const amount = Number(grandTotal);
-    if (record && Number.isFinite(amount) && amount > 0) {
+    const shouldRecord = record && !alreadyRecorded;
+    if (shouldRecord && Number.isFinite(amount) && amount > 0) {
       try {
         // A customer can pay part of it now and owe the rest. Only what was
         // actually handed over counts as takings; the remainder becomes a debt
@@ -236,6 +280,17 @@ router.post('/receipt', async (req, res) => {
         res.setHeader('X-Sale-Error', String(saleErr.message).slice(0, 120));
       }
     }
+
+    // The approval is spent once the money has actually been written. Done
+    // after the sale, not before: an approval marked used by a print that
+    // then failed would leave the receipt unprintable and nothing recorded.
+    if (approval && !alreadyRecorded) {
+      approval.status = 'used';
+      approval.invoice_no = invoiceNo || undefined;
+      approval.printed_at = new Date();
+      await approval.save().catch((e) => console.error('Approval mark failed:', e.message));
+    }
+    if (alreadyRecorded) res.setHeader('X-Reprint', 'true');
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="receipt.pdf"');
