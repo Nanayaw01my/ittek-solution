@@ -65,7 +65,7 @@ const moneyEvent = (action, details, settings) => {
     big,
     label: isSale
       ? `made a ${big ? 'large ' : ''}sale of ${gh(amount)}`
-      : `recorded a ${big ? 'large ' : ''}expense of ${gh(amount)}`,
+      : `recorded ${big ? 'a large' : 'an'} expense of ${gh(amount)}`,
   };
 };
 
