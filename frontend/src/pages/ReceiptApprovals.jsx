@@ -15,6 +15,7 @@ import {
   getReceiptApprovals, approveReceipt, rejectReceipt, deleteReceiptApproval,
 } from '../api/receiptApprovals'
 import { enablePush, disablePush, isPushOn, pushState } from '../utils/pushSetup'
+import { testPush } from '../api/push'
 
 const STATUS_STYLES = {
   pending: 'bg-amber-100 text-amber-700',
@@ -55,6 +56,24 @@ function PhoneNotifications() {
     setBusy(false)
   }
 
+  /**
+   * "I get no notifications" has half a dozen causes that look the same from
+   * the outside. This says which one it is, in one press.
+   */
+  const test = async () => {
+    setBusy(true)
+    try {
+      const res = await testPush()
+      const d = res.data
+      if (d.ok) toast.success(`${d.message} It should arrive in a few seconds.`, { duration: 9000 })
+      else toast.error(d.message, { duration: 12000 })
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'The test could not run', { duration: 9000 })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className={`flex items-center justify-between gap-3 rounded-xl p-3 border ${
       on ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
@@ -69,15 +88,23 @@ function PhoneNotifications() {
             : 'Turn on notifications and you will know the moment a receipt needs you.'}
         </p>
       </div>
-      <button
-        onClick={toggle} disabled={busy}
-        className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap disabled:opacity-50 ${
-          on ? 'border border-gray-200 text-gray-600 bg-white' : 'bg-orange-500 text-white'
-        }`}
-      >
-        {on ? <><FiBellOff className="inline mr-1" size={13} /> Turn off</>
-          : <><FiBell className="inline mr-1" size={13} /> Turn on</>}
-      </button>
+      <div className="flex flex-col gap-1.5 flex-shrink-0">
+        <button
+          onClick={toggle} disabled={busy}
+          className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap disabled:opacity-50 ${
+            on ? 'border border-gray-200 text-gray-600 bg-white' : 'bg-orange-500 text-white'
+          }`}
+        >
+          {on ? <><FiBellOff className="inline mr-1" size={13} /> Turn off</>
+            : <><FiBell className="inline mr-1" size={13} /> Turn on</>}
+        </button>
+        <button
+          onClick={test} disabled={busy}
+          className="px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap border border-gray-200 bg-white text-gray-600 disabled:opacity-50"
+        >
+          Send a test
+        </button>
+      </div>
     </div>
   )
 }

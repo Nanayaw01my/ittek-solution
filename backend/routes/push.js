@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const PushSubscription = require('../models/PushSubscription');
-const { isConfigured, publicKey } = require('../utils/push');
+const { isConfigured, publicKey, sendWithReport } = require('../utils/push');
 
 router.use(authenticate);
 
@@ -76,6 +76,70 @@ router.get('/devices', async (req, res) => {
     return res.status(200).json({ success: true, data: { devices, enabled: isConfigured() } });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+});
+
+/**
+ * POST /api/push/test — send one to whoever is asking, and say what happened.
+ */
+router.post('/test', async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      const missing = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY']
+        .filter((k) => !process.env[k]);
+      return res.status(200).json({
+        success: true,
+        data: {
+          ok: false,
+          stage: 'server',
+          message: missing.length
+            ? `The server is missing ${missing.join(' and ')}.`
+            : 'Push is not configured on the server.',
+        },
+      });
+    }
+
+    const subs = await PushSubscription.find({ user_id: req.user._id }).lean();
+    if (subs.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          ok: false,
+          stage: 'device',
+          message: 'This account has no device registered. Press "Turn on" first, '
+            + 'on the phone you want notified.',
+        },
+      });
+    }
+
+    const report = await sendWithReport(subs, {
+      title: 'ITTEK — test',
+      body: 'If you can see this, notifications are working.',
+      link: '/notifications',
+      tag: 'test',
+    });
+
+    const failed = report.results.filter((r) => !r.ok);
+    return res.status(200).json({
+      success: true,
+      data: {
+        ok: report.sent > 0,
+        stage: report.sent > 0 ? 'sent' : 'push-service',
+        message: report.sent > 0
+          ? `Sent to ${report.sent} of ${report.devices} device${report.devices === 1 ? '' : 's'}.`
+          // The status is often absent when the subscription itself is
+          // malformed, and "said ?" helps nobody — the reason does.
+          : `The push service refused it: ${failed
+            .map((f) => `${f.host} — ${f.status || f.reason || 'no reason given'}`)
+            .join('; ')}`,
+        devices: report.devices,
+        sent: report.sent,
+        results: report.results,
+      },
+    });
+  } catch (err) {
+    console.error('Push test error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 

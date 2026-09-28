@@ -71,4 +71,47 @@ const sendToSubscriptions = async (subs, payload) => {
   return { sent, gone: dead.length };
 };
 
-module.exports = { isConfigured, publicKey, sendToSubscriptions };
+/**
+ * The same send, but reporting what the push service said about each device.
+ *
+ * "I get no notifications" has half a dozen causes that look identical from
+ * the outside. This is what tells them apart: whether a device is registered
+ * at all, whether the push service accepted it, and if not, what it objected
+ * to.
+ */
+const sendWithReport = async (subs, payload) => {
+  if (!configure()) {
+    return { configured: false, devices: subs?.length || 0, sent: 0, results: [] };
+  }
+  const body = JSON.stringify(payload);
+  const results = [];
+
+  for (const s of subs || []) {
+    const host = (() => {
+      try { return new URL(s.endpoint).host; } catch { return 'unknown'; }
+    })();
+    try {
+      await webpush.sendNotification(
+        { endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh, auth: s.keys.auth } },
+        body, { TTL: 60 }
+      );
+      results.push({ host, ok: true });
+    } catch (err) {
+      results.push({
+        host,
+        ok: false,
+        status: err?.statusCode || null,
+        reason: String(err?.body || err?.message || '').slice(0, 200),
+      });
+    }
+  }
+
+  return {
+    configured: true,
+    devices: subs?.length || 0,
+    sent: results.filter((r) => r.ok).length,
+    results,
+  };
+};
+
+module.exports = { isConfigured, publicKey, sendToSubscriptions, sendWithReport };
