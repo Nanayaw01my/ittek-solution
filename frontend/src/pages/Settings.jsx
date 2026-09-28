@@ -155,6 +155,7 @@ function NotificationsTab({ settings, onSave, loading }) {
     defaultValues: {
       largeSaleThreshold: settings?.notification_settings?.large_sale_threshold ?? '',
       expenseThreshold: settings?.notification_settings?.expense_threshold ?? '',
+      activityAlerts: settings?.notification_settings?.activity_alerts ?? 'important',
     },
   })
   return (
@@ -163,10 +164,29 @@ function NotificationsTab({ settings, onSave, loading }) {
         notification_settings: {
           large_sale_threshold: Number(data.largeSaleThreshold) || 0,
           expense_threshold: Number(data.expenseThreshold) || 0,
+          activity_alerts: data.activityAlerts,
         },
       }))}
       className="space-y-5 max-w-lg"
     >
+      {/* What staff do, and how much of it reaches the phone. */}
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">
+          Tell me what staff are doing
+        </label>
+        <select {...register('activityAlerts')}
+          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500">
+          <option value="important">Everything in the app — important things on my phone</option>
+          <option value="all">Everything, on my phone too</option>
+          <option value="off">Nothing</option>
+        </select>
+        <p className="text-xs text-gray-500 mt-1">
+          Every action is recorded either way. This only decides how much of it
+          interrupts you. "Everything on my phone" means a buzz for each sale —
+          useful for a week away, heavy for every day.
+        </p>
+      </div>
+
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1">Large Sale Alert Threshold (GH₵)</label>
         <input type="number" min="0" step="0.01" {...register('largeSaleThreshold')}

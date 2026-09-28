@@ -42,13 +42,24 @@ const push = async (userIds, { title, message, link, tag }) => {
  * "this is for the owners". The push has to go to real people, so the owners
  * are looked up for that part.
  */
-const notifyOwners = async ({ type = 'important', title, message, link, tag }) => {
+const notifyOwners = async ({
+  type = 'important', title, message, link, tag,
+  // Bell only, no phone. For the routine business of a shop, which belongs on
+  // the record but is not worth interrupting anybody for.
+  silent = false,
+  // Whoever did the thing does not need telling that they did it.
+  exclude_user_id = null,
+} = {}) => {
   const row = await Notification.create({
     user_id: null, type, title, message, link,
   });
 
-  const owners = await User.find({ role: { $in: OWNER_ROLES }, is_active: { $ne: false } })
-    .select('_id').lean();
+  if (silent) return row;
+
+  const where = { role: { $in: OWNER_ROLES }, is_active: { $ne: false } };
+  if (exclude_user_id) where._id = { $ne: exclude_user_id };
+
+  const owners = await User.find(where).select('_id').lean();
   await push(owners.map((o) => o._id), { title, message, link, tag });
 
   return row;

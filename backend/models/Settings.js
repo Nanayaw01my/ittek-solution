@@ -56,6 +56,21 @@ const SettingsSchema = new mongoose.Schema(
       large_sale_threshold: { type: Number, default: 5000 },
       expense_threshold: { type: Number, default: 1000 },
       email_notifications: { type: Boolean, default: true },
+
+      /**
+       * Telling the owners what staff are doing.
+       *
+       * 'off'       — nothing
+       * 'important' — everything on the bell, only the notable ones on the
+       *               phone (the default: a phone that buzzes at every sale
+       *               gets its notifications switched off by Friday)
+       * 'all'       — every recorded action on the phone too
+       */
+      activity_alerts: {
+        type: String,
+        enum: ['off', 'important', 'all'],
+        default: 'important',
+      },
     },
 
     // ─── Multi-currency ────────────────────────────────────────────────────
