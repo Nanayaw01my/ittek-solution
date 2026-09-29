@@ -218,10 +218,11 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        {/* Receiving a delivery is the manager's job, not only the CEO's. */}
         <Route
           path="purchases"
           element={
-            <ProtectedRoute minLevel={3} page="purchases">
+            <ProtectedRoute minLevel={2} page="purchases">
               <Purchases />
             </ProtectedRoute>
           }

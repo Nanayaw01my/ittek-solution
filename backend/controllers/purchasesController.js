@@ -59,23 +59,56 @@ const createPurchase = async (req, res) => {
     let total_amount = 0;
 
     for (const item of items) {
-      const product = await Product.findById(item.product_id);
+      const product = await Product.findById(item.product_id).catch(() => null);
       if (!product) {
         return res.status(400).json({ success: false, message: `Product not found: ${item.product_id}` });
       }
-      const itemTotal = item.quantity * item.unit_cost;
+
+      const quantity = Number(item.quantity);
+      if (!Number.isFinite(quantity) || quantity < 1) {
+        return res.status(400).json({
+          success: false,
+          message: `How many ${product.name} came in?`,
+        });
+      }
+
+      // The cost is what every profit figure in the system is worked out
+      // from, and this is the one place it gets rewritten. A blank left
+      // unchecked would set it to zero and quietly report the whole selling
+      // price as profit on every future sale of that product.
+      const unitCost = Number(item.unit_cost);
+      if (!Number.isFinite(unitCost) || unitCost <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Enter what one ${product.name} cost you.`,
+        });
+      }
+
+      // A variant product keeps its counts on the variants, so adding to the
+      // parent would put the stock somewhere nothing sells from.
+      if (product.has_variants && (product.variants || []).length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `${product.name} has variants — receive those on the product itself.`,
+        });
+      }
+
+      const itemTotal = Number((quantity * unitCost).toFixed(2));
       purchaseItems.push({
         product_id: product._id,
         product_name: product.name,
-        quantity: item.quantity,
-        unit_cost: item.unit_cost,
+        quantity,
+        unit_cost: unitCost,
         total: itemTotal,
       });
       total_amount += itemTotal;
     }
+    total_amount = Number(total_amount.toFixed(2));
 
     const purchase = await Purchase.create({
-      supplier_id,
+      // An empty string is not an id; left as one it fails the cast and the
+      // whole delivery is lost to a 500 over an optional field.
+      supplier_id: supplier_id || undefined,
       purchase_date: purchase_date || new Date(),
       total_amount,
       notes,

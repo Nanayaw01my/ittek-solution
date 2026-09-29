@@ -23,7 +23,7 @@ export const GRANTABLE_PAGES = {
   },
   categories: { label: 'Categories', defaultLevel: 3, modes: ['view', 'full'] },
   suppliers: { label: 'Suppliers', defaultLevel: 3, modes: ['view', 'full'] },
-  purchases: { label: 'Purchases', defaultLevel: 3, modes: ['view', 'full'] },
+  purchases: { label: 'Purchases', defaultLevel: 2, modes: ['view', 'full'] },
   workers: { label: 'Worker Payments', defaultLevel: 3, modes: ['view', 'full'] },
   'sales-history': { label: 'Sales History', defaultLevel: 3, modes: ['view'] },
   reports: { label: 'Reports', defaultLevel: 3, modes: ['view'] },

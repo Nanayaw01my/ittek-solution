@@ -53,7 +53,7 @@ const NAV_ITEMS = [
   { to: '/products', label: 'Products', icon: FiPackage, minLevel: 3 },
   { to: '/categories', label: 'Categories', icon: FiTag, minLevel: 3 },
   { to: '/suppliers', label: 'Suppliers', icon: FiTruck, minLevel: 3 },
-  { to: '/purchases', label: 'Purchases', icon: FiShoppingBag, minLevel: 3 },
+  { to: '/purchases', label: 'Purchases', icon: FiShoppingBag, minLevel: 2 },
   { to: '/workers', label: 'Worker Payments', icon: FiUsers, minLevel: 3 },
   { to: '/financial', label: 'Financial', icon: FiTrendingUp, minLevel: 3 },
   { to: '/reports', label: 'Reports', icon: FiBarChart2, minLevel: 3 },
