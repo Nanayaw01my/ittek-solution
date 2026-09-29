@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload, FiRefreshCw, FiCopy, FiZap, FiCrosshair, FiX, FiCheck, FiPrinter } from 'react-icons/fi'
 import { openPdfInNewTab } from '../utils/openPdf'
+import useBarcodeScanner from '../hooks/useBarcodeScanner'
 import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary, generateBarcode, getProductByBarcode, commitStockCount, getBarcodeSheet, generateAllBarcodes } from '../api/products'
 import { formatCurrency, getRoleLevel } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
@@ -332,6 +333,8 @@ function StockCountModal({ onClose }) {
     }
   }
 
+  useBarcodeScanner((code) => scan(code))
+
   const setQty = (barcode, v) => setLines((prev) => prev.map((l) =>
     l.barcode === barcode ? { ...l, quantity: Math.max(0, Number(v) || 0) } : l))
   const drop = (barcode) => setLines((prev) => prev.filter((l) => l.barcode !== barcode))
@@ -379,7 +382,7 @@ function StockCountModal({ onClose }) {
         </p>
 
         <input
-          ref={boxRef} autoFocus value={code}
+          ref={boxRef} autoFocus data-scan-input="" value={code}
           onChange={(e) => setCode(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); scan(code) } }}
           placeholder="Scan an item…"
@@ -610,6 +613,31 @@ export default function Products() {
   const [scanBusy, setScanBusy] = useState(false)
   const [sheetBusy, setSheetBusy] = useState(false)
   const [showAutoBarcode, setShowAutoBarcode] = useState(false)
+
+  /**
+   * A scanned code: a known one opens that product, an unknown one starts a
+   * new one already carrying the barcode.
+   */
+  const openByBarcode = async (raw) => {
+    const code = String(raw || '').trim()
+    if (!code) return
+    setScanCode('')
+    setScanBusy(true)
+    try {
+      const res = await getProductByBarcode(code)
+      setEditProduct(res.data)
+      setNewBarcode('')
+      setShowModal(true)
+      toast.success(`${res.data.name} — ${res.data.quantity} on hand`)
+    } catch {
+      setEditProduct(null)
+      setNewBarcode(code)
+      setShowModal(true)
+      toast(`${code} is new — fill in the rest`, { icon: '🆕' })
+    } finally {
+      setScanBusy(false)
+    }
+  }
   const [page, setPage] = useState(1)
 
   const user = useAuthStore(s => s.user)
@@ -692,6 +720,13 @@ export default function Products() {
       setStockTarget(null)
     },
     onError: err => toast.error(err.response?.data?.message || 'Failed to update'),
+  })
+
+
+  // Whichever modal is open owns the scanner while it is; otherwise the page
+  // does. Both listening at once would take every code twice.
+  useBarcodeScanner(openByBarcode, {
+    enabled: !showModal && !showCount && !showAutoBarcode && !deleteTarget && !stockTarget,
   })
 
   const deleteMutation = useMutation({
@@ -886,29 +921,13 @@ export default function Products() {
       <div className="mb-4 relative">
         <FiCrosshair className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-400" size={16} />
         <input
+          data-scan-input=""
           value={scanCode}
           onChange={(e) => setScanCode(e.target.value)}
-          onKeyDown={async (e) => {
+          onKeyDown={(e) => {
             if (e.key !== 'Enter') return
             e.preventDefault()
-            const code = scanCode.trim()
-            if (!code) return
-            setScanCode('')
-            setScanBusy(true)
-            try {
-              const res = await getProductByBarcode(code)
-              setEditProduct(res.data)
-              setNewBarcode('')
-              setShowModal(true)
-              toast.success(`${res.data.name} — ${res.data.quantity} on hand`)
-            } catch {
-              setEditProduct(null)
-              setNewBarcode(code)
-              setShowModal(true)
-              toast(`${code} is new — fill in the rest`, { icon: '🆕' })
-            } finally {
-              setScanBusy(false)
-            }
+            openByBarcode(scanCode)
           }}
           placeholder={scanBusy ? 'Looking…' : 'Scan a barcode to open or add a product…'}
           className="w-full pl-9 pr-3 py-2.5 border border-orange-200 bg-orange-50/40 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400"

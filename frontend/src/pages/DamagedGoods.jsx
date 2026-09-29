@@ -18,6 +18,8 @@ import {
   getDamagedGoods, createDamagedGood, updateDamagedGood, deleteDamagedGood,
 } from '../api/damagedGoods'
 import useAuthStore from '../store/authStore'
+import useBarcodeScanner from '../hooks/useBarcodeScanner'
+import { getProductByBarcode } from '../api/products'
 
 const FAULTS = [
   ['damaged', 'Damaged'],
@@ -83,6 +85,17 @@ function ReportModal({ onClose }) {
     }))
     setSearch('')
   }
+
+  // Scanning the broken thing is quicker than describing it.
+  useBarcodeScanner(async (code) => {
+    try {
+      const res = await getProductByBarcode(code)
+      choose(res.data)
+      toast.success(`${res.data.name} — ${res.data.quantity} on hand`)
+    } catch {
+      toast.error(`Nothing matches ${code}`)
+    }
+  })
 
   const qty = Number(form.quantity) || 0
   const cost = Number(form.unit_cost) || 0

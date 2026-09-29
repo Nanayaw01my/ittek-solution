@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray } from 'react-hook-form'
 import toast from 'react-hot-toast'
@@ -6,6 +6,7 @@ import { FiPlus, FiTrash2, FiEye, FiCrosshair } from 'react-icons/fi'
 import { getPurchases, createPurchase } from '../api/purchases'
 import { getProducts, getSuppliers, getProductByBarcode } from '../api/products'
 import { formatCurrency, formatDate } from '../utils/helpers'
+import useBarcodeScanner from '../hooks/useBarcodeScanner'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
 import Table from '../components/Table'
@@ -26,6 +27,7 @@ function PurchaseForm({ onSubmit, loading }) {
   const [scan, setScan] = useState('')
   const [scanBusy, setScanBusy] = useState(false)
   const [lastScan, setLastScan] = useState(null)
+  const scanBox = useRef(null)
 
   /**
    * Receiving a delivery by scanning it in.
@@ -74,8 +76,15 @@ function PurchaseForm({ onSubmit, loading }) {
       })
     } finally {
       setScanBusy(false)
+      // Back to the scan box, so a run of scans keeps working after the
+      // cursor has wandered into a cost or the notes.
+      scanBox.current?.focus()
     }
   }
+
+  // The scanner is caught wherever the cursor happens to be, so nobody has
+  // to click the box first.
+  useBarcodeScanner((code) => scanIn(code))
   const total = items.reduce((s, i) => s + (parseFloat(i.unitCost || 0) * parseFloat(i.quantity || 0)), 0)
 
   const handleSubmitTransform = (d) => {
@@ -122,6 +131,9 @@ function PurchaseForm({ onSubmit, loading }) {
           <div className="relative">
             <FiCrosshair className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-400" size={15} />
             <input
+              ref={scanBox}
+              autoFocus
+              data-scan-input=""
               value={scan}
               onChange={(e) => setScan(e.target.value)}
               onKeyDown={(e) => {

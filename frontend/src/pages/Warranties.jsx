@@ -16,6 +16,7 @@ import {
   getWarranties, checkWarranty, linesFromSale, createWarranty, claimWarranty, deleteWarranty,
 } from '../api/warranties'
 import useAuthStore from '../store/authStore'
+import useBarcodeScanner from '../hooks/useBarcodeScanner'
 
 const OUTCOMES = [
   ['repaired', 'Repaired it'],
@@ -125,6 +126,10 @@ function RegisterModal({ onClose }) {
     onError: (err) => toast.error(err.response?.data?.message || 'Could not register it'),
   })
 
+  // A serial is usually printed as a barcode on the unit, so it can be
+  // scanned straight into the field rather than read off and typed.
+  useBarcodeScanner((code) => setForm((f) => ({ ...f, serial_number: code })))
+
   const ready = form.product_name.trim() && form.customer_name.trim() && Number(form.months) >= 1
   const field = 'w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400'
 
@@ -224,7 +229,8 @@ function RegisterModal({ onClose }) {
             Serial number <span className="font-normal text-gray-400">— how a claim is found</span>
           </label>
           <input value={form.serial_number} onChange={set('serial_number')}
-            placeholder="Written on the unit" className={field} />
+            autoFocus data-scan-input=""
+            placeholder="Scan it, or type what is on the unit" className={field} />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -359,6 +365,9 @@ export default function Warranties() {
 
   const warranties = data?.warranties || []
   const summary = data?.summary || {}
+
+  // Somebody walks up with a unit: scan it and its warranty is found.
+  useBarcodeScanner((code) => setQ(code), { enabled: !registering && !claiming && !deleting })
 
   const remove = useMutation({
     mutationFn: (id) => deleteWarranty(id),
