@@ -84,9 +84,13 @@ const requirePage = (page, ...modes) => {
     }
 
     if (!canAccessPage(req.user, page, modes.length ? modes : null)) {
+      // Says where the grant is made, not just that one is needed. "Ask the
+      // CEO" reads like a request has been filed somewhere, so the CEO goes
+      // looking for an approval queue, finds none, and nobody is unblocked.
       return res.status(403).json({
         success: false,
-        message: 'Access denied. Ask the CEO to grant you this.',
+        message: 'You do not have access to this yet. The CEO can switch it on '
+          + 'under Users → open your account → "Extra screens this user can open".',
       });
     }
 

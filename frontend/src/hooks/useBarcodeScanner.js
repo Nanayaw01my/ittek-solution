@@ -14,9 +14,29 @@ import { useEffect, useRef } from 'react'
  * focus, and a person typing at human speed is never mistaken for one.
  */
 
-// Slowest gap between two scanner keystrokes. Cheap scanners are around
-// 10-30ms; a fast typist is above 80ms even at a sprint.
-const MAX_GAP_MS = 50
+/**
+ * How the burst is judged.
+ *
+ * The first version demanded that every gap — including the one before the
+ * final Enter — be under 50ms. That is true of the keystrokes but often not
+ * of the Enter: plenty of scanners pause noticeably before sending their
+ * suffix, and some send no suffix at all. Both cases were thrown away
+ * silently, which looks exactly like a scanner that has stopped working.
+ *
+ * So the test is now the burst's average pace, which is what actually
+ * separates a machine from a person, and the Enter is given a generous window
+ * of its own. A code with no Enter behind it is taken once the keys stop.
+ */
+// A pause longer than this ends a burst. Above a scanner's per-character rate,
+// below the pace anyone types at.
+const MAX_CHAR_GAP_MS = 120
+// The burst's average pace must be at least this quick. Thirteen digits at
+// 70ms is under a second — roughly 14 characters a second, which no one types.
+const MAX_AVG_GAP_MS = 70
+// How long the Enter may lag behind the last digit and still belong to it.
+const MAX_ENTER_GAP_MS = 400
+// A scanner with no Enter configured is taken once the keys stop for this long.
+const IDLE_FLUSH_MS = 180
 // Short codes would swallow ordinary typing; real barcodes are 8 digits or more.
 const MIN_LENGTH = 6
 
@@ -46,13 +66,50 @@ export default function useBarcodeScanner(onScan, { enabled = true } = {}) {
   // Held in a ref so re-rendering the page mid-scan cannot lose the buffer.
   const buffer = useRef('')
   const lastAt = useRef(0)
+  // When the burst's first character arrived, for working out its pace.
+  const startedAt = useRef(0)
   // The field the burst is landing in, and what it held before it started.
   const typedInto = useRef({ el: null, before: null })
+  const idleTimer = useRef(null)
   const handler = useRef(onScan)
   handler.current = onScan
 
   useEffect(() => {
     if (!enabled) return undefined
+
+    const clearIdle = () => {
+      if (idleTimer.current) { clearTimeout(idleTimer.current); idleTimer.current = null }
+    }
+
+    const reset = () => {
+      buffer.current = ''
+      startedAt.current = 0
+      typedInto.current = { el: null, before: null }
+      clearIdle()
+    }
+
+    /** Was that a machine? Judged on pace, not on any single gap. */
+    const looksScanned = (code, elapsed) => {
+      if (code.length < MIN_LENGTH) return false
+      // One character cannot have a pace; two is the shortest burst with one
+      // gap in it, and MIN_LENGTH is well above that anyway.
+      const avg = elapsed / Math.max(1, code.length - 1)
+      return avg <= MAX_AVG_GAP_MS
+    }
+
+    const fire = () => {
+      const code = buffer.current
+      const landed = typedInto.current
+      const elapsed = lastAt.current - startedAt.current
+      reset()
+      if (!looksScanned(code, elapsed)) return false
+      // The code landed in whatever had the cursor. Take it back out before
+      // acting on it, so a scan into the notes box does not leave thirteen
+      // digits in the notes.
+      restore(landed.el, landed.before)
+      handler.current?.(code)
+      return true
+    }
 
     const onKeyDown = (e) => {
       // The dedicated scan box handles its own keystrokes; catching them here
@@ -68,44 +125,44 @@ export default function useBarcodeScanner(onScan, { enabled = true } = {}) {
       lastAt.current = now
 
       if (e.key === 'Enter') {
-        const code = buffer.current
-        const landed = typedInto.current
-        buffer.current = ''
-        typedInto.current = { el: null, before: null }
-        // Only a fast burst of enough characters counts. Enter pressed on its
-        // own, or after slow typing, is left entirely alone — it may be
-        // somebody submitting a form.
-        if (code.length >= MIN_LENGTH && gap < MAX_GAP_MS) {
+        clearIdle()
+        // Enter long after the last digit is somebody submitting a form, not
+        // a scanner's suffix — and an Enter on its own never was a scan.
+        if (gap > MAX_ENTER_GAP_MS) { reset(); return }
+        if (fire()) {
           e.preventDefault()
           e.stopPropagation()
-          // The code landed in whatever had the cursor. Take it back out
-          // before acting on it, so a scan into the notes box does not leave
-          // thirteen digits in the notes.
-          restore(landed.el, landed.before)
-          handler.current?.(code)
         }
         return
       }
 
       // A pause means a new burst, so the fragment before it is discarded
       // rather than joined onto the next scan.
-      if (gap > MAX_GAP_MS) {
-        buffer.current = ''
-        typedInto.current = { el: null, before: null }
-      }
+      if (gap > MAX_CHAR_GAP_MS) reset()
 
       // Scanner output is single printable characters.
       if (e.key.length !== 1) return
 
       // Remember the field as it stood before the first character of a burst.
-      if (buffer.current === '' && (el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA')) {
-        typedInto.current = { el, before: el.value }
+      if (buffer.current === '') {
+        startedAt.current = now
+        if (el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA') {
+          typedInto.current = { el, before: el.value }
+        }
       }
       buffer.current += e.key
+
+      // Not every scanner is set to send Enter. If the keys simply stop and
+      // what arrived came at machine pace, take it.
+      clearIdle()
+      idleTimer.current = setTimeout(fire, IDLE_FLUSH_MS)
     }
 
     // Capture, so a code is seen before a focused input can act on it.
     document.addEventListener('keydown', onKeyDown, true)
-    return () => document.removeEventListener('keydown', onKeyDown, true)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true)
+      clearIdle()
+    }
   }, [enabled])
 }
