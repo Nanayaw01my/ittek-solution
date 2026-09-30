@@ -1,4 +1,5 @@
 const Sale = require('../models/Sale');
+const { nextFreeReceiptBarcode } = require('./barcode');
 
 /**
  * The next invoice number for today, in the form INV-YYYYMMDD-XXXX.
@@ -59,13 +60,23 @@ const createSaleWithInvoice = async (data, attempts = 8) => {
   for (let i = 0; i < attempts; i++) {
     const invoice_no = await nextInvoiceNo(datePart);
     try {
-      return await Sale.create({ ...data, invoice_no });
+      // The receipt's scannable handle. Minted here so every sale has one
+      // from the moment it exists; null when the mint could not find a free
+      // code, because a sale must never fail over a barcode.
+      const receipt_barcode = data.receipt_barcode || await nextFreeReceiptBarcode(Sale);
+      return await Sale.create({
+        ...data,
+        invoice_no,
+        ...(receipt_barcode ? { receipt_barcode } : {}),
+      });
     } catch (err) {
-      const isDuplicateInvoice = err?.code === 11000
-        && JSON.stringify(err?.keyPattern || err?.keyValue || {}).includes('invoice_no');
-      if (!isDuplicateInvoice || i === attempts - 1) throw err;
+      // Any duplicate key is worth another round: the invoice number is the
+      // one that collides in practice, but the receipt barcode is minted here
+      // too and a sale must not be lost to either.
+      const isDuplicate = err?.code === 11000;
+      if (!isDuplicate || i === attempts - 1) throw err;
       // Someone else took that number between the read and the write. Round
-      // again — nextInvoiceNo will now see theirs.
+      // again — nextInvoiceNo will now see theirs, and the barcode is re-minted.
     }
   }
 

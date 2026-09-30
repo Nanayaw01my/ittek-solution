@@ -40,6 +40,10 @@ const getPublicReceipt = async (req, res) => {
         },
         receipt: {
           invoice_no: sale.invoice_no,
+          // So a customer who kept only the phone copy can still be served at
+          // the counter: the barcode is shown on the page and scans off the
+          // screen the same as off paper.
+          receipt_barcode: sale.receipt_barcode || null,
           sale_date: sale.sale_date,
           served_by: sale.user_id?.username || 'Staff',
           customer_name: sale.customer_name || '',

@@ -5,6 +5,9 @@ export const lookupSaleByInvoice = (invoiceNo) => api.get(`/refunds/lookup/${inv
 // Recent sales to pick from, so a refund does not depend on the customer
 // still having the printed invoice code.
 export const searchSales = (q) => api.get('/refunds/sale-search', { params: { q } })
+
+/** One scanned code — a receipt's invoice, or a product being brought back. */
+export const scanForRefund = (code) => api.get(`/refunds/scan/${encodeURIComponent(code)}`)
 export const createRefund = (data) => api.post('/refunds', data)
 export const approveRefund = (id) => api.put(`/refunds/${id}/approve`)
 export const rejectRefund = (id, reason) => api.put(`/refunds/${id}/reject`, { reason })

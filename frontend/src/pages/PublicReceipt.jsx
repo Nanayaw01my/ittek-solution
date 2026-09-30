@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { format } from 'date-fns'
+import Ean13 from '../components/Ean13'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
@@ -179,6 +180,15 @@ export default function PublicReceipt() {
             {(receipt.payment_status || '').replace(/_/g, ' ')}
           </span>
         </div>
+
+        {receipt.receipt_barcode && (
+          <div className="px-5 pb-4 pt-1 text-center">
+            <Ean13 code={receipt.receipt_barcode} height={40} unit={2} className="mx-auto" />
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              Show this at the shop for a return or an enquiry
+            </p>
+          </div>
+        )}
 
         <div className="px-5 pb-6 text-center text-xs text-gray-400">
           <p className="font-semibold text-gray-500">Thank you for your business!</p>

@@ -4,7 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
-  getRefunds, lookupSaleByInvoice, searchSales, createRefund,
+  getRefunds, lookupSaleByInvoice, searchSales, scanForRefund, createRefund,
   approveRefund, rejectRefund, updateRefund, deleteRefund,
 } = require('../controllers/refundsController');
 
@@ -13,6 +13,7 @@ router.get('/', authenticate, getRefunds);
 // Above '/lookup/:invoiceNo' is fine — different path — but keep both before
 // the parameterised routes below.
 router.get('/sale-search', authenticate, searchSales);
+router.get('/scan/:code', authenticate, scanForRefund);
 router.get('/lookup/:invoiceNo', authenticate, lookupSaleByInvoice);
 router.post(
   '/',

@@ -126,6 +126,85 @@ const searchSales = async (req, res) => {
 };
 
 /**
+ * GET /api/refunds/scan/:code
+ *
+ * One scan, whatever was scanned. A customer coming back with goods carries
+ * one of two things: the receipt, or the item itself. Asking the counter to
+ * know which kind of code is in their hand before they scan defeats the point
+ * of the scanner, so both are tried here in the order that costs least.
+ *
+ *   1. The code as an invoice number — receipts carry theirs as a barcode.
+ *   2. The code as a product barcode — then the recent sales that product was
+ *      sold in, newest first, because the returned box is often all the
+ *      customer has and the shop has to work out which sale it came from.
+ *
+ * A product sold once comes back as a single sale and the screen can load it
+ * straight away; sold many times, the counter picks the right one.
+ */
+const scanForRefund = async (req, res) => {
+  try {
+    const code = String(req.params.code || '').trim();
+    if (!code) return res.status(400).json({ success: false, message: 'Nothing was scanned.' });
+    const safe = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // ── A receipt ─────────────────────────────────────────────────────────
+    // The barcode printed on the receipt first: that is what a scan actually
+    // produces. Then the invoice number, for a code read off the slip by eye.
+    let sale = await Sale.findOne({ receipt_barcode: code });
+    if (!sale) sale = await Sale.findOne({ invoice_no: code });
+    if (!sale) sale = await Sale.findOne({ invoice_no: new RegExp(`^${safe}$`, 'i') });
+    if (sale) {
+      return res.status(200).json({ success: true, data: { kind: 'sale', sale } });
+    }
+
+    // ── An item off the shelf ─────────────────────────────────────────────
+    const product = await Product.findOne({
+      $or: [{ barcode: code }, { 'variants.barcode': code }],
+    }).select('name barcode variants').lean();
+
+    // Matching on the barcode written into the sale as well as on the product
+    // it belongs to: a product barcoded after a sale was made has no barcode
+    // on that sale's line, and a product since deleted has no id to match.
+    const filter = { $or: [{ 'items.barcode': code }] };
+    if (product) filter.$or.push({ 'items.product_id': product._id });
+    if (req.user.role === 'Sales') filter.user_id = req.user._id;
+
+    const sales = await Sale.find(filter)
+      .select('invoice_no customer_name customer_phone total_amount sale_date items')
+      .sort({ sale_date: -1 })
+      .limit(15)
+      .lean();
+
+    if (!product && sales.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'That code is not a receipt or any product we stock.',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        kind: 'product',
+        product: product ? { name: product.name, barcode: code } : { name: 'Unknown product', barcode: code },
+        sales: sales.map((s) => ({
+          _id: String(s._id),
+          invoice_no: s.invoice_no,
+          customer_name: s.customer_name || '',
+          customer_phone: s.customer_phone || '',
+          total_amount: s.total_amount,
+          sale_date: s.sale_date,
+          item_count: (s.items || []).length,
+        })),
+      },
+    });
+  } catch (err) {
+    console.error('Scan for refund error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
  * POST /api/refunds
  * All authenticated users can process a refund.
  */
@@ -341,4 +420,4 @@ const deleteRefund = async (req, res) => {
   }
 };
 
-module.exports = { getRefunds, lookupSaleByInvoice, searchSales, createRefund, approveRefund, rejectRefund, updateRefund, deleteRefund };
+module.exports = { getRefunds, lookupSaleByInvoice, searchSales, scanForRefund, createRefund, approveRefund, rejectRefund, updateRefund, deleteRefund };

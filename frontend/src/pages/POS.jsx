@@ -1,14 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart, FiCreditCard, FiPause, FiList, FiRefreshCw, FiPackage, FiDownloadCloud } from 'react-icons/fi'
+import { FiCrosshair, FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart, FiCreditCard, FiPause, FiList, FiRefreshCw, FiPackage, FiDownloadCloud } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
-import { getProducts, getOfflineCatalogue } from '../api/products'
+import { getProducts, getOfflineCatalogue, getProductByBarcode } from '../api/products'
 import { createSale, createShortPayment } from '../api/pos'
 import { getSettings } from '../api/settings'
 import useAuthStore from '../store/authStore'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import useOnlineStatus from '../hooks/useOnlineStatus'
+import useBarcodeScanner from '../hooks/useBarcodeScanner'
 import {
   queueSale, saveProductsCache, getCachedProducts, getProductsCacheTime,
   saveSettingsCache, getCachedSettings, saveLocalHold, removeLocalHold,
@@ -17,6 +18,7 @@ import {
 import { buildWhatsAppReceiptLink } from '../utils/phone'
 import { printReceipt } from '../utils/printReceipt'
 import Modal from '../components/Modal'
+import Ean13 from '../components/Ean13'
 import SplitPaymentModal from '../components/SplitPaymentModal'
 import HeldSalesModal from '../components/HeldSalesModal'
 import VariantPickerModal from '../components/VariantPickerModal'
@@ -116,6 +118,10 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
   const paymentMethod = (saleData.payment_method || saleData.paymentMethod || '').replace(/_/g, ' ').toUpperCase()
   const customerPhone = saleData.customer_phone || saleData.customer?.phone || ''
   const qrCode = saleData.qr_code || null
+  // The receipt's own barcode. Offline sales have none until they sync, so the
+  // slip simply prints without one rather than printing a code that no sale on
+  // the server answers to.
+  const receiptBarcode = saleData.receipt_barcode || null
   const receiptUrl = saleData.receipt_url || null
 
   // Null when the number isn't a valid Ghana number — the button stays disabled
@@ -271,6 +277,16 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
             <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
               <img src={qrCode} alt="Receipt QR code" className="h-28 w-28 mx-auto" />
               <p className="text-[10px] text-gray-500 mt-1">Scan to view this receipt online</p>
+            </div>
+          )}
+
+          {/* The receipt's barcode. Scanning it at the refund screen pulls this
+              sale up, so a return does not depend on anybody reading
+              INV-20260930-0001 off a faded slip and typing it back in. */}
+          {receiptBarcode && (
+            <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
+              <Ean13 code={receiptBarcode} height={38} unit={2} className="mx-auto" />
+              <p className="text-[10px] text-gray-500 mt-0.5">Scan this for a refund or to look up the sale</p>
             </div>
           )}
 
@@ -633,6 +649,84 @@ export default function POS() {
     })
   }, [])
 
+  // ── Scanning at the till ───────────────────────────────────────────────────
+  // A scanner is a keyboard, so its keystrokes used to go nowhere unless the
+  // cashier clicked the search box first — and if the code matched nothing, or
+  // the item was out of stock, the screen said nothing at all and the cashier
+  // scanned again. Now the whole page listens, and every outcome is spoken.
+  const findLocally = useCallback((code) => {
+    // The visible list online is only page one of the catalogue, so the
+    // offline copy — which is all of it — is searched first.
+    const pool = [...(getCachedProducts() || []), ...rawProducts]
+    for (const p of pool) {
+      if (p.barcode && p.barcode === code) return { product: p, variant: null }
+      const v = (p.variants || []).find(x => x.barcode === code)
+      if (v) return { product: p, variant: v }
+    }
+    return null
+  }, [rawProducts])
+
+  const handleScan = useCallback(async (raw) => {
+    const code = String(raw || '').trim()
+    if (!code) return
+
+    let hit = findLocally(code)
+    // Not on this device — ask the server, which knows the whole catalogue
+    // and the variant barcodes printed for each size.
+    if (!hit && isOnline) {
+      try {
+        const res = await getProductByBarcode(code)
+        const p = res.data
+        const v = p.matched_variant_sku
+          ? (p.variants || []).find(x => x.sku === p.matched_variant_sku)
+          : null
+        hit = { product: p, variant: v || null }
+      } catch { /* answered below */ }
+    }
+
+    if (!hit) {
+      toast.error(isOnline
+        ? `Nothing has barcode ${code}`
+        : `${code} is not in the saved products — reconnect and press Save for offline.`)
+      return
+    }
+
+    const { product, variant } = hit
+    // A product barcode on something sold by size has to ask which size; the
+    // variant's own barcode already answers that.
+    if (product.has_variants && !variant) {
+      addToCart(product)
+      return
+    }
+
+    const stock = variant ? variant.quantity : product.quantity
+    const label = variant ? `${product.name} — ${variant.name}` : product.name
+    if (!(stock > 0)) {
+      toast.error(`${label} is out of stock`)
+      return
+    }
+
+    // Checked here rather than left to addToCart so the cashier gets one clear
+    // answer instead of "added" and "not enough stock" together.
+    const lineId = variant ? `${product._id}:${variant.sku}` : product._id
+    const line = cart.find(i => i.lineId === lineId || (!i.lineId && i._id === lineId))
+    if (line && line.qty >= stock) {
+      toast.error(`Only ${stock} of ${label} left — all of it is in the cart`)
+      return
+    }
+
+    addToCart(product, variant)
+    setSearchQuery('')
+    toast.success(`${label} added`, { duration: 1500 })
+  }, [findLocally, isOnline, addToCart, cart])
+
+  // Every modal on this page has its own input to scan into, so the page-wide
+  // listener stands down while one is open.
+  useBarcodeScanner(handleScan, {
+    enabled: !showShortModal && !showReceipt && !showSplitModal
+      && !showHeldModal && !showPayLaterModal && !variantProduct,
+  })
+
   const updateQty = (id, newQty) => {
     if (newQty <= 0) {
       removeFromCart(id)
@@ -913,18 +1007,29 @@ export default function POS() {
     shortPayMutation.mutate(payload)
   }
 
-  // Barcode search: if searchQuery has no space and is 8+ chars, treat as barcode
+  /**
+   * Enter in the search box, for a code read off a label by eye or a scanner
+   * that has been clicked into. An exact product name still wins; anything
+   * else is handed to the scan path, which knows barcodes, variants and how
+   * to say why nothing was added.
+   */
   const handleSearchKeyDown = (e) => {
-    if (e.key === 'Enter' && searchQuery.trim()) {
-      const exact = products.find(p =>
-        p.barcode === searchQuery.trim() ||
-        p.name.toLowerCase() === searchQuery.trim().toLowerCase()
-      )
-      if (exact && exact.quantity > 0) {
-        addToCart(exact)
+    if (e.key !== 'Enter') return
+    const typed = searchQuery.trim()
+    if (!typed) return
+    e.preventDefault()
+
+    const byName = products.find(p => p.name?.toLowerCase() === typed.toLowerCase())
+    if (byName) {
+      if (byName.has_variants || byName.quantity > 0) {
+        addToCart(byName)
         setSearchQuery('')
+      } else {
+        toast.error(`${byName.name} is out of stock`)
       }
+      return
     }
+    handleScan(typed)
   }
 
   return (
@@ -975,7 +1080,7 @@ export default function POS() {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Search product or scan barcode (Enter to add)..."
+                placeholder="Search a product, or just scan it..."
                 className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50"
               />
             </div>
@@ -989,6 +1094,10 @@ export default function POS() {
               <FiRefreshCw size={16} className={productsFetching ? 'animate-spin' : ''} />
             </button>
           </div>
+          <p className="mt-1.5 text-xs text-gray-400 flex items-center gap-1.5">
+            <FiCrosshair size={12} className="flex-shrink-0 text-orange-500" />
+            Scan an item to add it to the cart — no need to click here first.
+          </p>
         </div>
 
         {/* Product Grid */}

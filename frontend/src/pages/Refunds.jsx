@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiRotateCcw, FiSearch, FiTrash2, FiPlus, FiMinus, FiX } from 'react-icons/fi'
-import { approveRefund, rejectRefund, getRefunds, lookupSaleByInvoice, searchSales, createRefund, deleteRefund } from '../api/refunds'
+import { FiRotateCcw, FiSearch, FiTrash2, FiPlus, FiMinus, FiX, FiCrosshair } from 'react-icons/fi'
+import { approveRefund, rejectRefund, getRefunds, lookupSaleByInvoice, searchSales, scanForRefund, createRefund, deleteRefund } from '../api/refunds'
 import useAuthStore from '../store/authStore'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import Modal from '../components/Modal'
 import RefreshButton from '../components/RefreshButton'
+import useBarcodeScanner from '../hooks/useBarcodeScanner'
 
 const METHODS = ['cash', 'card', 'mobile_money']
 const METHOD_LABELS = { cash: 'Cash', card: 'Card', mobile_money: 'Mobile Money' }
 
-function RefundForm({ onClose, onSuccess }) {
+function RefundForm({ onClose, onSuccess, seed }) {
   const { user } = useAuthStore()
   const [invoiceInput, setInvoiceInput] = useState('')
   const [lookupLoading, setLookupLoading] = useState(false)
@@ -67,7 +68,7 @@ function RefundForm({ onClose, onSuccess }) {
     setRefundAmount(items.reduce((s, i) => s + i.total, 0).toFixed(2))
   }
 
-  const handleLookup = async (code) => {
+  const handleLookup = async (code, { quiet = false } = {}) => {
     const wanted = (code ?? invoiceInput).trim()
     if (!wanted) return
     setLookupLoading(true)
@@ -77,7 +78,7 @@ function RefundForm({ onClose, onSuccess }) {
       setInvoiceInput(sale.invoice_no || wanted)
       loadSale(sale)
       setPicking(false)
-      toast.success(`${sale.invoice_no} found — items loaded`)
+      if (!quiet) toast.success(`${sale.invoice_no} found — items loaded`)
     } catch {
       toast.error('Invoice not found')
       setSaleItems([])
@@ -85,6 +86,51 @@ function RefundForm({ onClose, onSuccess }) {
       setLookupLoading(false)
     }
   }
+
+  // ── Scanning ───────────────────────────────────────────────────────────────
+  // A customer bringing goods back has the receipt or the item, rarely the
+  // invoice code in their head. Either one is scanned into the same box: a
+  // receipt loads its sale, and an item offers the sales it was sold in.
+  const [scanHit, setScanHit] = useState(null)
+
+  const handleScan = async (code) => {
+    const wanted = String(code || '').trim()
+    if (!wanted) return
+    setLookupLoading(true)
+    setPicking(false)
+    try {
+      const res = await scanForRefund(wanted)
+      const hit = res.data
+      if (hit.kind === 'sale') {
+        setScanHit(null)
+        setInvoiceInput(hit.sale.invoice_no || wanted)
+        loadSale(hit.sale)
+        toast.success(`${hit.sale.invoice_no} scanned — items loaded`)
+        return
+      }
+      // A product. One sale needs no choosing.
+      if (hit.sales.length === 1) {
+        setScanHit(null)
+        const only = hit.sales[0]
+        await handleLookup(only.invoice_no, { quiet: true })
+        toast.success(`${hit.product.name} — sold on ${only.invoice_no}`)
+        return
+      }
+      setScanHit(hit)
+      if (hit.sales.length === 0) {
+        toast.error(`${hit.product.name} has no sale on record — refund it without an invoice.`)
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'That code did not match anything')
+    } finally {
+      setLookupLoading(false)
+    }
+  }
+
+  useBarcodeScanner(handleScan)
+
+  // A scan made on the page behind opened this form; act on it once.
+  useEffect(() => { if (seed?.code) handleScan(seed.code) }, [seed])
 
   const toggleItem = (idx) => {
     const updated = selectedItems.map((item, i) =>
@@ -206,7 +252,52 @@ function RefundForm({ onClose, onSuccess }) {
         <p className="text-xs text-gray-400 mt-1">
           Search by invoice code, customer name or phone — or leave it blank to pick from the most recent sales.
         </p>
+        <p className="text-xs text-orange-600 mt-1 flex items-center gap-1.5">
+          <FiCrosshair size={12} className="flex-shrink-0" />
+          Or scan the receipt, or the item being brought back — no need to click anything first.
+        </p>
       </div>
+
+      {/* A scanned product that was sold more than once — which sale is it? */}
+      {scanHit && (
+        <div className="border border-orange-200 bg-orange-50 rounded-xl overflow-hidden">
+          <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-gray-900 truncate">{scanHit.product.name}</p>
+              <p className="text-xs text-orange-700">
+                {scanHit.sales.length === 0
+                  ? 'Never sold on this system — carry on without an invoice.'
+                  : `Sold on ${scanHit.sales.length} sale${scanHit.sales.length === 1 ? '' : 's'} — pick the customer's.`}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setScanHit(null)}
+              className="p-1.5 text-orange-400 hover:text-orange-700 flex-shrink-0"
+            >
+              <FiX size={15} />
+            </button>
+          </div>
+          {scanHit.sales.map(s => (
+            <button
+              key={s._id}
+              type="button"
+              onClick={() => { setScanHit(null); handleLookup(s.invoice_no) }}
+              className="w-full text-left px-4 py-2 bg-white border-t border-orange-100 hover:bg-orange-50"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-xs font-bold text-gray-800">{s.invoice_no}</span>
+                <span className="text-sm font-bold text-gray-900">{formatCurrency(s.total_amount)}</span>
+              </div>
+              <p className="text-xs text-gray-500 truncate">
+                {s.customer_name || 'Walk-in customer'}
+                {s.customer_phone ? ` · ${s.customer_phone}` : ''}
+                {' · '}{formatDate(s.sale_date)}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Items from invoice */}
       {saleItems.length > 0 && (
@@ -387,6 +478,14 @@ export default function Refunds() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [rejectTarget, setRejectTarget] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
+  // A scan made on the list opens the refund form and is handed to it, so the
+  // counter can start a return by scanning the goods and nothing else.
+  const [scanSeed, setScanSeed] = useState(null)
+
+  useBarcodeScanner(
+    (code) => { setScanSeed({ code, at: Date.now() }); setShowForm(true) },
+    { enabled: !showForm && !rejectTarget && !deleteTarget }
+  )
 
   const { data, isLoading } = useQuery({
     queryKey: ['refunds', dateFrom, dateTo],
@@ -444,6 +543,7 @@ export default function Refunds() {
         <div>
           <h1 className="text-xl font-black text-gray-900">Refunds</h1>
           <p className="text-sm text-gray-500">Track all refunds and returned stock</p>
+          <p className="text-xs text-orange-600 mt-0.5">Scan a receipt or a returned item to start a refund.</p>
         </div>
         <div className="flex gap-2">
         <RefreshButton keys={['refunds']} />
@@ -608,9 +708,15 @@ export default function Refunds() {
       </Modal>
 
       {/* New Refund Modal */}
-      <Modal isOpen={showForm} onClose={() => setShowForm(false)} title="Process Refund" size="lg">
+      <Modal
+        isOpen={showForm}
+        onClose={() => { setShowForm(false); setScanSeed(null) }}
+        title="Process Refund"
+        size="lg"
+      >
         <RefundForm
-          onClose={() => setShowForm(false)}
+          seed={scanSeed}
+          onClose={() => { setShowForm(false); setScanSeed(null) }}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['refunds'] })
             queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
