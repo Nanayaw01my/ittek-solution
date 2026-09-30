@@ -624,8 +624,10 @@ export default function Users() {
             title="Print a card for everyone who has a badge"
             className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-bold text-sm transition-colors disabled:opacity-50"
           >
+            {/* Labelled on a phone too. An unlabelled printer icon in a row
+                of icons is a button nobody presses. */}
             <FiPrinter size={16} />
-            <span className="hidden sm:inline">{cardsBusy ? 'Building…' : 'Print badges'}</span>
+            <span>{cardsBusy ? 'Building…' : 'Print badges'}</span>
           </button>
           <button
             onClick={() => { setEditUser(null); setShowModal(true) }}
@@ -707,9 +709,29 @@ export default function Users() {
                           </span>
                         )}
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <p className="font-semibold text-gray-800 text-sm">{row.username}</p>
-                        <p className="text-xs text-gray-500">{row.email || '—'}</p>
+                        <p className="text-xs text-gray-500 truncate">{row.email || '—'}</p>
+                        {/* The badge lives in the first column, not out in the
+                            actions where a phone hides it behind a sideways
+                            scroll nobody knows is there. */}
+                        {!['CEO', 'Super Admin'].includes(row.role) && canActOn(row) && (
+                          row.badge_code ? (
+                            <button
+                              onClick={() => setBadgeTarget(row)}
+                              className="mt-1 inline-flex items-center gap-1 text-[11px] font-mono font-bold text-blue-700 hover:underline"
+                            >
+                              <FiCreditCard size={11} /> {row.badge_code}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setBadgeTarget(row)}
+                              className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold text-orange-700 bg-orange-50 border border-orange-200 hover:bg-orange-100"
+                            >
+                              <FiCreditCard size={11} /> Give a badge
+                            </button>
+                          )
+                        )}
                       </div>
                     </div>
                   </td>
