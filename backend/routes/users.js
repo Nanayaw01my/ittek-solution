@@ -6,7 +6,7 @@ const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
   getUsers, createUser, getUser, updateUser, deleteUser, toggleActive, resetPassword,
-  issueBadge, revokeBadge,
+  issueBadge, revokeBadge, getBadgeCards,
 } = require('../controllers/usersController');
 const { ROLE_LEVELS } = require('../middleware/rbac');
 
@@ -32,6 +32,9 @@ router.post(
   auditLog('CREATE_USER', (req, body) => ({ created_username: req.body.username, role: req.body.role })),
   createUser
 );
+
+// The printable cards. Above '/:id' so the word is not read as an id.
+router.get('/badge-cards', canAccess, getBadgeCards);
 
 router.get('/:id', canAccess, getUser);
 

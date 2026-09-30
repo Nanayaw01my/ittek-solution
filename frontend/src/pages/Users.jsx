@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
+import { openPdfInNewTab } from '../utils/openPdf'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX, FiTrash2, FiEye, FiEyeOff, FiCreditCard } from 'react-icons/fi'
-import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword, issueBadge, revokeBadge } from '../api/users'
+import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX, FiTrash2, FiEye, FiEyeOff, FiCreditCard , FiPrinter } from 'react-icons/fi'
+import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword, issueBadge, revokeBadge, getBadgeCards } from '../api/users'
 import { getCategories } from '../api/products'
 import { resizeImageToDataUrl, dataUrlToFile } from '../utils/resizeImage'
 import { uploadImage } from '../api/upload'
@@ -378,10 +379,24 @@ function BadgeModal({ user, onClose }) {
             <li>• One card per person. A shared badge signs the wrong person in, and the
               records will name them for it.</li>
           </ul>
-          <button onClick={onClose}
-            className="w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm">
-            Done
-          </button>
+          <div className="flex gap-2">
+            <button onClick={onClose}
+              className="flex-1 py-2.5 border border-gray-200 rounded-xl font-semibold text-sm">
+              Done
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  await openPdfInNewTab(() => getBadgeCards(user._id), 'badge.pdf')
+                } catch {
+                  toast.error('Could not build the card')
+                }
+              }}
+              className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm"
+            >
+              <FiPrinter className="inline mr-1" size={14} /> Print the card
+            </button>
+          </div>
         </>
       ) : (
         <>
@@ -508,6 +523,7 @@ export default function Users() {
   const [editUser, setEditUser] = useState(null)
   const [resetTarget, setResetTarget] = useState(null)
   const [badgeTarget, setBadgeTarget] = useState(null)
+  const [cardsBusy, setCardsBusy] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [search, setSearch] = useState('')
 
@@ -591,12 +607,33 @@ export default function Users() {
           <h1 className="text-xl font-black text-gray-900">User Management</h1>
           <p className="text-sm text-gray-500">Manage system users and roles</p>
         </div>
-        <button
-          onClick={() => { setEditUser(null); setShowModal(true) }}
-          className="flex items-center gap-2 px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm transition-colors shadow-sm"
-        >
-          <FiPlus size={18} /> Add New User
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Everybody's cards on one sheet, to print and cut up. */}
+          <button
+            onClick={async () => {
+              setCardsBusy(true)
+              try {
+                await openPdfInNewTab(() => getBadgeCards(), 'staff-badges.pdf')
+              } catch {
+                toast.error('Could not build the badges')
+              } finally {
+                setCardsBusy(false)
+              }
+            }}
+            disabled={cardsBusy}
+            title="Print a card for everyone who has a badge"
+            className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-bold text-sm transition-colors disabled:opacity-50"
+          >
+            <FiPrinter size={16} />
+            <span className="hidden sm:inline">{cardsBusy ? 'Building…' : 'Print badges'}</span>
+          </button>
+          <button
+            onClick={() => { setEditUser(null); setShowModal(true) }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm transition-colors shadow-sm"
+          >
+            <FiPlus size={18} /> Add New User
+          </button>
+        </div>
       </div>
 
       {/* Stats */}

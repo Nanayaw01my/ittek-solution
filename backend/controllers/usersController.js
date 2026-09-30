@@ -394,6 +394,49 @@ const issueBadge = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/users/badge-cards[?id=]
+ *
+ * The cards themselves, to print and cut out. One person with ?id, or
+ * everybody who has a badge.
+ */
+const getBadgeCards = async (req, res) => {
+  try {
+    const { modules: eanModules } = require('../utils/ean13');
+    const { generateBadgeCards } = require('../utils/pdfGenerator');
+    const Settings = require('../models/Settings');
+
+    const filter = { badge_code: { $exists: true, $ne: null }, badge_active: { $ne: false } };
+    if (req.query.id) filter._id = req.query.id;
+
+    const people = await User.find(filter)
+      .select('username role badge_code')
+      .sort({ role: 1, username: 1 })
+      .lean();
+
+    const settings = await Settings.findOne().lean();
+    const pdf = await generateBadgeCards({
+      staff: people.map((p) => ({
+        username: p.username,
+        role: p.role,
+        badge_code: p.badge_code,
+        bits: eanModules(p.badge_code),
+        needs_pin: badgeNeedsPin(p.role),
+      })),
+      logoUrl: settings?.logo_url || null,
+      company: { name: settings?.company_name },
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="staff-badges.pdf"');
+    res.setHeader('X-Badge-Count', String(people.length));
+    return res.send(pdf);
+  } catch (err) {
+    console.error('Badge cards error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: 'Could not build the cards.' });
+  }
+};
+
 /** DELETE /api/users/:id/badge — the card in their pocket stops working. */
 const revokeBadge = async (req, res) => {
   try {
@@ -423,4 +466,5 @@ const revokeBadge = async (req, res) => {
 
 module.exports = {
   issueBadge,
-  revokeBadge, getUsers, createUser, getUser, updateUser, deleteUser, toggleActive, resetPassword };
+  revokeBadge,
+  getBadgeCards, getUsers, createUser, getUser, updateUser, deleteUser, toggleActive, resetPassword };

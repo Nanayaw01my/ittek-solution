@@ -3068,6 +3068,144 @@ const generateInternshipCertificate = async (options = {}) => {
 
 
 /**
+ * Draw an EAN-13's bars.
+ *
+ * Shared by the product sheet and the staff badges so there is one piece of
+ * code deciding how wide a bar is. Two copies would drift, and a barcode that
+ * drifts is one a scanner stops reading.
+ */
+const drawEan13 = (doc, bits, x, y, { unit = 0.95, height = 50 } = {}) => {
+  doc.fillColor('#000000');
+  let run = 0;
+  for (let i = 0; i <= bits.length; i += 1) {
+    if (bits[i] === '1') { run += 1; continue; }
+    if (run > 0) {
+      // Guard bars run a little longer, as printed barcodes do.
+      const guard = (i - run) < 3 || (i > 45 && i - run < 50) || i > 92;
+      doc.rect(x + (i - run) * unit, y, run * unit, height + (guard ? 5 : 0)).fill();
+    }
+    run = 0;
+  }
+  doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+};
+
+/** The width a code will occupy at a given bar unit. */
+const ean13Width = (bits, unit = 0.95) => bits.length * unit;
+
+/**
+ * Staff badge cards, to cut out and hand over.
+ *
+ * Two to a row, six to a page, each with the person's name, their role and
+ * the barcode they scan to sign in. The number is printed under the bars so
+ * a card that will not scan can still be typed, and so a worn card can be
+ * replaced without going back to the system to look it up.
+ */
+const generateBadgeCards = async (options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+  const staff = options.staff || [];
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 36, bottom: 36, left: 36, right: 36 } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 36;
+      const W = 523;
+      const PAGE_BOTTOM = 800;
+      const GRAY = '#777777';
+      const ORANGE = '#e86b00';
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      // Card proportions close to a credit card, so they fit a lanyard sleeve.
+      const COLS = 2;
+      const CARD_W = W / COLS - 8;
+      const CARD_H = 150;
+      const BAR_UNIT = 0.92;
+      const BAR_H = 44;
+
+      const header = () => {
+        doc.fillColor('#000000').font('Helvetica-Bold').fontSize(11)
+          .text(`${companyName} — staff badges`, ML, 36);
+        doc.font('Helvetica').fontSize(8).fillColor(GRAY)
+          .text('Cut along the lines. One card per person — never shared.', ML, 52);
+        reset();
+        return 74;
+      };
+
+      let y = header();
+
+      staff.forEach((person, idx) => {
+        const col = idx % COLS;
+        if (col === 0 && idx > 0) {
+          y += CARD_H + 10;
+          if (y + CARD_H > PAGE_BOTTOM) { doc.addPage(); y = header(); }
+        }
+        const x = ML + col * (CARD_W + 16);
+
+        doc.roundedRect(x, y, CARD_W, CARD_H, 8).lineWidth(0.8).strokeColor('#bbbbbb').stroke();
+        reset();
+
+        let ty = y + 12;
+        if (logoBuf) {
+          try { doc.image(logoBuf, x + 12, ty, { width: 26 }); } catch { /* keep the gap */ }
+        }
+        doc.font('Helvetica-Bold').fontSize(7).fillColor(ORANGE)
+          .text(companyName.slice(0, 34), x + (logoBuf ? 44 : 12), ty + 4, {
+            width: CARD_W - (logoBuf ? 56 : 24), lineBreak: false, ellipsis: true,
+          });
+
+        ty += 30;
+        doc.font('Helvetica-Bold').fontSize(13).fillColor('#000000')
+          .text(String(person.username || '').slice(0, 22), x + 12, ty, {
+            width: CARD_W - 24, lineBreak: false, ellipsis: true,
+          });
+        doc.font('Helvetica').fontSize(8).fillColor(GRAY)
+          .text(person.role || '', x + 12, ty + 17);
+
+        const bits = person.bits;
+        if (bits) {
+          const barW = ean13Width(bits, BAR_UNIT);
+          drawEan13(doc, bits, x + (CARD_W - barW) / 2, ty + 32, { unit: BAR_UNIT, height: BAR_H });
+          doc.font('Courier').fontSize(8).fillColor('#000000')
+            .text(person.badge_code, x + 12, ty + 32 + BAR_H + 8, {
+              width: CARD_W - 24, align: 'center',
+            });
+        } else {
+          doc.font('Courier').fontSize(9).fillColor('#000000')
+            .text(person.badge_code || 'no badge', x + 12, ty + 50, {
+              width: CARD_W - 24, align: 'center',
+            });
+        }
+
+        if (person.needs_pin) {
+          doc.font('Helvetica-Bold').fontSize(6.5).fillColor(GRAY)
+            .text('Scan, then enter your 4-digit code', x + 12, y + CARD_H - 16, {
+              width: CARD_W - 24, align: 'center',
+            });
+        }
+        reset();
+      });
+
+      if (staff.length === 0) {
+        doc.font('Helvetica').fontSize(10).fillColor(GRAY)
+          .text('Nobody has a badge yet. Issue one from the Users page.', ML, y);
+      }
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
+/**
  * A sheet of every product and its barcode, drawn so it can be scanned.
  *
  * The point is to cut them up and stick them on stock that came without a
@@ -3114,21 +3252,8 @@ const generateBarcodeSheet = async (options = {}) => {
       const BAR_UNIT = 0.95;   // points per module — about 0.33mm
       const BAR_H = 50;
 
-      const drawBars = (bits, x, y) => {
-        doc.fillColor('#000000');
-        let run = 0;
-        for (let i = 0; i <= bits.length; i++) {
-          if (bits[i] === '1') { run++; continue; }
-          if (run > 0) {
-            // Guard bars run a little longer, as printed barcodes do.
-            const guard = (i - run) < 3 || (i > 45 && i - run < 50) || i > 92;
-            doc.rect((x + (i - run) * BAR_UNIT), y, run * BAR_UNIT,
-              BAR_H + (guard ? 5 : 0)).fill();
-          }
-          run = 0;
-        }
-        reset();
-      };
+      const drawBars = (bits, x, y) =>
+        drawEan13(doc, bits, x, y, { unit: BAR_UNIT, height: BAR_H });
 
       let page = 0;
       const header = () => {
@@ -3209,6 +3334,7 @@ const generateBarcodeSheet = async (options = {}) => {
 
 module.exports = {
   generateBarcodeSheet,
+  generateBadgeCards,
   generateReceipt, generateCreditAgreement, generateLayawayAgreement,
   generatePriceList, generateReport, generateBlankReceiptForm,
   generateInstallmentPlanSheet, generateInstallmentTable, generateTableReport,
