@@ -67,6 +67,27 @@ const SaleSchema = new mongoose.Schema(
       index: true,
       default: generateReceiptToken,
     },
+    /**
+     * The receipt's own barcode, printed on it so a return can be scanned.
+     *
+     * The invoice number itself cannot be the barcode: INV-20260930-0001 has
+     * letters and hyphens, and EAN-13 — the symbology every other label in
+     * this shop already uses, and the only one these scanners are guaranteed
+     * to read without reconfiguring them — carries digits alone.
+     *
+     * So the sale carries a thirteen-digit handle of its own, stored and
+     * indexed rather than worked back out of the invoice number, which means
+     * the invoice format can change without every printed receipt going dead.
+     *
+     * Sparse, because every sale written before this existed has none.
+     */
+    receipt_barcode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+      trim: true,
+    },
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

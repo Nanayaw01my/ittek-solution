@@ -18,6 +18,7 @@ import {
 import { buildWhatsAppReceiptLink } from '../utils/phone'
 import { printReceipt } from '../utils/printReceipt'
 import Modal from '../components/Modal'
+import Ean13 from '../components/Ean13'
 import SplitPaymentModal from '../components/SplitPaymentModal'
 import HeldSalesModal from '../components/HeldSalesModal'
 import VariantPickerModal from '../components/VariantPickerModal'
@@ -117,6 +118,10 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
   const paymentMethod = (saleData.payment_method || saleData.paymentMethod || '').replace(/_/g, ' ').toUpperCase()
   const customerPhone = saleData.customer_phone || saleData.customer?.phone || ''
   const qrCode = saleData.qr_code || null
+  // The receipt's own barcode. Offline sales have none until they sync, so the
+  // slip simply prints without one rather than printing a code that no sale on
+  // the server answers to.
+  const receiptBarcode = saleData.receipt_barcode || null
   const receiptUrl = saleData.receipt_url || null
 
   // Null when the number isn't a valid Ghana number — the button stays disabled
@@ -272,6 +277,16 @@ function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, company
             <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
               <img src={qrCode} alt="Receipt QR code" className="h-28 w-28 mx-auto" />
               <p className="text-[10px] text-gray-500 mt-1">Scan to view this receipt online</p>
+            </div>
+          )}
+
+          {/* The receipt's barcode. Scanning it at the refund screen pulls this
+              sale up, so a return does not depend on anybody reading
+              INV-20260930-0001 off a faded slip and typing it back in. */}
+          {receiptBarcode && (
+            <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
+              <Ean13 code={receiptBarcode} height={38} unit={2} className="mx-auto" />
+              <p className="text-[10px] text-gray-500 mt-0.5">Scan this for a refund or to look up the sale</p>
             </div>
           )}
 

@@ -1,4 +1,5 @@
 const PDFDocument = require('pdfkit');
+const { modules } = require('./ean13');
 const https = require('https');
 const http = require('http');
 
@@ -225,6 +226,32 @@ const generateReceipt = async (saleData, options = {}) => {
           doc.fontSize(6).text('Scan to view this receipt online', 10, doc.y, { width: W, align: 'center' });
           doc.fontSize(7).text('--------------------------------', { align: 'center' });
         } catch {}
+      }
+
+      // The receipt's own barcode. Scanning it at the refund screen pulls
+      // this sale straight up, so a return does not depend on anybody reading
+      // INV-20260930-0001 off a faded thermal slip and typing it back.
+      const receiptBits = modulesFor(saleData.receipt_barcode);
+      if (receiptBits) {
+        try {
+          // 1.6pt a module is about 4.5 dots on a 203dpi thermal head —
+          // comfortably above the 2-3 a scanner needs, and still only 152pt
+          // of the 206pt the roll gives us.
+          const unit = 1.6;
+          const barH = 34;
+          const barW = ean13Width(receiptBits, unit);
+          doc.moveDown(0.3);
+          drawEan13(doc, receiptBits, (226 - barW) / 2, doc.y, { unit, height: barH });
+          // Clear of the guard bars, which run 5pt past the rest. The digits
+          // sat on top of them before, and ink over a guard bar is exactly
+          // what stops a scanner finding the edge of the symbol.
+          doc.y += barH + 5 + 4;
+          doc.fontSize(7).font('Courier')
+            .text(saleData.receipt_barcode, 10, doc.y, { width: W, align: 'center' });
+          doc.font('Helvetica').fontSize(6)
+            .text('Scan this to refund or look up the sale', 10, doc.y + 2, { width: W, align: 'center' });
+          doc.fontSize(7).text('--------------------------------', { align: 'center' });
+        } catch { /* a receipt without its barcode still prints */ }
       }
 
       doc.fontSize(7).text('Thank you for your business!', { align: 'center' });
@@ -3087,6 +3114,23 @@ const drawEan13 = (doc, bits, x, y, { unit = 0.95, height = 50 } = {}) => {
     run = 0;
   }
   doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+};
+
+/**
+ * A code's bars, or null when it is not a drawable EAN-13.
+ *
+ * Callers that already hold the modules pass them straight to drawEan13; this
+ * is for the ones holding only the code — a receipt, which carries its
+ * barcode as a string on the sale.
+ */
+const modulesFor = (code) => {
+  if (!code) return null;
+  try {
+    const bits = modules(code);
+    return bits && bits.length ? bits : null;
+  } catch {
+    return null;
+  }
 };
 
 /** The width a code will occupy at a given bar unit. */

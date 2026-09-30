@@ -55,4 +55,44 @@ const nextFreeBarcode = async (Product, attempts = 12) => {
   return null;
 };
 
-module.exports = { checkDigit, isValidEan13, mintEan13, nextFreeBarcode };
+/**
+ * A barcode for a receipt, so a return can be scanned instead of typed.
+ *
+ * Starts with 9, where a product's starts with 2. That one digit is what
+ * keeps the two apart: without it a receipt code could be minted that matches
+ * a product's, and a scan at the refund screen would have no way to know
+ * which was meant. It also means the prefix alone says what was scanned.
+ *
+ * The rest is random for the same reason product codes are — two tills
+ * closing a sale in the same second must not mint the same number. The unique
+ * index is still the last word.
+ */
+const mintReceiptBarcode = () => {
+  let body = '9';
+  for (let i = 0; i < 11; i++) body += Math.floor(Math.random() * 10);
+  return body + checkDigit(body);
+};
+
+/** True for a code minted for a receipt rather than a product. */
+const isReceiptBarcode = (code) => isValidEan13(code) && String(code)[0] === '9';
+
+/**
+ * A receipt code no sale is using yet.
+ *
+ * Returns null after enough failures rather than looping for ever: a sale
+ * must never be held up by barcode minting, and a receipt with no barcode
+ * still prints and can still be refunded by its invoice number.
+ */
+const nextFreeReceiptBarcode = async (Sale, attempts = 12) => {
+  for (let i = 0; i < attempts; i++) {
+    const candidate = mintReceiptBarcode();
+    const taken = await Sale.findOne({ receipt_barcode: candidate }).select('_id').lean();
+    if (!taken) return candidate;
+  }
+  return null;
+};
+
+module.exports = {
+  checkDigit, isValidEan13, mintEan13, nextFreeBarcode,
+  mintReceiptBarcode, isReceiptBarcode, nextFreeReceiptBarcode,
+};

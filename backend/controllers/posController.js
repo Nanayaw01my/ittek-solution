@@ -5,6 +5,7 @@ const Product = require('../models/Product');
 const Notification = require('../models/Notification');
 const Settings = require('../models/Settings');
 const { createSaleWithInvoice } = require('../utils/generateInvoice');
+const { nextFreeReceiptBarcode } = require('../utils/barcode');
 const { queueEmail, templates } = require('../utils/email');
 const { generateReceipt } = require('../utils/pdfGenerator');
 const { withReceiptQr, buildReceiptUrl, generateReceiptQrBuffer } = require('../utils/receipt');
@@ -419,6 +420,17 @@ const generateSaleReceipt = async (req, res) => {
     if (!sale.receipt_token) {
       sale.receipt_token = require('../utils/receipt').generateReceiptToken();
       await sale.save();
+    }
+
+    // Sales made before receipts carried a barcode get one the first time a
+    // receipt is drawn for them, so reprinting an old sale produces a slip
+    // that can be scanned at the refund screen like any other.
+    if (!sale.receipt_barcode) {
+      const minted = await nextFreeReceiptBarcode(Sale);
+      if (minted) {
+        sale.receipt_barcode = minted;
+        await sale.save();
+      }
     }
 
     const settings = await Settings.findOne().lean();

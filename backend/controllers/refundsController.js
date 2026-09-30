@@ -148,7 +148,10 @@ const scanForRefund = async (req, res) => {
     const safe = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     // ── A receipt ─────────────────────────────────────────────────────────
-    let sale = await Sale.findOne({ invoice_no: code });
+    // The barcode printed on the receipt first: that is what a scan actually
+    // produces. Then the invoice number, for a code read off the slip by eye.
+    let sale = await Sale.findOne({ receipt_barcode: code });
+    if (!sale) sale = await Sale.findOne({ invoice_no: code });
     if (!sale) sale = await Sale.findOne({ invoice_no: new RegExp(`^${safe}$`, 'i') });
     if (sale) {
       return res.status(200).json({ success: true, data: { kind: 'sale', sale } });
