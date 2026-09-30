@@ -11,6 +11,7 @@
  */
 
 const STYLE_ID = 'ittek-receipt-print-size'
+const ROOT_ID = 'ittek-print-root'
 const BASELINE_MM = 80
 
 /**
@@ -53,17 +54,69 @@ const metricsFor = (widthMm) => {
 // than printing something with the right-hand edge sliced off.
 const MIN_PRINTABLE_MM = 40
 
+/**
+ * Take the receipt out of the app before printing it.
+ *
+ * The app used to be hidden with `visibility: hidden`, which hides an element
+ * but keeps the space it occupies. The page was therefore as tall as the whole
+ * screen — a full-height POS behind a full-screen modal — and `size: auto`
+ * dutifully made the paper that long. A two-item sale fed most of a foot of
+ * blank roll after it, every sale, on a consumable the shop buys.
+ *
+ * So the receipt is copied to a container of its own directly under <body>,
+ * and everything else is collapsed with `display: none`, which takes its
+ * space away as well as its ink. What is left in the document is the receipt
+ * and nothing else, so `auto` means the height of the receipt.
+ *
+ * A copy rather than a move: the receipt is React's, and taking the real node
+ * out from under it invites React to trip over the missing child when the
+ * modal closes.
+ */
+const mountPrintCopy = () => {
+  const source = document.querySelector('.receipt-print-area')
+  if (!source) return null
+
+  document.getElementById(ROOT_ID)?.remove()
+  const root = document.createElement('div')
+  root.id = ROOT_ID
+  root.appendChild(source.cloneNode(true))
+  document.body.appendChild(root)
+  return root
+}
+
+const unmountPrintCopy = () => document.getElementById(ROOT_ID)?.remove()
+
 export function printReceipt(widthMm = BASELINE_MM) {
   const width = Math.min(82, Math.max(MIN_PRINTABLE_MM, Number(widthMm) || BASELINE_MM))
   const m = metricsFor(width)
 
   document.getElementById(STYLE_ID)?.remove()
+  const printRoot = mountPrintCopy()
 
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.textContent = `
     @page { size: ${width}mm auto; margin: 0; }
+    #${ROOT_ID} { display: none; }
     @media print {
+      /* Everything but the receipt is collapsed, not merely hidden, so the
+         page is only as long as what is printed on it. */
+      body > *:not(#${ROOT_ID}) { display: none !important; }
+      html, body { height: auto !important; min-height: 0 !important; margin: 0 !important; }
+
+      #${ROOT_ID} { display: block !important; }
+      /* In its own container the receipt is the only thing in flow, so the
+         absolute positioning that used to lift it clear of the hidden app
+         would now just take it back out of the flow it needs to be in. */
+      #${ROOT_ID} .receipt-print-area {
+        position: static !important;
+        visibility: visible !important;
+        top: auto !important;
+      }
+      #${ROOT_ID} .receipt-print-area * { visibility: visible !important; }
+      /* Nothing should print after the last line of the receipt. */
+      #${ROOT_ID} .receipt-print-area > *:last-child { margin-bottom: 0 !important; }
+
       .receipt-print-area {
         /* Narrower than the roll, and centred rather than pinned to a fixed
            left offset — left+right:0 with auto side margins centres an
@@ -134,9 +187,15 @@ export function printReceipt(widthMm = BASELINE_MM) {
     window.print()
     // Chrome's print dialog is modal and window.print() returns once it closes,
     // but Safari and some mobile browsers return immediately — hence the delay
-    // rather than removing the style straight away.
-    setTimeout(() => document.getElementById(STYLE_ID)?.remove(), 1000)
+    // rather than tearing down straight away. The copy must go either way, or
+    // a second receipt would print under the first.
+    setTimeout(() => {
+      document.getElementById(STYLE_ID)?.remove()
+      unmountPrintCopy()
+    }, 1000)
   })
+
+  return printRoot
 }
 
 export { metricsFor, BASELINE_MM, MIN_PRINTABLE_MM }

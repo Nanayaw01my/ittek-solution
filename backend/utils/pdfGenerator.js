@@ -110,13 +110,50 @@ const attachWatermark = (doc, logoBuf, opts = {}) => {
  * @param {Object} saleData - Sale document with items populated
  * @returns {Promise<Buffer>}
  */
+/**
+ * A receipt, on a page only as long as the receipt.
+ *
+ * The page used to be a fixed 800pt — about 28cm — whatever was on it, so a
+ * two-item sale fed most of a foot of blank roll after the last line. Paper
+ * is a consumable the shop buys, and this prints on every sale.
+ *
+ * There is no way to resize a PDFKit page after the fact, so the receipt is
+ * drawn twice: once into a throwaway document to find out where it ends, then
+ * again onto a page cut to that height. Drawing is deterministic and a receipt
+ * is a few dozen operations, so the second pass costs nothing worth measuring.
+ */
+const RECEIPT_W = 226;
+const RECEIPT_MARGINS = { top: 10, bottom: 10, left: 10, right: 10 };
+
 const generateReceipt = async (saleData, options = {}) => {
   const logoBuf = await fetchBuf(options.logoUrl || null);
+
+  const measure = () => {
+    // Tall enough that nothing spills onto a second page, where doc.y would
+    // restart from the top and report a height far too small.
+    const probe = new PDFDocument({ size: [RECEIPT_W, 4000], margins: RECEIPT_MARGINS });
+    probe.on('error', () => {});
+    let end = 800;
+    try {
+      drawReceipt(probe, saleData, options, logoBuf);
+      end = probe.y + RECEIPT_MARGINS.bottom;
+    } catch {
+      // Measuring must never be what stops a receipt printing; fall back to
+      // the old fixed height and let the real pass report any real problem.
+    }
+    // Consume the probe so it does not sit in memory holding its buffers.
+    probe.end();
+    probe.read?.();
+    return Math.max(200, Math.min(4000, Math.ceil(end)));
+  };
+
+  const height = measure();
+
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
-        size: [226, 800],
-        margins: { top: 10, bottom: 10, left: 10, right: 10 },
+        size: [RECEIPT_W, height],
+        margins: RECEIPT_MARGINS,
       });
 
       const chunks = [];
@@ -124,139 +161,7 @@ const generateReceipt = async (saleData, options = {}) => {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      const {
-        invoice_no, customer_name, customer_phone, items,
-        subtotal, discount, discount_type, cart_total, total_amount,
-        debt_amount, payment_method, payment_status, sale_date, user_id,
-        payments, points_earned, points_redeemed, loyalty_discount,
-      } = saleData;
-
-      const servedBy = options.servedBy || options.cashierName || user_id?.username || 'Staff';
-      const companyName = options.companyName || 'DAN & DOR SOLAR COMPANY LIMITED';
-      const companyAddress = options.companyAddress || 'Bogoso, Western Region';
-      const companyPhone = options.companyPhone || '+233 595413632';
-      const grandTotal = cart_total || total_amount || 0;
-      const discountAmount = Math.max(0, (subtotal || 0) - grandTotal);
-
-      const W = 206; // page width minus margins (226 - 10 - 10)
-
-      // Header
-      if (logoBuf) {
-        try {
-          doc.image(logoBuf, (226 - 80) / 2, doc.y, { width: 80 });
-          doc.moveDown(0.4);
-        } catch {}
-      }
-      doc.fontSize(9).font('Helvetica-Bold').text(companyName, 10, doc.y, { width: W, align: 'center' });
-      if (companyAddress) doc.fontSize(7).font('Helvetica').text(companyAddress, 10, doc.y, { width: W, align: 'center' });
-      if (companyPhone) doc.fontSize(7).text(`Tel: ${companyPhone}`, 10, doc.y, { width: W, align: 'center' });
-      doc.moveDown(0.3);
-      doc.fontSize(7).text('--------------------------------', { align: 'center' });
-      doc.fontSize(8).font('Helvetica-Bold').text('SALES RECEIPT', { align: 'center' });
-      doc.fontSize(7).font('Helvetica').text('--------------------------------', { align: 'center' });
-
-      // Invoice info
-      doc.fontSize(7);
-      doc.text(`Invoice: ${invoice_no}`);
-      doc.text(`Date: ${new Date(sale_date || Date.now()).toLocaleString('en-GH')}`);
-      doc.text(`Served by: ${servedBy}`);
-      if (customer_name) doc.text(`Customer: ${customer_name}`);
-      if (customer_phone) doc.text(`Phone: ${customer_phone}`);
-
-      doc.fontSize(7).text('--------------------------------', { align: 'center' });
-
-      // Items header
-      doc.fontSize(7).font('Helvetica-Bold');
-      doc.text('Item                  Qty   Price    Total');
-      doc.font('Helvetica');
-      doc.fontSize(7).text('--------------------------------', { align: 'center' });
-
-      (items || []).forEach((item) => {
-        const name = (item.product_name || '').substring(0, 18).padEnd(18);
-        const qty = String(item.quantity).padStart(4);
-        const price = `GHC${Number(item.unit_price).toFixed(2)}`.padStart(8);
-        const total = `GHC${Number(item.total).toFixed(2)}`.padStart(8);
-        doc.text(`${name} ${qty} ${price} ${total}`);
-      });
-
-      doc.fontSize(7).text('--------------------------------', { align: 'center' });
-
-      // Totals
-      doc.fontSize(7);
-      doc.text(`Subtotal:              GHC${Number(subtotal || 0).toFixed(2)}`);
-      if (discountAmount > 0) {
-        const discStr = discount_type === 'percentage' ? `${discount}%` : `GHC${discountAmount.toFixed(2)}`;
-        doc.text(`Discount (${discStr}):  -GHC${discountAmount.toFixed(2)}`);
-      }
-      doc.fontSize(8).font('Helvetica-Bold');
-      doc.text(`TOTAL:                 GHC${Number(grandTotal).toFixed(2)}`);
-      doc.fontSize(7).font('Helvetica');
-      if (debt_amount > 0) {
-        doc.text(`Paid:                  GHC${Number(total_amount || 0).toFixed(2)}`);
-        doc.font('Helvetica-Bold').text(`BALANCE DUE:           GHC${Number(debt_amount).toFixed(2)}`).font('Helvetica');
-      }
-      if (loyalty_discount > 0) {
-        doc.text(`Points discount:      -GHC${Number(loyalty_discount).toFixed(2)}`);
-      }
-      doc.text(`Payment: ${(payment_method || '').replace(/_/g, ' ').toUpperCase()}`);
-      // Split tenders, itemised so the customer can see how it was settled
-      if (Array.isArray(payments) && payments.length > 1) {
-        payments.forEach((p) => {
-          const label = `  ${(p.method || '').replace(/_/g, ' ')}`.padEnd(22);
-          doc.text(`${label}GHC${Number(p.amount).toFixed(2)}`);
-        });
-      }
-      doc.text(`Status: ${(payment_status || '').toUpperCase()}`);
-
-      if (points_earned > 0 || points_redeemed > 0) {
-        doc.fontSize(7).text('--------------------------------', { align: 'center' });
-        if (points_redeemed > 0) doc.text(`Points redeemed: ${points_redeemed}`);
-        if (points_earned > 0) doc.text(`Points earned: ${points_earned}`);
-      }
-
-      doc.fontSize(7).text('--------------------------------', { align: 'center' });
-
-      // QR code — scans through to the public receipt page
-      if (options.qrBuffer) {
-        try {
-          const qrSize = 90;
-          doc.moveDown(0.3);
-          doc.image(options.qrBuffer, (226 - qrSize) / 2, doc.y, { width: qrSize });
-          doc.y += qrSize + 4;
-          doc.fontSize(6).text('Scan to view this receipt online', 10, doc.y, { width: W, align: 'center' });
-          doc.fontSize(7).text('--------------------------------', { align: 'center' });
-        } catch {}
-      }
-
-      // The receipt's own barcode. Scanning it at the refund screen pulls
-      // this sale straight up, so a return does not depend on anybody reading
-      // INV-20260930-0001 off a faded thermal slip and typing it back.
-      const receiptBits = modulesFor(saleData.receipt_barcode);
-      if (receiptBits) {
-        try {
-          // 1.6pt a module is about 4.5 dots on a 203dpi thermal head —
-          // comfortably above the 2-3 a scanner needs, and still only 152pt
-          // of the 206pt the roll gives us.
-          const unit = 1.6;
-          const barH = 34;
-          const barW = ean13Width(receiptBits, unit);
-          doc.moveDown(0.3);
-          drawEan13(doc, receiptBits, (226 - barW) / 2, doc.y, { unit, height: barH });
-          // Clear of the guard bars, which run 5pt past the rest. The digits
-          // sat on top of them before, and ink over a guard bar is exactly
-          // what stops a scanner finding the edge of the symbol.
-          doc.y += barH + 5 + 4;
-          doc.fontSize(7).font('Courier')
-            .text(saleData.receipt_barcode, 10, doc.y, { width: W, align: 'center' });
-          doc.font('Helvetica').fontSize(6)
-            .text('Scan this to refund or look up the sale', 10, doc.y + 2, { width: W, align: 'center' });
-          doc.fontSize(7).text('--------------------------------', { align: 'center' });
-        } catch { /* a receipt without its barcode still prints */ }
-      }
-
-      doc.fontSize(7).text('Thank you for your business!', { align: 'center' });
-      doc.text('Powered by ITTEK Solution', { align: 'center' });
-
+      drawReceipt(doc, saleData, options, logoBuf);
       doc.end();
     } catch (err) {
       reject(err);
@@ -264,6 +169,141 @@ const generateReceipt = async (saleData, options = {}) => {
   });
 };
 
+/** Everything that goes on a receipt, onto whichever document it is given. */
+const drawReceipt = (doc, saleData, options, logoBuf) => {
+  const {
+    invoice_no, customer_name, customer_phone, items,
+    subtotal, discount, discount_type, cart_total, total_amount,
+    debt_amount, payment_method, payment_status, sale_date, user_id,
+    payments, points_earned, points_redeemed, loyalty_discount,
+  } = saleData;
+
+  const servedBy = options.servedBy || options.cashierName || user_id?.username || 'Staff';
+  const companyName = options.companyName || 'DAN & DOR SOLAR COMPANY LIMITED';
+  const companyAddress = options.companyAddress || 'Bogoso, Western Region';
+  const companyPhone = options.companyPhone || '+233 595413632';
+  const grandTotal = cart_total || total_amount || 0;
+  const discountAmount = Math.max(0, (subtotal || 0) - grandTotal);
+
+  const W = 206; // page width minus margins (226 - 10 - 10)
+
+  // Header
+  if (logoBuf) {
+    try {
+      doc.image(logoBuf, (226 - 80) / 2, doc.y, { width: 80 });
+      doc.moveDown(0.4);
+    } catch {}
+  }
+  doc.fontSize(9).font('Helvetica-Bold').text(companyName, 10, doc.y, { width: W, align: 'center' });
+  if (companyAddress) doc.fontSize(7).font('Helvetica').text(companyAddress, 10, doc.y, { width: W, align: 'center' });
+  if (companyPhone) doc.fontSize(7).text(`Tel: ${companyPhone}`, 10, doc.y, { width: W, align: 'center' });
+  doc.moveDown(0.3);
+  doc.fontSize(7).text('--------------------------------', { align: 'center' });
+  doc.fontSize(8).font('Helvetica-Bold').text('SALES RECEIPT', { align: 'center' });
+  doc.fontSize(7).font('Helvetica').text('--------------------------------', { align: 'center' });
+
+  // Invoice info
+  doc.fontSize(7);
+  doc.text(`Invoice: ${invoice_no}`);
+  doc.text(`Date: ${new Date(sale_date || Date.now()).toLocaleString('en-GH')}`);
+  doc.text(`Served by: ${servedBy}`);
+  if (customer_name) doc.text(`Customer: ${customer_name}`);
+  if (customer_phone) doc.text(`Phone: ${customer_phone}`);
+
+  doc.fontSize(7).text('--------------------------------', { align: 'center' });
+
+  // Items header
+  doc.fontSize(7).font('Helvetica-Bold');
+  doc.text('Item                  Qty   Price    Total');
+  doc.font('Helvetica');
+  doc.fontSize(7).text('--------------------------------', { align: 'center' });
+
+  (items || []).forEach((item) => {
+    const name = (item.product_name || '').substring(0, 18).padEnd(18);
+    const qty = String(item.quantity).padStart(4);
+    const price = `GHC${Number(item.unit_price).toFixed(2)}`.padStart(8);
+    const total = `GHC${Number(item.total).toFixed(2)}`.padStart(8);
+    doc.text(`${name} ${qty} ${price} ${total}`);
+  });
+
+  doc.fontSize(7).text('--------------------------------', { align: 'center' });
+
+  // Totals
+  doc.fontSize(7);
+  doc.text(`Subtotal:              GHC${Number(subtotal || 0).toFixed(2)}`);
+  if (discountAmount > 0) {
+    const discStr = discount_type === 'percentage' ? `${discount}%` : `GHC${discountAmount.toFixed(2)}`;
+    doc.text(`Discount (${discStr}):  -GHC${discountAmount.toFixed(2)}`);
+  }
+  doc.fontSize(8).font('Helvetica-Bold');
+  doc.text(`TOTAL:                 GHC${Number(grandTotal).toFixed(2)}`);
+  doc.fontSize(7).font('Helvetica');
+  if (debt_amount > 0) {
+    doc.text(`Paid:                  GHC${Number(total_amount || 0).toFixed(2)}`);
+    doc.font('Helvetica-Bold').text(`BALANCE DUE:           GHC${Number(debt_amount).toFixed(2)}`).font('Helvetica');
+  }
+  if (loyalty_discount > 0) {
+    doc.text(`Points discount:      -GHC${Number(loyalty_discount).toFixed(2)}`);
+  }
+  doc.text(`Payment: ${(payment_method || '').replace(/_/g, ' ').toUpperCase()}`);
+  // Split tenders, itemised so the customer can see how it was settled
+  if (Array.isArray(payments) && payments.length > 1) {
+    payments.forEach((p) => {
+      const label = `  ${(p.method || '').replace(/_/g, ' ')}`.padEnd(22);
+      doc.text(`${label}GHC${Number(p.amount).toFixed(2)}`);
+    });
+  }
+  doc.text(`Status: ${(payment_status || '').toUpperCase()}`);
+
+  if (points_earned > 0 || points_redeemed > 0) {
+    doc.fontSize(7).text('--------------------------------', { align: 'center' });
+    if (points_redeemed > 0) doc.text(`Points redeemed: ${points_redeemed}`);
+    if (points_earned > 0) doc.text(`Points earned: ${points_earned}`);
+  }
+
+  doc.fontSize(7).text('--------------------------------', { align: 'center' });
+
+  // QR code — scans through to the public receipt page
+  if (options.qrBuffer) {
+    try {
+      const qrSize = 90;
+      doc.moveDown(0.3);
+      doc.image(options.qrBuffer, (226 - qrSize) / 2, doc.y, { width: qrSize });
+      doc.y += qrSize + 4;
+      doc.fontSize(6).text('Scan to view this receipt online', 10, doc.y, { width: W, align: 'center' });
+      doc.fontSize(7).text('--------------------------------', { align: 'center' });
+    } catch {}
+  }
+
+  // The receipt's own barcode. Scanning it at the refund screen pulls
+  // this sale straight up, so a return does not depend on anybody reading
+  // INV-20260930-0001 off a faded thermal slip and typing it back.
+  const receiptBits = modulesFor(saleData.receipt_barcode);
+  if (receiptBits) {
+    try {
+      // 1.6pt a module is about 4.5 dots on a 203dpi thermal head —
+      // comfortably above the 2-3 a scanner needs, and still only 152pt
+      // of the 206pt the roll gives us.
+      const unit = 1.6;
+      const barH = 34;
+      const barW = ean13Width(receiptBits, unit);
+      doc.moveDown(0.3);
+      drawEan13(doc, receiptBits, (226 - barW) / 2, doc.y, { unit, height: barH });
+      // Clear of the guard bars, which run 5pt past the rest. The digits
+      // sat on top of them before, and ink over a guard bar is exactly
+      // what stops a scanner finding the edge of the symbol.
+      doc.y += barH + 5 + 4;
+      doc.fontSize(7).font('Courier')
+        .text(saleData.receipt_barcode, 10, doc.y, { width: W, align: 'center' });
+      doc.font('Helvetica').fontSize(6)
+        .text('Scan this to refund or look up the sale', 10, doc.y + 2, { width: W, align: 'center' });
+      doc.fontSize(7).text('--------------------------------', { align: 'center' });
+    } catch { /* a receipt without its barcode still prints */ }
+  }
+
+  doc.fontSize(7).text('Thank you for your business!', { align: 'center' });
+  doc.text('Powered by ITTEK Solution', { align: 'center' });
+};
 /**
  * Generate a credit agreement PDF (A4).
  * @param {Object} agreementData - CreditAgreement document
