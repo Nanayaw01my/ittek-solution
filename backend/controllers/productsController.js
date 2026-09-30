@@ -195,11 +195,26 @@ const getLowStock = async (req, res) => {
  */
 const getByBarcode = async (req, res) => {
   try {
-    const product = await Product.findOne({ barcode: req.params.barcode, is_active: true })
+    const code = String(req.params.barcode || '').trim();
+
+    // A variant carries its own barcode — that is the point of printing one
+    // per size. Matching only the product's own code meant scanning the label
+    // off a variant found nothing at all, so the till could not sell it.
+    const product = await Product.findOne({
+      is_active: true,
+      $or: [{ barcode: code }, { 'variants.barcode': code }],
+    })
       .populate('category_id', 'name')
-      .populate('supplier_id', 'name');
+      .populate('supplier_id', 'name')
+      .lean();
 
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
+
+    // Which one was scanned, so the caller does not have to search the list
+    // again — and so a till knows to add that variant rather than ask.
+    const hit = (product.variants || []).find((v) => v.barcode === code);
+    if (hit) product.matched_variant_sku = hit.sku;
+
     return res.status(200).json({ success: true, data: product });
   } catch (err) {
     console.error('Get by barcode error:', err.message);
