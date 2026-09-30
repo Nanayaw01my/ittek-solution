@@ -9,6 +9,7 @@ import { describeApiError } from '../utils/apiError'
 import { getPendingCount } from '../utils/offlineQueue'
 import {
   rememberCredentials, verifyOffline, offlineUsers, offlineAuthSupported,
+  rememberBadge, verifyBadgeOffline, hasOfflineBadges,
 } from '../utils/offlineAuth'
 import useOnlineStatus from '../hooks/useOnlineStatus'
 import useBarcodeScanner from '../hooks/useBarcodeScanner'
@@ -98,12 +99,49 @@ export default function Login() {
         return
       }
 
+      // Remember the card so it still opens the till when the line is down.
+      await rememberBadge(code, withPin, data.user, data.token)
+
       storeLogin(data.user, data.token)
       setBadge(null)
       toast.success(`Welcome back, ${data.user.username}!`)
       navigate('/welcome', { replace: true })
     } catch (err) {
       const { message, kind } = describeApiError(err, 'That badge did not work.')
+
+      // Nothing answered. A card this device already knows should still open
+      // the till — the counter is exactly where the line goes down.
+      if (kind === 'connection' && offlineAuthSupported()) {
+        const attempt = await verifyBadgeOffline(code, withPin)
+
+        if (attempt.ok) {
+          storeLogin(attempt.user, attempt.token)
+          setBadge(null)
+          toast.success(
+            `Signed in offline — welcome back, ${attempt.user?.username || 'there'}.`,
+            { duration: 7000 }
+          )
+          navigate('/welcome', { replace: true })
+          return
+        }
+
+        if (attempt.reason === 'pin_required') {
+          setBadge({ code, username: attempt.username })
+          setPin('')
+          setErrorKind('client')
+          return
+        }
+
+        setErrorKind('connection')
+        setError('root', {
+          message: attempt.reason === 'unknown'
+            ? 'No connection, and this badge has not been used on this device before. Sign in with a password once and it will work offline after that.'
+            : 'No connection. That badge does not match the one this device remembers.',
+        })
+        setPin('')
+        return
+      }
+
       setErrorKind(kind)
       setError('root', { message })
       setPin('')
@@ -200,12 +238,13 @@ export default function Login() {
         */}
         {/* Only worth saying while the internet is actually down — otherwise it
             is noise on every shift. */}
-        {!isOnline && knownOffline.length > 0 && (
+        {!isOnline && (knownOffline.length > 0 || hasOfflineBadges()) && (
           <div className="mb-5 flex gap-2.5 p-3 bg-blue-50 border border-blue-200 rounded-xl">
             <FiWifiOff className="text-blue-500 flex-shrink-0 mt-0.5" size={17} />
             <p className="text-xs text-blue-900">
               <span className="font-bold">No internet — you can still sign in.</span>{' '}
-              This device remembers {knownOffline.map((u) => u.username).join(', ')}.
+              This device remembers {knownOffline.map((u) => u.username).join(', ')}
+              {hasOfflineBadges() ? ', and badges used here before' : ''}.
               Selling works offline; the sales go to the server when it comes back.
             </p>
           </div>
