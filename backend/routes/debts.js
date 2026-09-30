@@ -4,7 +4,7 @@ const { body } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
-const { getDebts, getDebt, getDebtSummary, recordPayment, deleteDebt } = require('../controllers/debtsController');
+const { createDebt, getDebts, getDebt, getDebtSummary, recordPayment, deleteDebt } = require('../controllers/debtsController');
 
 // Manager (2) and above
 const managerPlus = [authenticate, requireLevel(2)];
@@ -14,6 +14,15 @@ router.use(managerPlus);
 router.get('/summary', getDebtSummary);
 router.get('/', getDebts);
 router.get('/:id', getDebt);
+
+// Writing a debt down by hand. Manager and above, like the rest of the page.
+router.post(
+  '/',
+  auditLog('CREATE_DEBT', (req) => ({
+    customer: req.body.customer_name, amount: req.body.amount_owed,
+  })),
+  createDebt
+);
 
 router.post(
   '/:id/payment',

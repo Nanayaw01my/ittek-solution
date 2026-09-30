@@ -51,6 +51,8 @@ const DebtSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    // Why it is owed, when it did not come from a sale anybody can look up.
+    notes: { type: String, trim: true },
     payments: [DebtPaymentSchema],
   },
   {

@@ -2,8 +2,8 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp, FiTrash2, FiPrinter } from 'react-icons/fi'
-import { getDebts, recordDebtPayment, getDebtSummary, deleteDebt } from '../api/debts'
+import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp, FiTrash2, FiPrinter, FiPlus } from 'react-icons/fi'
+import { getDebts, recordDebtPayment, getDebtSummary, deleteDebt, createDebt } from '../api/debts'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
@@ -308,11 +308,133 @@ function DebtRow({ debt, onPay, onDelete, onReprint, canDelete }) {
   )
 }
 
+
+/**
+ * Writing a debt down by hand.
+ *
+ * For goods that went out on trust without passing through the till, or an
+ * amount agreed after the fact. No money is recorded: nothing has been paid
+ * yet, and each instalment counts as it arrives.
+ */
+function NewDebtModal({ onClose }) {
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState({
+    customer_name: '', customer_phone: '', amount_owed: '',
+    amount_paid: '', due_date: '', notes: '',
+  })
+  const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }))
+
+  const owed = Number(form.amount_owed) || 0
+  const paid = Number(form.amount_paid) || 0
+  const left = Math.max(0, owed - paid)
+  const overpaid = owed > 0 && paid > owed
+
+  const save = useMutation({
+    mutationFn: () => createDebt({
+      customer_name: form.customer_name.trim(),
+      customer_phone: form.customer_phone.trim() || undefined,
+      amount_owed: owed,
+      amount_paid: paid || 0,
+      due_date: form.due_date || undefined,
+      notes: form.notes.trim() || undefined,
+    }),
+    onSuccess: () => {
+      toast.success(`${form.customer_name.trim()} owes ${formatCurrency(left)}.`, { duration: 7000 })
+      queryClient.invalidateQueries({ queryKey: ['debts'] })
+      queryClient.invalidateQueries({ queryKey: ['debt-summary'] })
+      onClose()
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not record it'),
+  })
+
+  const ready = form.customer_name.trim() && owed > 0 && !overpaid
+  const field = 'w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500'
+
+  return (
+    <div className="p-5 space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Customer *</label>
+          <input value={form.customer_name} onChange={set('customer_name')}
+            autoFocus placeholder="Name" className={field} />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">
+            Phone <span className="font-normal text-gray-400">— to remind them</span>
+          </label>
+          <input value={form.customer_phone} onChange={set('customer_phone')}
+            placeholder="0244…" className={field} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Amount owed *</label>
+          <input type="number" step="0.01" min="0" value={form.amount_owed}
+            onChange={set('amount_owed')} placeholder="0.00" className={field} />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">
+            Paid already <span className="font-normal text-gray-400">— if any</span>
+          </label>
+          <input type="number" step="0.01" min="0" value={form.amount_paid}
+            onChange={set('amount_paid')} placeholder="0.00" className={field} />
+          {overpaid && (
+            <p className="mt-1 text-xs text-red-600 font-semibold">
+              More than the amount owed.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">
+          Due <span className="font-normal text-gray-400">— 3 weeks if left blank</span>
+        </label>
+        <input type="date" value={form.due_date} onChange={set('due_date')} className={field} />
+      </div>
+
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">
+          What it is for <span className="font-normal text-gray-400">— optional</span>
+        </label>
+        <input value={form.notes} onChange={set('notes')}
+          placeholder="e.g. two batteries taken on Friday" className={field} />
+      </div>
+
+      {owed > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 flex items-center justify-between">
+          <span className="text-sm font-semibold text-orange-900">Will owe</span>
+          <span className="text-xl font-black text-orange-700">{formatCurrency(left)}</span>
+        </div>
+      )}
+
+      <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-xl p-3">
+        This records what is owed, not money taken — nothing goes into today's sales.
+        Each payment counts as it comes in.
+      </p>
+
+      <div className="flex gap-2">
+        <button onClick={onClose}
+          className="flex-1 py-2.5 border border-gray-200 rounded-xl font-semibold text-sm">
+          Cancel
+        </button>
+        <button onClick={() => save.mutate()} disabled={!ready || save.isPending}
+          className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+          {save.isPending ? 'Saving…' : 'Record the debt'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
 export default function Debts() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [payTarget, setPayTarget] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [adding, setAdding] = useState(false)
   const [receipt, setReceipt] = useState(null)
   const [page, setPage] = useState(1)
 
@@ -396,7 +518,17 @@ export default function Debts() {
       <PageHeader
         title="Debts"
         subtitle="Track customer outstanding balances"
-        action={<RefreshButton keys={['debts', 'debt-summary']} />}
+        action={
+          <div className="flex items-center gap-2">
+            <RefreshButton keys={['debts', 'debt-summary']} />
+            <button
+              onClick={() => setAdding(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm transition-colors"
+            >
+              <FiPlus size={16} /> Record a debt
+            </button>
+          </div>
+        }
       />
 
       {/* Summary */}
@@ -490,6 +622,10 @@ export default function Debts() {
 
       {/* Deleting a debt writes off money the shop is owed, so it says exactly
           what is being written off and who owed it before anything happens. */}
+      <Modal isOpen={adding} onClose={() => setAdding(false)} title="Record a debt" size="md">
+        {adding && <NewDebtModal onClose={() => setAdding(false)} />}
+      </Modal>
+
       <Modal
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}

@@ -29,6 +29,7 @@ const EVENTS = {
   DELETE_EXPENSE: ['deleted an expense', 'high'],
   CREATE_WORKER_PAYMENT: ['paid a worker', 'high'],
   DELETE_WORKER_PAYMENT: ['deleted a worker payment', 'high'],
+  CREATE_DEBT: ['wrote down a debt', 'high'],
   DELETE_DEBT: ['deleted a debt', 'high'],
   CLOSE_DAY: ['closed the day', 'high'],
   REOPEN_DAY: ['reopened a closed day', 'high'],

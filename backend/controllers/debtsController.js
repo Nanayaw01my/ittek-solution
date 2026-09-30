@@ -215,4 +215,68 @@ const deleteDebt = async (req, res) => {
   }
 };
 
-module.exports = { getDebts, getDebt, getDebtSummary, recordPayment, deleteDebt };
+/**
+ * POST /api/debts
+ *
+ * A debt written down by hand — goods that went out on trust without passing
+ * through the till, or an amount agreed after the fact.
+ *
+ * No money is recorded here, deliberately. Nothing has been paid: this is the
+ * promise, not the payment. Each instalment writes its own sale as it comes
+ * in, and booking anything now would count the same cedi twice.
+ */
+const createDebt = async (req, res) => {
+  try {
+    const { customer_name, customer_phone, amount_owed, due_date, notes, amount_paid } = req.body;
+
+    if (!customer_name || !String(customer_name).trim()) {
+      return res.status(400).json({ success: false, message: "Enter the customer's name." });
+    }
+
+    const owed = Number(amount_owed);
+    if (!Number.isFinite(owed) || owed <= 0) {
+      return res.status(400).json({ success: false, message: 'Enter how much is owed.' });
+    }
+
+    // Somebody who has already paid part of it can be written down as they
+    // stand, rather than as a debt that is immediately wrong.
+    const alreadyPaid = Number(amount_paid) || 0;
+    if (alreadyPaid < 0 || alreadyPaid > owed) {
+      return res.status(400).json({
+        success: false,
+        message: `What was paid cannot be more than the ${owed.toFixed(2)} owed.`,
+      });
+    }
+
+    let when;
+    if (due_date) {
+      when = new Date(due_date);
+      if (Number.isNaN(when.getTime())) {
+        return res.status(400).json({ success: false, message: 'Bad due date.' });
+      }
+    }
+
+    const debt = await Debt.create({
+      customer_name: String(customer_name).trim(),
+      customer_phone: customer_phone ? String(customer_phone).trim() : undefined,
+      amount_owed: Number(owed.toFixed(2)),
+      amount_paid: Number(alreadyPaid.toFixed(2)),
+      due_date: when,
+      notes,
+      created_by: req.user._id,
+      // Deliberately no sale_id: nothing was rung up, and pointing at a sale
+      // that does not exist would break every screen that follows the link.
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `${debt.customer_name} owes GHC${(owed - alreadyPaid).toFixed(2)}.`,
+      data: debt,
+    });
+  } catch (err) {
+    console.error('Create debt error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not record it: ${err.message}` });
+  }
+};
+
+module.exports = { createDebt, getDebts, getDebt, getDebtSummary, recordPayment, deleteDebt };

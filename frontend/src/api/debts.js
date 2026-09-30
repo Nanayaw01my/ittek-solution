@@ -1,6 +1,8 @@
 import api from './axios'
 
 export const getDebts = (params) => api.get('/debts', { params })
+/** A debt written down by hand — goods that went out without passing the till. */
+export const createDebt = (data) => api.post('/debts', data)
 export const getDebt = (id) => api.get(`/debts/${id}`)
 export const recordDebtPayment = (id, data) => api.post(`/debts/${id}/payment`, data)
 export const getDebtSummary = () => api.get('/debts/summary')
