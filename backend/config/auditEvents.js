@@ -105,6 +105,8 @@ const EVENTS = {
   DELETE_STOCK_REQUEST: ['deleted a stock request', 'low'],
 
   // ── People and security ─────────────────────────────────────────────
+  ISSUE_BADGE: ['issued a staff badge', 'high'],
+  REVOKE_BADGE: ['revoked a staff badge', 'high'],
   CREATE_USER: ['created a user account', 'high'],
   UPDATE_USER: ['changed a user account', 'high'],
   DELETE_USER: ['deleted a user account', 'high'],

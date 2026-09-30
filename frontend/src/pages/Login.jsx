@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { FiEye, FiEyeOff, FiUser, FiLock, FiArrowRight, FiAlertCircle, FiWifiOff, FiClock } from 'react-icons/fi'
-import { login } from '../api/auth'
+import { login, badgeLogin } from '../api/auth'
 import useAuthStore from '../store/authStore'
 import { describeApiError } from '../utils/apiError'
 import { getPendingCount } from '../utils/offlineQueue'
@@ -11,6 +11,7 @@ import {
   rememberCredentials, verifyOffline, offlineUsers, offlineAuthSupported,
 } from '../utils/offlineAuth'
 import useOnlineStatus from '../hooks/useOnlineStatus'
+import useBarcodeScanner from '../hooks/useBarcodeScanner'
 
 const REMEMBER_KEY = 'ittek_remembered_user'
 
@@ -74,6 +75,52 @@ export default function Login() {
       { duration: 7000 })
     navigate('/welcome', { replace: true })
     return true
+  }
+
+  // ── Staff badges ────────────────────────────────────────────────────
+  // The card is scanned wherever the cursor happens to be, because nobody
+  // clicks a box before scanning at the start of a shift.
+  const [badge, setBadge] = useState(null)   // { code, username } while a PIN is wanted
+  const [pin, setPin] = useState('')
+  const [badgeBusy, setBadgeBusy] = useState(false)
+
+  const signInWithBadge = async (code, withPin) => {
+    setBadgeBusy(true)
+    try {
+      const res = await badgeLogin(code, withPin)
+      const data = res.data
+
+      // The card is known but its holder has to prove it is them.
+      if (data?.pin_required) {
+        setBadge({ code, username: data.username })
+        setPin('')
+        setErrorKind('client')
+        return
+      }
+
+      storeLogin(data.user, data.token)
+      setBadge(null)
+      toast.success(`Welcome back, ${data.user.username}!`)
+      navigate('/welcome', { replace: true })
+    } catch (err) {
+      const { message, kind } = describeApiError(err, 'That badge did not work.')
+      setErrorKind(kind)
+      setError('root', { message })
+      setPin('')
+    } finally {
+      setBadgeBusy(false)
+    }
+  }
+
+  useBarcodeScanner((code) => {
+    // While a PIN is being asked for, another scan starts again with that card.
+    signInWithBadge(code)
+  }, { enabled: !loading && !badgeBusy })
+
+  const enterPin = (digit) => {
+    const next = (pin + digit).slice(0, 4)
+    setPin(next)
+    if (next.length === 4) signInWithBadge(badge.code, next)
   }
 
   const onSubmit = async (data) => {
@@ -162,6 +209,58 @@ export default function Login() {
               Selling works offline; the sales go to the server when it comes back.
             </p>
           </div>
+        )}
+
+        {/* ── A badge that wants its code ───────────────────────────── */}
+        {badge && (
+          <div className="mb-5 p-4 bg-white border-2 border-orange-300 rounded-2xl">
+            <p className="text-sm font-black text-gray-900">
+              {badge.username}
+            </p>
+            <p className="text-xs text-gray-500 mb-3">
+              Enter your 4-digit code
+            </p>
+
+            <div className="flex gap-2 mb-4">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i}
+                  className={`flex-1 h-11 rounded-xl border-2 flex items-center justify-center text-xl font-black ${
+                    pin.length > i ? 'border-orange-400 bg-orange-50 text-gray-900' : 'border-gray-200'
+                  }`}>
+                  {pin.length > i ? '•' : ''}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
+                <button key={d} type="button" onClick={() => enterPin(d)} disabled={badgeBusy}
+                  className="py-3 rounded-xl border border-gray-200 text-lg font-black text-gray-800 hover:bg-gray-50 disabled:opacity-50">
+                  {d}
+                </button>
+              ))}
+              <button type="button" onClick={() => { setBadge(null); setPin('') }}
+                className="py-3 rounded-xl border border-gray-200 text-xs font-bold text-gray-500">
+                Cancel
+              </button>
+              <button type="button" onClick={() => enterPin('0')} disabled={badgeBusy}
+                className="py-3 rounded-xl border border-gray-200 text-lg font-black text-gray-800 hover:bg-gray-50 disabled:opacity-50">
+                0
+              </button>
+              <button type="button" onClick={() => setPin((p) => p.slice(0, -1))}
+                className="py-3 rounded-xl border border-gray-200 text-xs font-bold text-gray-500">
+                Back
+              </button>
+            </div>
+            {badgeBusy && <p className="mt-2 text-xs text-gray-500 text-center">Checking…</p>}
+          </div>
+        )}
+
+        {/* Said once, quietly — the staff who use a badge already know. */}
+        {!badge && (
+          <p className="mb-4 text-[11px] text-gray-400 text-center">
+            Staff with a badge can scan it instead of typing.
+          </p>
         )}
 
         {pendingOffline > 0 && (

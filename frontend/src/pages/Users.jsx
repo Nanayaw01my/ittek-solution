@@ -2,8 +2,8 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX, FiTrash2, FiEye, FiEyeOff } from 'react-icons/fi'
-import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword } from '../api/users'
+import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX, FiTrash2, FiEye, FiEyeOff, FiCreditCard } from 'react-icons/fi'
+import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword, issueBadge, revokeBadge } from '../api/users'
 import { getCategories } from '../api/products'
 import { resizeImageToDataUrl, dataUrlToFile } from '../utils/resizeImage'
 import { uploadImage } from '../api/upload'
@@ -313,6 +313,118 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
   )
 }
 
+
+/**
+ * Issuing a badge, and what to do with the number once it exists.
+ *
+ * The number is shown once, plainly, because it has to be written onto a card
+ * — and printed as a barcode from the Products page's sheet, which draws the
+ * same kind of code.
+ */
+function BadgeModal({ user, onClose }) {
+  const queryClient = useQueryClient()
+  const [pin, setPin] = useState('')
+  const [issued, setIssued] = useState(null)
+
+  const needsPin = user.role === 'Field Agent'
+  const blocked = ['CEO', 'Super Admin'].includes(user.role)
+
+  const issue = useMutation({
+    mutationFn: () => issueBadge(user._id, pin || undefined),
+    onSuccess: (res) => {
+      setIssued(res.data)
+      toast.success(`Badge issued to ${user.username}.`, { duration: 8000 })
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not issue it', { duration: 9000 }),
+  })
+
+  const revoke = useMutation({
+    mutationFn: () => revokeBadge(user._id),
+    onSuccess: () => {
+      toast.success(`${user.username}'s badge no longer works.`)
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      onClose()
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not revoke it'),
+  })
+
+  const field = 'w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500'
+
+  return (
+    <div className="p-5 space-y-4">
+      <div>
+        <p className="font-black text-gray-900">{user.username}</p>
+        <p className="text-xs text-gray-500">{user.role}</p>
+      </div>
+
+      {blocked ? (
+        <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-3">
+          A {user.role} signs in with a password. A badge can be photographed and
+          copied, and this account can delete records and read every customer's
+          details — too much to hang on a card.
+        </p>
+      ) : issued ? (
+        <>
+          <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+            <p className="text-xs font-bold text-green-900 uppercase tracking-wide">Badge number</p>
+            <p className="text-2xl font-black font-mono text-gray-900 mt-1 tracking-wider">
+              {issued.badge_code}
+            </p>
+          </div>
+          <ul className="text-xs text-gray-600 space-y-1">
+            <li>• Write this number on {user.username}'s card and print it as a barcode.</li>
+            <li>• They scan it at the login screen{needsPin ? ' and enter their 4-digit code' : ' and they are in'}.</li>
+            <li>• One card per person. A shared badge signs the wrong person in, and the
+              records will name them for it.</li>
+          </ul>
+          <button onClick={onClose}
+            className="w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm">
+            Done
+          </button>
+        </>
+      ) : (
+        <>
+          {user.badge_code && (
+            <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-xl p-3">
+              {user.username} already has a badge. Issuing a new one stops the old card
+              working straight away.
+            </p>
+          )}
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              4-digit code {needsPin ? '*' : <span className="font-normal text-gray-400">— optional</span>}
+            </label>
+            <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              inputMode="numeric" placeholder="0000" className={field} />
+            <p className="mt-1 text-xs text-gray-500">
+              {needsPin
+                ? 'A field agent works away from the shop, so their badge needs a code behind it.'
+                : `A ${user.role} scans and is signed in. Add a code only if you want one.`}
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            {user.badge_code && (
+              <button onClick={() => revoke.mutate()} disabled={revoke.isPending}
+                className="flex-1 py-2.5 border border-red-200 text-red-600 rounded-xl font-bold text-sm disabled:opacity-50">
+                {revoke.isPending ? 'Revoking…' : 'Revoke the badge'}
+              </button>
+            )}
+            <button onClick={() => issue.mutate()}
+              disabled={issue.isPending || (needsPin && pin.length !== 4)}
+              className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+              {issue.isPending ? 'Issuing…' : user.badge_code ? 'Issue a new one' : 'Issue a badge'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+
 function ResetPasswordModal({ user, onClose, onSubmit, loading }) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm()
   const newPw = watch('new_password')
@@ -395,6 +507,7 @@ export default function Users() {
   const [showModal, setShowModal] = useState(false)
   const [editUser, setEditUser] = useState(null)
   const [resetTarget, setResetTarget] = useState(null)
+  const [badgeTarget, setBadgeTarget] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [search, setSearch] = useState('')
 
@@ -604,6 +717,18 @@ export default function Users() {
                         >
                           {row.is_active ? <FiToggleRight size={17} /> : <FiToggleLeft size={17} />}
                         </button>
+                        {/* Staff badge */}
+                        {!['CEO', 'Super Admin'].includes(row.role) && (
+                          <button
+                            onClick={() => setBadgeTarget(row)}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              row.badge_code ? 'text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:bg-gray-50'
+                            }`}
+                            title={row.badge_code ? 'Badge issued — manage it' : 'Issue a staff badge'}
+                          >
+                            <FiCreditCard size={15} />
+                          </button>
+                        )}
                         {/* Reset password */}
                         <button
                           onClick={() => setResetTarget(row)}
@@ -666,6 +791,17 @@ export default function Users() {
             }
           }}
         />
+      </Modal>
+
+      <Modal
+        isOpen={!!badgeTarget}
+        onClose={() => setBadgeTarget(null)}
+        title="Staff badge"
+        size="sm"
+      >
+        {badgeTarget && (
+          <BadgeModal user={badgeTarget} onClose={() => setBadgeTarget(null)} />
+        )}
       </Modal>
 
       {/* Reset Password Modal */}

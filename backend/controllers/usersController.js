@@ -316,4 +316,111 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { getUsers, createUser, getUser, updateUser, deleteUser, toggleActive, resetPassword };
+
+/**
+ * Staff badges — issuing, revoking, and the PIN behind one.
+ *
+ * The code is random rather than counted up: a sequential badge would let
+ * anyone holding one guess a colleague's, and a guessed badge signs the
+ * wrong person in while the audit log names them for it.
+ */
+const { badgeAllowed, badgeNeedsPin } = require('../config/badges');
+const { mintEan13 } = require('../utils/barcode');
+
+const freeBadgeCode = async (attempts = 12) => {
+  for (let i = 0; i < attempts; i += 1) {
+    const candidate = mintEan13();
+    const taken = await User.findOne({ badge_code: candidate }).select('_id').lean();
+    if (!taken) return candidate;
+  }
+  return null;
+};
+
+/** POST /api/users/:id/badge — issue one, or replace the one they have. */
+const issueBadge = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    if (!badgeAllowed(user.role)) {
+      return res.status(400).json({
+        success: false,
+        message: `A ${user.role} signs in with a password. A badge can be copied, and that account can delete records and read every customer's details.`,
+      });
+    }
+
+    const code = await freeBadgeCode();
+    if (!code) {
+      return res.status(503).json({ success: false, message: 'Could not find a free badge number. Try again.' });
+    }
+
+    user.badge_code = code;
+    user.badge_active = true;
+    user.badge_issued_at = new Date();
+
+    // A role that needs a PIN cannot be left without one, or the badge would
+    // be worth more than it should be until somebody remembered.
+    const pin = String(req.body?.pin || '').trim();
+    if (badgeNeedsPin(user.role)) {
+      if (!/^\d{4}$/.test(pin)) {
+        return res.status(400).json({
+          success: false,
+          message: `A ${user.role} needs a 4-digit code with their badge. Set one now.`,
+        });
+      }
+      user.badge_pin = pin;
+    } else if (pin) {
+      if (!/^\d{4}$/.test(pin)) {
+        return res.status(400).json({ success: false, message: 'A code must be 4 digits.' });
+      }
+      user.badge_pin = pin;
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Badge issued to ${user.username}.`,
+      data: {
+        username: user.username,
+        role: user.role,
+        badge_code: user.badge_code,
+        needs_pin: badgeNeedsPin(user.role),
+      },
+    });
+  } catch (err) {
+    console.error('Issue badge error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not issue it: ${err.message}` });
+  }
+};
+
+/** DELETE /api/users/:id/badge — the card in their pocket stops working. */
+const revokeBadge = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (!user.badge_code) {
+      return res.status(400).json({ success: false, message: `${user.username} has no badge.` });
+    }
+
+    // Cleared rather than merely switched off, so the number can never be
+    // brought back by turning a flag over.
+    user.badge_code = undefined;
+    user.badge_active = false;
+    user.badge_pin = undefined;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `${user.username}'s badge no longer works.`,
+      data: { username: user.username },
+    });
+  } catch (err) {
+    console.error('Revoke badge error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+module.exports = {
+  issueBadge,
+  revokeBadge, getUsers, createUser, getUser, updateUser, deleteUser, toggleActive, resetPassword };

@@ -6,6 +6,7 @@ const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
   getUsers, createUser, getUser, updateUser, deleteUser, toggleActive, resetPassword,
+  issueBadge, revokeBadge,
 } = require('../controllers/usersController');
 const { ROLE_LEVELS } = require('../middleware/rbac');
 
@@ -61,6 +62,22 @@ router.put(
   [body('new_password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters.')],
   auditLog('RESET_USER_PASSWORD', (req) => ({ user_id: req.params.id })),
   resetPassword
+);
+
+// Staff badges. Issuing one is handing somebody a way into the system, so it
+// stays where creating a user does — CEO and above.
+router.post(
+  '/:id/badge',
+  canAccess,
+  auditLog('ISSUE_BADGE', (req) => ({ user_id: req.params.id })),
+  issueBadge
+);
+
+router.delete(
+  '/:id/badge',
+  canAccess,
+  auditLog('REVOKE_BADGE', (req) => ({ user_id: req.params.id })),
+  revokeBadge
 );
 
 module.exports = router;

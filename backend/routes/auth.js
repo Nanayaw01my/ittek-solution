@@ -3,7 +3,9 @@ const router = express.Router();
 const { body } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
 const { auditLog } = require('../middleware/auditLogger');
-const { login, logout, getMe, changePassword, forgotPassword } = require('../controllers/authController');
+const { login, logout, getMe, changePassword, forgotPassword,
+  badgeLogin,
+} = require('../controllers/authController');
 
 // POST /api/auth/login
 router.post(
@@ -14,6 +16,10 @@ router.post(
   ],
   login
 );
+
+// Signing in by scanning a staff card. Open like /login, because the whole
+// point is that nobody is signed in yet.
+router.post('/badge-login', badgeLogin);
 
 // POST /api/auth/logout
 router.post('/logout', authenticate, auditLog('LOGOUT'), logout);

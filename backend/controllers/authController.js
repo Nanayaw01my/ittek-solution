@@ -67,6 +67,97 @@ const recordAttempt = async ({ req, action, username, user, message }) => {
   }
 };
 
+/**
+ * POST /api/auth/badge-login
+ *
+ * Scanning a staff card at the counter. The badge says who somebody is; for
+ * the roles that need it, a PIN says it is really them.
+ *
+ * Deliberately never for a CEO or Super Admin. Those accounts can delete
+ * records, restore backups and read every customer's details, and none of it
+ * should hang on a card that can be photographed across a counter.
+ */
+const badgeLogin = async (req, res) => {
+  try {
+    const { code, pin } = req.body || {};
+    const badge = String(code || '').trim();
+    if (!badge) {
+      return res.status(400).json({ success: false, message: 'Scan a staff badge.' });
+    }
+
+    const { badgeAllowed, badgeNeedsPin } = require('../config/badges');
+
+    const user = await User.findOne({ badge_code: badge }).select('+badge_pin');
+
+    // Every refusal below says the same thing to the browser. A message that
+    // distinguished "no such badge" from "wrong PIN" would let somebody with
+    // a stolen card find out whether it is still worth anything.
+    const refuse = async (why) => {
+      await recordAttempt({
+        req, action: 'FAILED_LOGIN', username: user?.username || `badge ${badge.slice(-4)}`,
+        user, message: why,
+      });
+      return res.status(401).json({ success: false, message: 'That badge did not work.' });
+    };
+
+    if (!user) return refuse('badge not recognised');
+    if (!user.is_active) {
+      await recordAttempt({
+        req, action: 'LOGIN_BLOCKED', username: user.username, user,
+        message: 'disabled account, by badge',
+      });
+      return res.status(403).json({ success: false, message: 'Account deactivated. Contact administrator.' });
+    }
+    if (user.badge_active === false) return refuse('badge revoked');
+    if (!badgeAllowed(user.role)) return refuse(`${user.role} may not use a badge`);
+
+    if (badgeNeedsPin(user.role)) {
+      const entered = String(pin || '').trim();
+      if (!entered) {
+        // Not a refusal — the screen has to know to ask for the PIN, and
+        // this says so without revealing anything a stolen card does not
+        // already show.
+        return res.status(200).json({
+          success: true,
+          data: { pin_required: true, username: user.username },
+        });
+      }
+      const ok = await user.comparePin(entered);
+      if (!ok) return refuse('wrong badge PIN');
+    }
+
+    user.last_login = new Date();
+    user.last_ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    await user.save();
+
+    const token = user.generateJWT();
+    await recordAttempt({
+      req, action: 'LOGIN', username: user.username, user,
+      message: `${user.role} · by badge · ${req.ip || 'unknown'}`,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Login successful.',
+      data: {
+        token,
+        user: {
+          id: user._id,
+          _id: user._id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          is_active: user.is_active,
+          avatar_url: user.avatar_url,
+        },
+      },
+    });
+  } catch (err) {
+    console.error('Badge login error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 const login = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -213,4 +304,5 @@ const forgotPassword = async (req, res) => {
   });
 };
 
-module.exports = { login, logout, getMe, changePassword, forgotPassword };
+module.exports = {
+  badgeLogin, login, logout, getMe, changePassword, forgotPassword };

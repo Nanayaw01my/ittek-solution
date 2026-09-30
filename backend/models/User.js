@@ -97,11 +97,46 @@ const UserSchema = new mongoose.Schema(
       of: String,
       default: undefined,
     },
+    // ─── Staff badge ────────────────────────────────────────────────────
+    // A card with a barcode that signs somebody in at the counter. Sparse
+    // and unique: most accounts have none, and no two may share one — a
+    // duplicate would sign the wrong person in, and the audit log would name
+    // the wrong person for everything they did.
+    badge_code: { type: String, trim: true, unique: true, sparse: true },
+    badge_active: { type: Boolean, default: true },
+    badge_issued_at: { type: Date },
+    // Only for the roles that need it. Hashed like a password, and never
+    // returned by an ordinary read.
+    badge_pin: { type: String, select: false },
+
   },
   {
     timestamps: true,
   }
 );
+
+/**
+ * The badge PIN, hashed like the password.
+ *
+ * Four digits is ten thousand possibilities, which is why it only ever backs
+ * up a badge somebody is holding rather than standing on its own — and why
+ * it is hashed all the same, so a copy of the database does not hand anyone
+ * the PINs.
+ */
+UserSchema.pre('save', async function hashPin(next) {
+  if (!this.isModified('badge_pin') || !this.badge_pin) return next();
+  try {
+    this.badge_pin = await bcrypt.hash(this.badge_pin, 12);
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+UserSchema.methods.comparePin = async function comparePin(candidate) {
+  if (!this.badge_pin) return false;
+  return bcrypt.compare(String(candidate || ''), this.badge_pin);
+};
 
 // Hash password before saving
 UserSchema.pre('save', async function (next) {
