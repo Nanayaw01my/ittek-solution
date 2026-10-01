@@ -332,7 +332,7 @@ function BadgeModal({ user, onClose }) {
   const blocked = ['CEO', 'Super Admin'].includes(user.role)
 
   const issue = useMutation({
-    mutationFn: () => issueBadge(user._id, pin || undefined),
+    mutationFn: () => issueBadge(user._id, { pin: pin || undefined }),
     onSuccess: (res) => {
       setIssued(res.data)
       toast.success(`Badge issued to ${user.username}.`, { duration: 8000 })
@@ -360,13 +360,16 @@ function BadgeModal({ user, onClose }) {
         <p className="text-xs text-gray-500">{user.role}</p>
       </div>
 
-      {blocked ? (
+      {blocked && (
         <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-3">
-          A {user.role} signs in with a password. A badge can be photographed and
-          copied, and this account can delete records and read every customer's
-          details — too much to hang on a card.
+          A {user.role} signs in with a password, never by card — this account can
+          delete records and read every customer's details, and a card can be
+          photographed and copied. They can still carry one: it says who they are
+          and opens nothing.
         </p>
-      ) : issued ? (
+      )}
+
+      {issued ? (
         <>
           <div className="bg-green-50 border border-green-200 rounded-xl p-3">
             <p className="text-xs font-bold text-green-900 uppercase tracking-wide">Badge number</p>
@@ -517,6 +520,99 @@ function DeleteConfirmModal({ user, onClose, onConfirm, loading }) {
   )
 }
 
+
+
+/**
+ * The scan box that sits on a person's row.
+ *
+ * A shop that printed its own cards before this screen existed has a stack of
+ * barcodes and no way to say which belongs to whom. Minting fresh numbers
+ * would mean throwing that stack away, so this does the opposite: scan the
+ * card you already hold, onto the person in front of you.
+ *
+ * Marked data-scan-input, so the page-wide listener leaves these keystrokes
+ * alone — the box is already focused and the browser puts the digits straight
+ * in, which is exactly what is wanted here and nowhere else on the page.
+ */
+function BadgeScanBox({ row, onSaved, onNeedsPin }) {
+  const [value, setValue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  const save = async () => {
+    const code = value.trim()
+    if (!code || busy) return
+    setBusy(true)
+    try {
+      await issueBadge(row._id, { badge_code: code })
+      toast.success(`${code} is now ${row.username}'s card.`)
+      setValue('')
+      setOpen(false)
+      onSaved()
+    } catch (err) {
+      const body = err.response?.data
+      if (body?.code === 'pin_required') {
+        // A field agent cannot be given a card without a code behind it, and
+        // that is set in the badge panel, not here.
+        toast.error(body.message)
+        onNeedsPin()
+      } else {
+        toast.error(body?.message || 'Could not save that card.')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className={`mt-1 inline-flex items-center gap-1 text-[11px] font-bold ${
+          row.badge_code
+            ? 'font-mono text-blue-700 hover:underline'
+            : 'px-2 py-0.5 rounded-full text-orange-700 bg-orange-50 border border-orange-200 hover:bg-orange-100'
+        }`}
+      >
+        <FiCrosshair size={11} />
+        {row.badge_code || 'Scan their card'}
+      </button>
+    )
+  }
+
+  return (
+    <div className="mt-1.5 flex items-center gap-1.5">
+      <input
+        // Focused the moment it opens, so the card can be scanned without
+        // another tap — on a phone this is the difference between one action
+        // and three.
+        autoFocus
+        data-scan-input=""
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); save() }
+          if (e.key === 'Escape') { setValue(''); setOpen(false) }
+        }}
+        placeholder={row.badge_code ? 'Scan the new card' : 'Scan their card'}
+        className="w-36 px-2 py-1 border border-orange-300 rounded-lg text-[11px] font-mono focus:outline-none focus:ring-2 focus:ring-orange-500"
+      />
+      <button
+        onClick={save}
+        disabled={busy || !value.trim()}
+        className="px-2 py-1 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white text-[11px] font-bold"
+      >
+        {busy ? '…' : 'Save'}
+      </button>
+      <button
+        onClick={() => { setValue(''); setOpen(false) }}
+        className="p-1 text-gray-400 hover:text-gray-600"
+      >
+        <FiX size={13} />
+      </button>
+    </div>
+  )
+}
 
 /**
  * The badge checking station.
@@ -866,22 +962,14 @@ export default function Users() {
                         {/* The badge lives in the first column, not out in the
                             actions where a phone hides it behind a sideways
                             scroll nobody knows is there. */}
-                        {!['CEO', 'Super Admin'].includes(row.role) && canActOn(row) && (
-                          row.badge_code ? (
-                            <button
-                              onClick={() => setBadgeTarget(row)}
-                              className="mt-1 inline-flex items-center gap-1 text-[11px] font-mono font-bold text-blue-700 hover:underline"
-                            >
-                              <FiCreditCard size={11} /> {row.badge_code}
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => setBadgeTarget(row)}
-                              className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold text-orange-700 bg-orange-50 border border-orange-200 hover:bg-orange-100"
-                            >
-                              <FiCreditCard size={11} /> Give a badge
-                            </button>
-                          )
+                        {/* Owners carry a card too now — it identifies them
+                            and opens nothing — so the box is on every row. */}
+                        {canActOn(row) && (
+                          <BadgeScanBox
+                            row={row}
+                            onSaved={() => queryClient.invalidateQueries({ queryKey: ['users'] })}
+                            onNeedsPin={() => setBadgeTarget(row)}
+                          />
                         )}
                       </div>
                     </div>
@@ -927,8 +1015,9 @@ export default function Users() {
                         >
                           {row.is_active ? <FiToggleRight size={17} /> : <FiToggleLeft size={17} />}
                         </button>
-                        {/* Staff badge */}
-                        {!['CEO', 'Super Admin'].includes(row.role) && (
+                        {/* Staff badge — open to every role, since an owner's
+                            card identifies them without opening anything. */}
+                        {(
                           <button
                             onClick={() => setBadgeTarget(row)}
                             className={`p-1.5 rounded-lg transition-colors ${

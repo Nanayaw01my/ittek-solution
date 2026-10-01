@@ -9,7 +9,13 @@ export const toggleUserStatus = (id) => api.put(`/users/${id}/toggle-active`)
 export const resetUserPassword = (id, newPassword) => api.put(`/users/${id}/reset-password`, { new_password: newPassword })
 
 /** A staff badge — the card they scan to sign in. */
-export const issueBadge = (id, pin) => api.post(`/users/${id}/badge`, { pin })
+/**
+ * Give somebody a card. With `badge_code` it attaches a card that already
+ * exists — scanned off one the shop printed itself; without it the server
+ * mints a fresh number.
+ */
+export const issueBadge = (id, { pin, badge_code } = {}) =>
+  api.post(`/users/${id}/badge`, { pin, badge_code })
 export const revokeBadge = (id) => api.delete(`/users/${id}/badge`)
 /** Whose card is this? For the checking station on the Users page. */
 export const identifyBadge = (code) => api.get(`/users/badge/${encodeURIComponent(code)}`)

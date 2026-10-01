@@ -336,15 +336,51 @@ const freeBadgeCode = async (attempts = 12) => {
   return null;
 };
 
-/** POST /api/users/:id/badge — issue one, or replace the one they have. */
+/**
+ * POST /api/users/:id/badge — issue one, or replace the one they have.
+ *
+ * `badge_code` in the body attaches a card that already exists: a shop that
+ * printed its own cards before this screen did can scan each one onto its
+ * owner instead of throwing them away and printing the system's numbers.
+ * Without it a fresh number is minted as before.
+ *
+ * Whatever a scanner reads off a card is what gets stored, so the format is
+ * left open. Length and character checks only keep out the obvious mistakes —
+ * a stray keystroke, a whole line of text pasted in.
+ */
 const issueBadge = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    // badge_pin is select:false, and it has to be read to tell "this agent
+    // already has a code" from "this agent has none yet".
+    const user = await User.findById(req.params.id).select('+badge_pin');
     if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
 
-    const code = await freeBadgeCode();
-    if (!code) {
-      return res.status(503).json({ success: false, message: 'Could not find a free badge number. Try again.' });
+    const supplied = String(req.body?.badge_code || '').trim();
+    let code;
+
+    if (supplied) {
+      if (!/^[A-Za-z0-9][A-Za-z0-9._\-]{3,31}$/.test(supplied)) {
+        return res.status(400).json({
+          success: false,
+          message: 'A card number is 4 to 32 letters or digits. Scan the card again.',
+        });
+      }
+      // One card, one person. Two people on the same number means the system
+      // cannot say who did anything, which is the whole point of a badge.
+      const taken = await User.findOne({ badge_code: supplied, _id: { $ne: user._id } })
+        .select('username').lean();
+      if (taken) {
+        return res.status(409).json({
+          success: false,
+          message: `That card is already ${taken.username}'s. Scan a different one.`,
+        });
+      }
+      code = supplied;
+    } else {
+      code = await freeBadgeCode();
+      if (!code) {
+        return res.status(503).json({ success: false, message: 'Could not find a free badge number. Try again.' });
+      }
     }
 
     user.badge_code = code;
@@ -355,13 +391,21 @@ const issueBadge = async (req, res) => {
     // be worth more than it should be until somebody remembered.
     const pin = String(req.body?.pin || '').trim();
     if (badgeNeedsPin(user.role)) {
-      if (!/^\d{4}$/.test(pin)) {
+      if (pin) {
+        if (!/^\d{4}$/.test(pin)) {
+          return res.status(400).json({ success: false, message: 'A code must be 4 digits.' });
+        }
+        user.badge_pin = pin;
+      } else if (!user.badge_pin) {
+        // Named so the screen can send them straight to where a code is set,
+        // rather than leaving a scan box saying something it cannot fix.
         return res.status(400).json({
           success: false,
-          message: `A ${user.role} needs a 4-digit code with their badge. Set one now.`,
+          code: 'pin_required',
+          message: `A ${user.role} needs a 4-digit code with their card. Set one now.`,
         });
       }
-      user.badge_pin = pin;
+      // Already has one — swapping the card does not change the code.
     } else if (pin) {
       if (!/^\d{4}$/.test(pin)) {
         return res.status(400).json({ success: false, message: 'A code must be 4 digits.' });
