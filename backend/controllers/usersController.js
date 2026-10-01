@@ -324,7 +324,7 @@ const resetPassword = async (req, res) => {
  * anyone holding one guess a colleague's, and a guessed badge signs the
  * wrong person in while the audit log names them for it.
  */
-const { badgeAllowed, badgeNeedsPin } = require('../config/badges');
+const { badgeLoginAllowed, badgeNeedsPin } = require('../config/badges');
 const { mintEan13 } = require('../utils/barcode');
 
 const freeBadgeCode = async (attempts = 12) => {
@@ -341,13 +341,6 @@ const issueBadge = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-
-    if (!badgeAllowed(user.role)) {
-      return res.status(400).json({
-        success: false,
-        message: `A ${user.role} signs in with a password. A badge can be copied, and that account can delete records and read every customer's details.`,
-      });
-    }
 
     const code = await freeBadgeCode();
     if (!code) {
@@ -395,6 +388,55 @@ const issueBadge = async (req, res) => {
 };
 
 /**
+ * GET /api/users/badge/:code
+ *
+ * Whose card is this? For the scanning station on the Users page, where a
+ * freshly printed stack is checked against the people it was made for, and
+ * where a card found on the floor is identified.
+ *
+ * A lookup, not a sign-in: it tells an owner who is already signed in what a
+ * card belongs to, and hands back nothing that would let anybody use it.
+ */
+const identifyBadge = async (req, res) => {
+  try {
+    const code = String(req.params.code || '').trim();
+    if (!code) return res.status(400).json({ success: false, message: 'Nothing was scanned.' });
+
+    const user = await User.findOne({ badge_code: code })
+      .select('username role avatar_url is_active badge_code badge_active badge_issued_at')
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: `No badge here carries ${code}. It may belong to another shop, or have been reissued.`,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        _id: String(user._id),
+        username: user.username,
+        role: user.role,
+        avatar_url: user.avatar_url || '',
+        badge_code: user.badge_code,
+        // Revoked, or the account itself switched off — both mean the card
+        // is dead, and the station should say which.
+        badge_active: user.badge_active !== false,
+        account_active: user.is_active !== false,
+        badge_issued_at: user.badge_issued_at || null,
+        login_allowed: badgeLoginAllowed(user.role),
+        needs_pin: badgeNeedsPin(user.role),
+      },
+    });
+  } catch (err) {
+    console.error('Identify badge error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
  * GET /api/users/badge-cards[?id=]
  *
  * The cards themselves, to print and cut out. One person with ?id, or
@@ -422,6 +464,7 @@ const getBadgeCards = async (req, res) => {
         badge_code: p.badge_code,
         bits: eanModules(p.badge_code),
         needs_pin: badgeNeedsPin(p.role),
+        login_allowed: badgeLoginAllowed(p.role),
       })),
       logoUrl: settings?.logo_url || null,
       company: { name: settings?.company_name },
@@ -467,4 +510,5 @@ const revokeBadge = async (req, res) => {
 module.exports = {
   issueBadge,
   revokeBadge,
+  identifyBadge,
   getBadgeCards, getUsers, createUser, getUser, updateUser, deleteUser, toggleActive, resetPassword };

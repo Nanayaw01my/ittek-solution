@@ -6,7 +6,7 @@ const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
   getUsers, createUser, getUser, updateUser, deleteUser, toggleActive, resetPassword,
-  issueBadge, revokeBadge, getBadgeCards,
+  issueBadge, revokeBadge, getBadgeCards, identifyBadge,
 } = require('../controllers/usersController');
 const { ROLE_LEVELS } = require('../middleware/rbac');
 
@@ -35,6 +35,8 @@ router.post(
 
 // The printable cards. Above '/:id' so the word is not read as an id.
 router.get('/badge-cards', canAccess, getBadgeCards);
+// Whose card is this? Above '/:id' so a scanned code is not read as an id.
+router.get('/badge/:code', canAccess, identifyBadge);
 
 router.get('/:id', canAccess, getUser);
 

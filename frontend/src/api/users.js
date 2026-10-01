@@ -11,6 +11,8 @@ export const resetUserPassword = (id, newPassword) => api.put(`/users/${id}/rese
 /** A staff badge — the card they scan to sign in. */
 export const issueBadge = (id, pin) => api.post(`/users/${id}/badge`, { pin })
 export const revokeBadge = (id) => api.delete(`/users/${id}/badge`)
+/** Whose card is this? For the checking station on the Users page. */
+export const identifyBadge = (code) => api.get(`/users/badge/${encodeURIComponent(code)}`)
 /** The printable cards — one person with an id, or everybody with a badge. */
 export const getBadgeCards = (id) =>
   api.get('/users/badge-cards', { params: id ? { id } : undefined, responseType: 'blob' })

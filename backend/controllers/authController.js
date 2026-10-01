@@ -85,7 +85,7 @@ const badgeLogin = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Scan a staff badge.' });
     }
 
-    const { badgeAllowed, badgeNeedsPin } = require('../config/badges');
+    const { badgeLoginAllowed, badgeNeedsPin } = require('../config/badges');
 
     const user = await User.findOne({ badge_code: badge }).select('+badge_pin');
 
@@ -109,7 +109,7 @@ const badgeLogin = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Account deactivated. Contact administrator.' });
     }
     if (user.badge_active === false) return refuse('badge revoked');
-    if (!badgeAllowed(user.role)) return refuse(`${user.role} may not use a badge`);
+    if (!badgeLoginAllowed(user.role)) return refuse(`${user.role} may not sign in with a badge`);
 
     if (badgeNeedsPin(user.role)) {
       const entered = String(pin || '').trim();

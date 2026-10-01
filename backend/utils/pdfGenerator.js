@@ -3268,9 +3268,15 @@ const generateBadgeCards = async (options = {}) => {
             });
         }
 
-        if (person.needs_pin) {
+        // What this particular card is worth, said on the card. An owner's
+        // card identifies them and opens nothing, and printing "scan to sign
+        // in" on it would be a standing invitation to try.
+        const footer = person.login_allowed === false
+          ? 'Identification only — sign in with your password'
+          : (person.needs_pin ? 'Scan, then enter your 4-digit code' : '');
+        if (footer) {
           doc.font('Helvetica-Bold').fontSize(6.5).fillColor(GRAY)
-            .text('Scan, then enter your 4-digit code', x + 12, y + CARD_H - 16, {
+            .text(footer, x + 12, y + CARD_H - 16, {
               width: CARD_W - 24, align: 'center',
             });
         }

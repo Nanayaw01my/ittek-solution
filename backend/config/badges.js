@@ -11,7 +11,7 @@
  * ever hang on a card somebody could copy.
  */
 
-/** Cannot use a badge at all — username and password only. */
+/** Cannot *sign in* with a badge — username and password only. */
 const BADGE_BLOCKED_ROLES = ['CEO', 'Super Admin'];
 
 /**
@@ -21,7 +21,27 @@ const BADGE_BLOCKED_ROLES = ['CEO', 'Super Admin'];
  */
 const BADGE_PIN_ROLES = ['Field Agent'];
 
-const badgeAllowed = (role) => !BADGE_BLOCKED_ROLES.includes(role);
+/**
+ * Carrying a card and signing in with one are two different things.
+ *
+ * The owners are still kept off badge *sign-in*, for the reasons above. But a
+ * card that only says who somebody is costs nothing and is worth having for
+ * everyone: it is how a printed card is checked against the person it was
+ * made for, and how a card found on the floor is identified. Refusing the
+ * owners a card at all meant those two could not be checked like anybody
+ * else, which is backwards — they are the accounts worth being sure about.
+ *
+ * Nothing hangs on the owners' card: the sign-in path refuses their role
+ * whatever is scanned, so the card opens nothing.
+ */
+const badgeLoginAllowed = (role) => !BADGE_BLOCKED_ROLES.includes(role);
+
+/** Anyone may be given a card. What it is worth is decided above. */
+const badgeIssueAllowed = () => true;
+
 const badgeNeedsPin = (role) => BADGE_PIN_ROLES.includes(role);
 
-module.exports = { BADGE_BLOCKED_ROLES, BADGE_PIN_ROLES, badgeAllowed, badgeNeedsPin };
+module.exports = {
+  BADGE_BLOCKED_ROLES, BADGE_PIN_ROLES,
+  badgeLoginAllowed, badgeIssueAllowed, badgeNeedsPin,
+};

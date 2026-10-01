@@ -3,14 +3,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { openPdfInNewTab } from '../utils/openPdf'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX, FiTrash2, FiEye, FiEyeOff, FiCreditCard , FiPrinter } from 'react-icons/fi'
-import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword, issueBadge, revokeBadge, getBadgeCards } from '../api/users'
+import { FiPlus, FiEdit2, FiToggleLeft, FiToggleRight, FiKey, FiUser, FiX, FiTrash2, FiEye, FiEyeOff, FiCreditCard , FiPrinter, FiCrosshair, FiCheckCircle, FiAlertTriangle } from 'react-icons/fi'
+import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword, issueBadge, revokeBadge, getBadgeCards, identifyBadge } from '../api/users'
 import { getCategories } from '../api/products'
 import { resizeImageToDataUrl, dataUrlToFile } from '../utils/resizeImage'
 import { uploadImage } from '../api/upload'
 import { GRANTABLE_PAGES, MODE_LABELS } from '../config/pageAccess'
 import { formatDate, getRoleLabel, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
+import useBarcodeScanner from '../hooks/useBarcodeScanner'
 
 const ROLES_FOR_LEVEL = {
   3: ['Manager', 'Sales', 'Field Agent'],
@@ -516,6 +517,152 @@ function DeleteConfirmModal({ user, onClose, onConfirm, loading }) {
   )
 }
 
+
+/**
+ * The badge checking station.
+ *
+ * A printed stack of cards is only useful once somebody has confirmed each
+ * one scans and belongs to the person whose name is on it. Doing that by
+ * signing in as each member of staff is not possible for the owners, who
+ * cannot sign in by badge at all — so the check happens here instead, as a
+ * plain lookup by whoever is already signed in.
+ *
+ * Every card is answered, including the owners': a card that opens nothing
+ * still has to be the right card.
+ */
+function BadgeScanStation({ enabled }) {
+  const [last, setLast] = useState(null)
+  const [seen, setSeen] = useState([])
+  const [busy, setBusy] = useState(false)
+
+  const onScan = async (raw) => {
+    const code = String(raw || '').trim()
+    if (!code) return
+    setBusy(true)
+    try {
+      const res = await identifyBadge(code)
+      const who = res.data
+      setLast({ ok: true, ...who })
+      setSeen(prev => [
+        { code, username: who.username, role: who.role, at: Date.now() },
+        ...prev.filter(r => r.code !== code),
+      ].slice(0, 12))
+    } catch (err) {
+      setLast({ ok: false, code, message: err.response?.data?.message || 'That card did not match anybody.' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  useBarcodeScanner(onScan, { enabled })
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+        <FiCrosshair size={16} className="text-orange-500 flex-shrink-0" />
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-gray-900">Check a badge</p>
+          <p className="text-xs text-gray-500">
+            Scan any staff card — including a CEO or Super Admin card — to see whose it is.
+          </p>
+        </div>
+      </div>
+
+      <div className="px-4 py-3">
+        {busy && <p className="text-xs text-gray-400">Looking it up…</p>}
+
+        {!busy && !last && (
+          <p className="text-xs text-gray-400">
+            Nothing scanned yet. Point the scanner at a card — there is no box to click first.
+          </p>
+        )}
+
+        {!busy && last?.ok === false && (
+          <div className="flex items-start gap-2.5 rounded-lg bg-red-50 border border-red-200 px-3 py-2.5">
+            <FiAlertTriangle size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-red-700">Not recognised</p>
+              <p className="text-xs text-red-600 break-all">{last.message}</p>
+              <p className="text-[11px] text-red-400 font-mono mt-0.5">{last.code}</p>
+            </div>
+          </div>
+        )}
+
+        {!busy && last?.ok && (
+          <div className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${
+            last.badge_active && last.account_active
+              ? 'bg-green-50 border-green-200'
+              : 'bg-amber-50 border-amber-200'
+          }`}>
+            {last.avatar_url
+              ? <img src={last.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover flex-shrink-0" />
+              : (
+                <div className="w-11 h-11 rounded-full bg-white border border-gray-200 flex items-center justify-center flex-shrink-0">
+                  <FiUser size={18} className="text-gray-400" />
+                </div>
+              )}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                {last.badge_active && last.account_active
+                  ? <FiCheckCircle size={14} className="text-green-600 flex-shrink-0" />
+                  : <FiAlertTriangle size={14} className="text-amber-600 flex-shrink-0" />}
+                <p className="text-sm font-black text-gray-900 truncate">{last.username}</p>
+              </div>
+              <p className="text-xs text-gray-600">{getRoleLabel(last.role)}</p>
+              <p className="text-[11px] text-gray-400 font-mono break-all">{last.badge_code}</p>
+
+              {/* Why a card might not work, said plainly rather than left to
+                  be discovered at the sign-in screen. */}
+              {!last.account_active && (
+                <p className="text-xs font-semibold text-amber-700 mt-1">This account is switched off.</p>
+              )}
+              {last.account_active && !last.badge_active && (
+                <p className="text-xs font-semibold text-amber-700 mt-1">This badge was revoked.</p>
+              )}
+              {last.account_active && last.badge_active && !last.login_allowed && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Identification only — a {getRoleLabel(last.role)} signs in with a password.
+                </p>
+              )}
+              {last.account_active && last.badge_active && last.login_allowed && last.needs_pin && (
+                <p className="text-xs text-gray-500 mt-1">Signs in by scan, then a 4-digit code.</p>
+              )}
+              {last.badge_issued_at && (
+                <p className="text-[11px] text-gray-400 mt-0.5">Issued {formatDate(last.badge_issued_at)}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Working through a printed stack, this is how you know which cards
+            you have already done. */}
+        {seen.length > 0 && (
+          <div className="mt-3">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">
+                Checked this session ({seen.length})
+              </p>
+              <button
+                onClick={() => { setSeen([]); setLast(null) }}
+                className="text-[11px] text-gray-400 hover:text-gray-600"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {seen.map(r => (
+                <span key={r.code} className="px-2 py-1 rounded-lg bg-gray-100 text-[11px] text-gray-600">
+                  {r.username}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Users() {
   const { user: me } = useAuthStore()
   const queryClient = useQueryClient()
@@ -637,6 +784,10 @@ export default function Users() {
           </button>
         </div>
       </div>
+
+      {/* The scanner stands down while a modal is open — those have their own
+          fields to type into. */}
+      <BadgeScanStation enabled={!showModal && !resetTarget && !badgeTarget && !deleteTarget} />
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
