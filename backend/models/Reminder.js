@@ -24,6 +24,45 @@ const ReminderSchema = new mongoose.Schema(
     due_date: { type: Date },
 
     /**
+     * Chasing money, or keeping in touch.
+     *
+     * The two are not the same job and should not share a list. Money is
+     * owed, overdue, and counted; goodwill is a birthday, a note to call
+     * somebody back, or asking how the panels are doing three weeks on. Put
+     * together, the kind thing gets lost among the debts and never gets done,
+     * and the debt list stops being a list of who owes what.
+     *
+     * Defaults to money so that every reminder written before this existed
+     * stays exactly where it was.
+     */
+    kind: {
+      type: String,
+      enum: ['money', 'goodwill'],
+      default: 'money',
+      index: true,
+    },
+
+    /**
+     * What a goodwill reminder is for, which decides how the message reads.
+     *
+     *   wish    — a birthday, a festival, a congratulations
+     *   note    — something to tell them that is not money
+     *   checkup — how is it working? anything needing attention?
+     */
+    purpose: {
+      type: String,
+      enum: ['wish', 'note', 'checkup'],
+      default: 'note',
+    },
+
+    /**
+     * Comes round again every year. A birthday is not done once it has been
+     * wished — it is due again in twelve months, and marking it finished for
+     * ever is how a shop forgets somebody's birthday the following year.
+     */
+    yearly: { type: Boolean, default: false },
+
+    /**
      * Where it came from. A 'custom' one was typed by somebody; the rest name
      * the record they were raised against, so a reminder can be traced back
      * and does not outlive the thing it was about.

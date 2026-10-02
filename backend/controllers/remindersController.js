@@ -56,6 +56,72 @@ const composeMessage = ({ company, name, about, amount, days }) => {
 };
 
 /**
+ * The next time a yearly date comes round.
+ *
+ * A birthday on 4 March is not in the past in December — it is due in March.
+ * Carried forward to this year, or next if this year's has already gone, so
+ * "in 320 days" is what it says rather than "280 days overdue".
+ */
+const nextYearly = (date) => {
+  if (!date) return null;
+  const today = startOfDay();
+  const next = new Date(date);
+  next.setFullYear(today.getFullYear());
+  next.setHours(0, 0, 0, 0);
+  if (next < today) next.setFullYear(today.getFullYear() + 1);
+  return next;
+};
+
+/**
+ * What a goodwill message says.
+ *
+ * Deliberately separate from the money wording above. A birthday that opens
+ * "your outstanding balance" is worse than no birthday message at all, and
+ * the same few words have to work whether it is sent today or next week.
+ */
+const composeGoodwill = ({ company, name, about, purpose, days }) => {
+  const first = String(name || '').split(' ')[0] || 'there';
+  const sign = company || 'DAN & DOR SOLAR COMPANY LIMITED';
+  const subject = String(about || '').trim();
+
+  if (purpose === 'wish') {
+    return [
+      `Good day ${first},`, '',
+      `${subject || 'Warmest wishes to you'} from all of us at ${sign}.`,
+      '',
+      'Thank you for your custom — it is a pleasure serving you.',
+      sign,
+    ].join('\n');
+  }
+
+  if (purpose === 'checkup') {
+    return [
+      `Good day ${first},`, '',
+      subject
+        ? `We are checking in on your ${subject}. How is it working for you?`
+        : 'We are checking in to see how everything has been since your purchase.',
+      '',
+      'If anything needs looking at, tell us and we will come round.',
+      'Thank you for choosing us.',
+      sign,
+    ].join('\n');
+  }
+
+  // A plain note. The date is mentioned only when there is one worth saying.
+  const when = days === null ? ''
+    : days === 0 ? ' today'
+      : days === 1 ? ' tomorrow'
+        : days > 1 ? ` in ${days} days` : '';
+  return [
+    `Good day ${first},`, '',
+    `A reminder about ${subject || 'your appointment with us'}${when}.`,
+    '',
+    'Please call us if you need anything.',
+    sign,
+  ].join('\n');
+};
+
+/**
  * GET /api/reminders?within=7
  *
  * Everyone worth chasing: what the system already knows is owed, plus
@@ -64,19 +130,36 @@ const composeMessage = ({ company, name, about, amount, days }) => {
  */
 const getReminders = async (req, res) => {
   try {
-    const within = Math.min(90, Math.max(0, Number(req.query.within) || 7));
+    // Chasing money, or keeping in touch — two jobs, two lists. Asking for
+    // one must not drag the other's rows along, or the kind thing stays
+    // buried among the debts and never gets done.
+    const kind = req.query.kind === 'goodwill' ? 'goodwill' : 'money';
+    const goodwill = kind === 'goodwill';
+
+    // Money is chased within weeks; a birthday is next March. Capping both at
+    // ninety days hid every yearly wish more than a quarter away, which is
+    // most of them for most of the year.
+    const cap = goodwill ? 366 : 90;
+    const within = Math.min(cap, Math.max(0, Number(req.query.within) || (goodwill ? 30 : 7)));
     const horizon = new Date();
     horizon.setDate(horizon.getDate() + within);
 
     const settings = await Settings.findOne().select('company_name').lean();
     const company = settings?.company_name;
 
+    const none = () => Promise.resolve([]);
     const [debts, layaways, credits, phones, custom] = await Promise.all([
-      Debt.find({ status: { $ne: 'paid' } }).lean(),
-      Layaway.find({ status: { $nin: ['completed', 'cancelled'] } }).lean(),
-      CreditAgreement.find({ status: 'active' }).lean(),
-      PhoneSale.find({ status: 'approved' }).lean(),
-      Reminder.find({ status: { $in: ['pending', 'sent'] } })
+      goodwill ? none() : Debt.find({ status: { $ne: 'paid' } }).lean(),
+      goodwill ? none() : Layaway.find({ status: { $nin: ['completed', 'cancelled'] } }).lean(),
+      goodwill ? none() : CreditAgreement.find({ status: 'active' }).lean(),
+      goodwill ? none() : PhoneSale.find({ status: 'approved' }).lean(),
+      Reminder.find({
+        status: { $in: ['pending', 'sent'] },
+        // Rows written before this split have no kind and are money, which is
+        // what the default on the field says — but a lean query sees the
+        // stored document, so the absence is matched here too.
+        ...(goodwill ? { kind: 'goodwill' } : { kind: { $ne: 'goodwill' } }),
+      })
         .populate('created_by', 'username')
         .lean(),
     ]);
@@ -126,14 +209,19 @@ const getReminders = async (req, res) => {
     }
 
     for (const r of custom) {
+      // A birthday is due again next year, not overdue since last year.
+      const due = r.yearly ? nextYearly(r.due_date) : r.due_date;
       add({
         _id: String(r._id), source: 'custom', about: r.about,
         customer_name: r.customer_name, customer_phone: r.customer_phone,
-        amount: r.amount, due_date: r.due_date,
+        amount: r.amount, due_date: due,
         note: r.message, status: r.status,
         sends: r.sends || [],
         created_by: r.created_by?.username,
         is_custom: true,
+        kind: r.kind || 'money',
+        purpose: r.purpose || 'note',
+        yearly: !!r.yearly,
       });
     }
 
@@ -164,10 +252,16 @@ const getReminders = async (req, res) => {
     const withMessage = due.map((r) => ({
       ...r,
       last_contacted: lastContact.get(String(r.customer_phone)) || null,
-      message: composeMessage({
-        company, name: r.customer_name, about: r.about, amount: r.amount, days: r.days,
-      }),
-      when: whenWords(r.days),
+      message: r.kind === 'goodwill'
+        ? composeGoodwill({
+          company, name: r.customer_name, about: r.about, purpose: r.purpose, days: r.days,
+        })
+        : composeMessage({
+          company, name: r.customer_name, about: r.about, amount: r.amount, days: r.days,
+        }),
+      // "No date set" reads as neglect on a debt. On a birthday card with no
+      // date it only means there is nothing stopping you sending it.
+      when: r.kind === 'goodwill' && r.days === null ? 'whenever you like' : whenWords(r.days),
     }));
 
     return res.status(200).json({
@@ -180,7 +274,11 @@ const getReminders = async (req, res) => {
           today: withMessage.filter((r) => r.days === 0).length,
           no_number: withMessage.filter((r) => !r.can_message).length,
           owed: Number(withMessage.reduce((t, r) => t + (r.amount || 0), 0).toFixed(2)),
+          // Nobody has heard from us in a month — the people a check-up is for.
+          out_of_touch: withMessage.filter((r) => !r.last_contacted
+            || Date.now() - new Date(r.last_contacted).getTime() > 30 * 86400000).length,
         },
+        kind,
         within,
       },
     });
@@ -193,7 +291,10 @@ const getReminders = async (req, res) => {
 /** POST /api/reminders — something to remember that the system could not know. */
 const createReminder = async (req, res) => {
   try {
-    const { customer_name, customer_phone, about, message, due_date, amount } = req.body;
+    const {
+      customer_name, customer_phone, about, message, due_date, amount,
+      kind, purpose, yearly,
+    } = req.body;
 
     if (!customer_name || !String(customer_name).trim()) {
       return res.status(400).json({ success: false, message: "Enter the customer's name." });
@@ -205,20 +306,42 @@ const createReminder = async (req, res) => {
       return res.status(400).json({ success: false, message: 'What is the reminder about?' });
     }
 
+    const isGoodwill = kind === 'goodwill';
+    const how = ['wish', 'note', 'checkup'].includes(purpose) ? purpose : 'note';
+
+    // A yearly date with no date is nothing to repeat.
+    const when = due_date ? new Date(due_date) : undefined;
+    if (when && Number.isNaN(when.getTime())) {
+      return res.status(400).json({ success: false, message: 'That date did not make sense.' });
+    }
+    if (yearly && !when) {
+      return res.status(400).json({
+        success: false,
+        message: 'Set the date it falls on, or it cannot come round each year.',
+      });
+    }
+
     const record = await Reminder.create({
       customer_name: String(customer_name).trim(),
       customer_phone: String(customer_phone).trim(),
       about: String(about).trim(),
       message,
-      due_date: due_date ? new Date(due_date) : undefined,
-      amount: Math.max(0, Number(amount) || 0),
+      due_date: when,
+      // Goodwill is not about money, so no amount rides along with it — an
+      // amount on a birthday card is how a kind message turns into a demand.
+      amount: isGoodwill ? 0 : Math.max(0, Number(amount) || 0),
+      kind: isGoodwill ? 'goodwill' : 'money',
+      purpose: isGoodwill ? how : undefined,
+      yearly: isGoodwill && !!yearly,
       source: 'custom',
       created_by: req.user._id,
     });
 
     return res.status(201).json({
       success: true,
-      message: `Reminder set for ${record.customer_name}.`,
+      message: isGoodwill
+        ? `Noted — ${record.customer_name} is on the keeping-in-touch list.`
+        : `Reminder set for ${record.customer_name}.`,
       data: record,
     });
   } catch (err) {
@@ -286,7 +409,11 @@ const updateReminder = async (req, res) => {
     if (!record) return res.status(404).json({ success: false, message: 'Reminder not found.' });
 
     const { status, about, message, due_date, amount } = req.body;
-    if (['pending', 'sent', 'done', 'cancelled'].includes(status)) record.status = status;
+    if (['pending', 'sent', 'done', 'cancelled'].includes(status)) {
+      // Finishing a birthday for ever is how a shop forgets it next year. It
+      // goes back to pending instead, and the date rolls forward on its own.
+      record.status = (status === 'done' && record.yearly) ? 'pending' : status;
+    }
     if (about !== undefined) record.about = about;
     if (message !== undefined) record.message = message;
     if (due_date !== undefined) record.due_date = due_date ? new Date(due_date) : undefined;

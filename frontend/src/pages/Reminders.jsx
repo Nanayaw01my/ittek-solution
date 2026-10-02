@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import {
   FiBell, FiPlus, FiMessageCircle, FiCopy, FiPhone, FiCheck, FiTrash2, FiAlertCircle,
+  FiHeart, FiGift, FiRepeat,
 } from 'react-icons/fi'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -22,6 +23,14 @@ const SOURCE_LABELS = {
   credit: 'Credit agreement',
   phone_credit: 'Phone credit',
   custom: 'Reminder',
+}
+
+const PURPOSE_LABELS = { wish: 'Good wishes', note: 'A word', checkup: 'Check-up' }
+
+const PURPOSE_STYLES = {
+  wish: 'bg-pink-100 text-pink-700',
+  note: 'bg-sky-100 text-sky-700',
+  checkup: 'bg-emerald-100 text-emerald-700',
 }
 
 const SOURCE_STYLES = {
@@ -50,21 +59,48 @@ const whatsAppLink = (phone, message) => {
     : `https://web.whatsapp.com/send?phone=${msisdn}&text=${text}`
 }
 
-function NewReminderModal({ onClose }) {
+/** What a goodwill message is for, and the words that go with each. */
+const PURPOSES = [
+  {
+    key: 'wish', label: 'Wish them well', icon: FiGift,
+    hint: 'A birthday, a festival, a congratulations.',
+    placeholder: 'e.g. Happy Birthday, or Merry Christmas',
+  },
+  {
+    key: 'note', label: 'Tell them something', icon: FiBell,
+    hint: 'Anything that is not money — a visit, a part that has come in.',
+    placeholder: 'e.g. the installation visit on Friday',
+  },
+  {
+    key: 'checkup', label: 'Check up on them', icon: FiHeart,
+    hint: 'How is it working? Anything needing attention?',
+    placeholder: 'e.g. the 300W panels fitted last month',
+  },
+]
+
+function NewReminderModal({ onClose, kind = 'money' }) {
   const queryClient = useQueryClient()
+  const goodwill = kind === 'goodwill'
   const [form, setForm] = useState({
     customer_name: '', customer_phone: '', about: '', due_date: '', amount: '',
   })
+  const [purpose, setPurpose] = useState('wish')
+  const [yearly, setYearly] = useState(false)
   const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }))
+  const chosen = PURPOSES.find((p) => p.key === purpose) || PURPOSES[0]
 
   const save = useMutation({
     mutationFn: () => createReminder({
       ...form,
-      amount: form.amount === '' ? 0 : Number(form.amount),
+      kind,
+      ...(goodwill ? { purpose, yearly } : {}),
+      amount: goodwill || form.amount === '' ? 0 : Number(form.amount),
       due_date: form.due_date || undefined,
     }),
     onSuccess: (res) => {
-      toast.success(`Reminder set for ${res.data.customer_name}.`)
+      toast.success(goodwill
+        ? `${res.data.customer_name} is on the keeping-in-touch list.`
+        : `Reminder set for ${res.data.customer_name}.`)
       queryClient.invalidateQueries({ queryKey: ['reminders'] })
       onClose()
     },
@@ -73,12 +109,37 @@ function NewReminderModal({ onClose }) {
 
   const numberOk = !form.customer_phone || !!normaliseGhanaPhone(form.customer_phone)
   const ready = form.customer_name.trim() && form.customer_phone.trim()
-    && form.about.trim() && numberOk
+    && form.about.trim() && numberOk && (!yearly || form.due_date)
   const field = 'w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400'
 
   return (
-    <Modal isOpen onClose={onClose} title="Remind a customer" size="md">
+    <Modal isOpen onClose={onClose} title={goodwill ? 'Keep in touch' : 'Remind a customer'} size="md">
       <div className="p-5 space-y-4">
+        {goodwill && (
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">What is this for?</label>
+            <div className="grid grid-cols-3 gap-2">
+              {PURPOSES.map((p) => {
+                const Icon = p.icon
+                return (
+                  <button
+                    key={p.key}
+                    onClick={() => setPurpose(p.key)}
+                    className={`px-2 py-2.5 rounded-xl border text-[11px] font-bold flex flex-col items-center gap-1 transition-colors ${
+                      purpose === p.key
+                        ? 'bg-orange-500 border-orange-500 text-white'
+                        : 'bg-white border-gray-200 text-gray-600 hover:bg-orange-50'
+                    }`}
+                  >
+                    <Icon size={15} />
+                    {p.label}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] text-gray-500">{chosen.hint}</p>
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Customer *</label>
@@ -98,30 +159,56 @@ function NewReminderModal({ onClose }) {
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">What about *</label>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            {goodwill ? 'What to say *' : 'What about *'}
+          </label>
           <input value={form.about} onChange={set('about')}
-            placeholder="e.g. balance on the inverter, or the installation visit"
+            placeholder={goodwill ? chosen.placeholder : 'e.g. balance on the inverter'}
             className={field} />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
+          {!goodwill && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                Amount <span className="font-normal text-gray-400">— if money is owed</span>
+              </label>
+              <input type="number" step="0.01" min="0" value={form.amount}
+                onChange={set('amount')} placeholder="0.00" className={field} />
+            </div>
+          )}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">
-              Amount <span className="font-normal text-gray-400">— if money is owed</span>
+              {goodwill ? 'On what day' : 'Remind on'}
+              {goodwill && <span className="font-normal text-gray-400"> — optional</span>}
             </label>
-            <input type="number" step="0.01" min="0" value={form.amount}
-              onChange={set('amount')} placeholder="0.00" className={field} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Remind on</label>
             <input type="date" value={form.due_date} onChange={set('due_date')} className={field} />
           </div>
         </div>
 
-        <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-xl p-3">
-          Debts, layaways, credit agreements and phone instalments appear here on their
-          own — you do not need to add those. This is for anything else.
-        </p>
+        {goodwill && purpose === 'wish' && (
+          <label className="flex items-start gap-2.5 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3 cursor-pointer">
+            <input type="checkbox" checked={yearly} onChange={(e) => setYearly(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-orange-500" />
+            <span>
+              <span className="font-bold">Every year</span> — a birthday is not finished once
+              it has been wished. Sending it keeps it on the list for next year rather than
+              closing it.
+              {yearly && !form.due_date && (
+                <span className="block mt-1 font-semibold text-amber-700">
+                  Set the day it falls on, or there is nothing to come round.
+                </span>
+              )}
+            </span>
+          </label>
+        )}
+
+        {!goodwill && (
+          <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-xl p-3">
+            Debts, layaways, credit agreements and phone instalments appear here on their
+            own — you do not need to add those. This is for anything else.
+          </p>
+        )}
 
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl font-semibold text-sm">
@@ -129,7 +216,7 @@ function NewReminderModal({ onClose }) {
           </button>
           <button onClick={() => save.mutate()} disabled={!ready || save.isPending}
             className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
-            {save.isPending ? 'Saving…' : 'Set the reminder'}
+            {save.isPending ? 'Saving…' : goodwill ? 'Add to the list' : 'Set the reminder'}
           </button>
         </div>
       </div>
@@ -139,14 +226,18 @@ function NewReminderModal({ onClose }) {
 
 export default function Reminders() {
   const queryClient = useQueryClient()
+  // Chasing money and keeping in touch are two jobs. Together, the kind thing
+  // gets lost among the debts and never gets done.
+  const [kind, setKind] = useState('money')
+  const goodwill = kind === 'goodwill'
   const [within, setWithin] = useState(7)
   const [adding, setAdding] = useState(false)
   const [deleting, setDeleting] = useState(null)
   const [reading, setReading] = useState(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['reminders', within],
-    queryFn: () => getReminders({ within }).then((r) => r.data),
+    queryKey: ['reminders', kind, within],
+    queryFn: () => getReminders({ kind, within }).then((r) => r.data),
   })
 
   const rows = data?.reminders || []
@@ -208,45 +299,88 @@ export default function Reminders() {
     <div className="space-y-5">
       <PageHeader
         title="Reminders"
-        subtitle="Who to chase, and what to say to them"
+        subtitle={goodwill
+          ? 'Customers worth a word that is not about money'
+          : 'Who to chase, and what to say to them'}
         action={
           <div className="flex items-center gap-2">
             <RefreshButton keys={['reminders']} />
             <button onClick={() => setAdding(true)}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm">
-              <FiPlus /> Remind someone
+              <FiPlus /> {goodwill ? 'Keep in touch' : 'Remind someone'}
             </button>
           </div>
         }
       />
 
+      {/* The two lists. Full width and large enough to hit on a phone, since
+          this is the control the whole screen hangs off. */}
+      <div className="grid grid-cols-2 gap-2 bg-gray-100 p-1 rounded-2xl">
+        {[
+          { key: 'money', label: 'Money owed', sub: 'Debts and instalments', icon: FiAlertCircle },
+          { key: 'goodwill', label: 'Keeping in touch', sub: 'Wishes and check-ups', icon: FiHeart },
+        ].map((t) => {
+          const Icon = t.icon
+          const on = kind === t.key
+          return (
+            <button
+              key={t.key}
+              onClick={() => { setKind(t.key); setWithin(t.key === 'goodwill' ? 30 : 7) }}
+              className={`px-3 py-2.5 rounded-xl text-left transition-colors ${
+                on ? 'bg-white shadow-sm' : 'hover:bg-gray-50'
+              }`}
+            >
+              <span className={`flex items-center gap-1.5 text-sm font-bold ${
+                on ? 'text-gray-900' : 'text-gray-500'
+              }`}>
+                <Icon size={14} className={on ? 'text-orange-500' : ''} />
+                {t.label}
+              </span>
+              <span className="block text-[11px] text-gray-400">{t.sub}</span>
+            </button>
+          )
+        })}
+      </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white border border-gray-100 rounded-2xl p-4">
-          <p className="text-[11px] text-gray-500">To chase</p>
+          <p className="text-[11px] text-gray-500">{goodwill ? 'On the list' : 'To chase'}</p>
           <p className="text-xl font-black text-gray-900">{summary.total || 0}</p>
         </div>
         <div className="bg-white border border-gray-100 rounded-2xl p-4">
-          <p className="text-[11px] text-gray-500">Overdue</p>
-          <p className="text-xl font-black text-red-600">{summary.overdue || 0}</p>
+          <p className="text-[11px] text-gray-500">{goodwill ? 'Past their day' : 'Overdue'}</p>
+          <p className={`text-xl font-black ${goodwill ? 'text-amber-600' : 'text-red-600'}`}>
+            {summary.overdue || 0}
+          </p>
         </div>
         <div className="bg-white border border-gray-100 rounded-2xl p-4">
-          <p className="text-[11px] text-gray-500">Due today</p>
+          <p className="text-[11px] text-gray-500">{goodwill ? 'Today' : 'Due today'}</p>
           <p className="text-xl font-black text-amber-600">{summary.today || 0}</p>
         </div>
         <div className="bg-white border border-gray-100 rounded-2xl p-4">
-          <p className="text-[11px] text-gray-500">Owed in total</p>
-          <p className="text-xl font-black text-orange-600">{formatCurrency(summary.owed || 0)}</p>
+          <p className="text-[11px] text-gray-500">
+            {goodwill ? 'Not heard from in a month' : 'Owed in total'}
+          </p>
+          <p className="text-xl font-black text-orange-600">
+            {goodwill ? (summary.out_of_touch || 0) : formatCurrency(summary.owed || 0)}
+          </p>
         </div>
       </div>
 
       <div className="flex items-center gap-2 text-sm">
-        <span className="text-xs font-semibold text-gray-600">Showing what is due within</span>
+        <span className="text-xs font-semibold text-gray-600">
+          {goodwill ? 'Showing what comes up within' : 'Showing what is due within'}
+        </span>
         <select value={within} onChange={(e) => setWithin(Number(e.target.value))}
           className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white">
           <option value={0}>today</option>
           <option value={3}>3 days</option>
           <option value={7}>a week</option>
           <option value={30}>a month</option>
+          {/* A birthday is next March. Without a year's view most wishes
+              would sit out of sight for most of the year. */}
+          {goodwill && <option value={90}>3 months</option>}
+          {goodwill && <option value={366}>the year ahead</option>}
         </select>
       </div>
 
@@ -260,8 +394,13 @@ export default function Reminders() {
 
       {isLoading ? <LoadingSpinner /> : rows.length === 0 ? (
         <div className="bg-white border border-gray-100 rounded-2xl p-10 text-center">
-          <FiBell className="mx-auto text-gray-300" size={34} />
-          <p className="mt-2 text-sm text-gray-500">Nobody to chase. Everything is settled.</p>
+          {goodwill ? <FiHeart className="mx-auto text-gray-300" size={34} />
+            : <FiBell className="mx-auto text-gray-300" size={34} />}
+          <p className="mt-2 text-sm text-gray-500">
+            {goodwill
+              ? 'Nobody on the list yet. Add a birthday, or someone worth checking up on.'
+              : 'Nobody to chase. Everything is settled.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -271,9 +410,20 @@ export default function Reminders() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-black text-gray-900">{r.customer_name}</p>
-                    <span className={`px-2 py-0.5 text-[11px] font-bold rounded-full ${SOURCE_STYLES[r.source]}`}>
-                      {SOURCE_LABELS[r.source]}
+                    <span className={`px-2 py-0.5 text-[11px] font-bold rounded-full ${
+                      r.kind === 'goodwill'
+                        ? PURPOSE_STYLES[r.purpose] || PURPOSE_STYLES.note
+                        : SOURCE_STYLES[r.source]
+                    }`}>
+                      {r.kind === 'goodwill'
+                        ? PURPOSE_LABELS[r.purpose] || PURPOSE_LABELS.note
+                        : SOURCE_LABELS[r.source]}
                     </span>
+                    {r.yearly && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-400">
+                        <FiRepeat size={10} /> every year
+                      </span>
+                    )}
                     <span className={`text-[11px] font-bold ${
                       r.days !== null && r.days < 0 ? 'text-red-600'
                         : r.days === 0 ? 'text-amber-600' : 'text-gray-500'
@@ -335,7 +485,7 @@ export default function Reminders() {
         </div>
       )}
 
-      {adding && <NewReminderModal onClose={() => setAdding(false)} />}
+      {adding && <NewReminderModal kind={kind} onClose={() => setAdding(false)} />}
 
       {/* Where the clipboard is blocked, the words are shown to copy by hand. */}
       {reading && (
