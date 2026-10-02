@@ -98,6 +98,8 @@ const EVENTS = {
   CLAIM_WARRANTY: ['recorded a warranty claim', 'low'],
   DELETE_WARRANTY: ['deleted a warranty', 'high'],
   CREATE_REMINDER: ['set a customer reminder', 'low'],
+  UPDATE_CONTACT: ['changed a customer contact', 'low'],
+  BACKFILL_CONTACTS: ['gathered past customers into the contact book', 'high'],
   SEND_REMINDER: ['reminded a customer', 'low'],
   DELETE_REMINDER: ['deleted a reminder', 'low'],
   CREATE_STOCK_REQUEST: ['requested stock', 'low'],

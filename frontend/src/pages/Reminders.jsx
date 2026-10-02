@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import {
   FiBell, FiPlus, FiMessageCircle, FiCopy, FiPhone, FiCheck, FiTrash2, FiAlertCircle,
-  FiHeart, FiGift, FiRepeat, FiSend, FiZap,
+  FiHeart, FiGift, FiRepeat, FiSend, FiZap, FiUsers, FiSearch, FiDownloadCloud,
 } from 'react-icons/fi'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -18,6 +18,7 @@ import {
   sendReminderSms,
 } from '../api/reminders'
 import { getSmsBalance } from '../api/settings'
+import { getContacts, backfillContacts } from '../api/contacts'
 
 const SOURCE_LABELS = {
   debt: 'Debt',
@@ -226,6 +227,178 @@ function NewReminderModal({ onClose, kind = 'money' }) {
   )
 }
 
+
+/**
+ * Wishing a lot of customers at once, from the shop's own contact book.
+ *
+ * Every number typed at the till is already saved, so the list of people
+ * worth a word at Christmas is a list the shop already has — it just had no
+ * way to look at it or send to it. Writing forty reminders by hand to send
+ * forty wishes is not a thing anybody would do, so the message is written
+ * once here and goes to everyone ticked.
+ */
+function WishManyModal({ onClose, onSent }) {
+  const queryClient = useQueryClient()
+  const [q, setQ] = useState('')
+  const [sort, setSort] = useState('last_seen')
+  const [picked, setPicked] = useState({})
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['contacts', q, sort],
+    queryFn: () => getContacts({ q: q || undefined, sort, contactable: 1, limit: 200 })
+      .then((r) => r.data),
+  })
+  const contacts = data?.contacts || []
+  const chosen = contacts.filter((c) => picked[c._id])
+
+  const fill = useMutation({
+    mutationFn: backfillContacts,
+    onSuccess: (res) => {
+      toast.success(res.data?.message || 'Done.', { duration: 7000 })
+      queryClient.invalidateQueries({ queryKey: ['contacts'] })
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not do it'),
+  })
+
+  const send = async () => {
+    const body = text.trim()
+    if (!body) { toast.error('Write the message first.'); return }
+    if (chosen.length === 0) { toast.error('Tick at least one customer.'); return }
+    setSending(true)
+    try {
+      const res = await sendReminderSms({
+        messages: chosen.map((c) => ({
+          customer_name: c.name || 'Customer',
+          customer_phone: c.phone,
+          about: body.slice(0, 60),
+          kind: 'goodwill',
+          purpose: 'wish',
+          // Addressed by name where the shop knows it, so forty people do not
+          // all get the same anonymous block of text.
+          message: c.name ? `Good day ${c.name.split(' ')[0]},\n\n${body}` : body,
+        })),
+      })
+      const { sent = 0, failed = 0, results = [] } = res.data || {}
+      if (sent > 0) toast.success(`Sent to ${sent}${failed ? `, ${failed} did not go` : ''}.`)
+      results.filter((x) => !x.ok).slice(0, 4).forEach((x) => {
+        toast.error(`${x.customer_name}: ${x.message}`, { duration: 7000 })
+      })
+      onSent()
+      if (sent > 0) onClose()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not send.', { duration: 8000 })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const field = 'w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400'
+
+  return (
+    <Modal isOpen onClose={onClose} title="Wish your customers" size="lg">
+      <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">The message *</label>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3}
+            placeholder="e.g. Wishing you and your family a merry Christmas from all of us at DAN & DOR SOLAR."
+            className={`${field} resize-none`} />
+          <p className="mt-1 text-[11px] text-gray-400">
+            Each person is greeted by name where we know it.
+            {text.length > 160 && ` · ${Math.ceil(text.length / 153)} credits each at this length`}
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <FiSearch size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={q} onChange={(e) => setQ(e.target.value)}
+              placeholder="Search a name or number" className={`${field} pl-9`} />
+          </div>
+          <select value={sort} onChange={(e) => setSort(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white">
+            <option value="last_seen">Seen most recently</option>
+            <option value="visits">Most visits</option>
+            <option value="spent">Biggest spenders</option>
+            <option value="name">By name</option>
+          </select>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-gray-500">
+            <span className="font-bold text-gray-800">{chosen.length}</span> of {contacts.length} ticked
+          </p>
+          <div className="flex gap-2">
+            <button onClick={() => setPicked(Object.fromEntries(contacts.map((c) => [c._id, true])))}
+              className="text-xs font-bold text-orange-600 hover:underline">Tick all</button>
+            <button onClick={() => setPicked({})}
+              className="text-xs font-bold text-gray-500 hover:underline">Clear</button>
+          </div>
+        </div>
+
+        <div className="border border-gray-200 rounded-xl divide-y divide-gray-100 max-h-72 overflow-y-auto">
+          {isLoading && <p className="px-3 py-3 text-xs text-gray-400">Loading…</p>}
+          {!isLoading && contacts.length === 0 && (
+            <div className="px-3 py-5 text-center space-y-2">
+              <p className="text-xs text-gray-500">
+                {q ? 'Nobody matches that.' : 'The book is empty.'}
+              </p>
+              {!q && (
+                <>
+                  <p className="text-[11px] text-gray-400">
+                    Numbers typed at the till are saved from now on. Past sales can be
+                    gathered in too.
+                  </p>
+                  <button onClick={() => fill.mutate()} disabled={fill.isPending}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                    <FiDownloadCloud size={12} />
+                    {fill.isPending ? 'Gathering…' : 'Gather past customers'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {contacts.map((c) => (
+            <label key={c._id} className="flex items-center gap-3 px-3 py-2 hover:bg-orange-50 cursor-pointer">
+              <input type="checkbox" checked={!!picked[c._id]}
+                onChange={(e) => setPicked((p) => ({ ...p, [c._id]: e.target.checked }))}
+                className="w-4 h-4 accent-orange-500 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-gray-800 truncate">
+                  {c.name || 'No name'}
+                </p>
+                <p className="text-[11px] text-gray-500 font-mono">{c.phone}</p>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="text-[11px] text-gray-500">
+                  {c.visits} visit{c.visits === 1 ? '' : 's'}
+                </p>
+                <p className="text-[11px] font-bold text-gray-700">{formatCurrency(c.total_spent || 0)}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl font-semibold text-sm">
+            Cancel
+          </button>
+          <button onClick={send} disabled={sending || chosen.length === 0 || !text.trim()}
+            className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 inline-flex items-center justify-center gap-1.5">
+            <FiSend size={14} />
+            {sending ? 'Sending…' : `Send to ${chosen.length}`}
+          </button>
+        </div>
+
+        <p className="text-[11px] text-gray-400">
+          Anyone who asked not to be messaged is left out of this list entirely.
+        </p>
+      </div>
+    </Modal>
+  )
+}
+
 export default function Reminders() {
   const queryClient = useQueryClient()
   // Chasing money and keeping in touch are two jobs. Together, the kind thing
@@ -234,6 +407,7 @@ export default function Reminders() {
   const goodwill = kind === 'goodwill'
   const [within, setWithin] = useState(7)
   const [adding, setAdding] = useState(false)
+  const [wishing, setWishing] = useState(false)
   const [deleting, setDeleting] = useState(null)
   const [reading, setReading] = useState(null)
 
@@ -362,6 +536,12 @@ export default function Reminders() {
         action={
           <div className="flex items-center gap-2">
             <RefreshButton keys={['reminders']} />
+            {goodwill && (
+              <button onClick={() => setWishing(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-bold text-sm">
+                <FiUsers size={15} /> Wish customers
+              </button>
+            )}
             <button onClick={() => setAdding(true)}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm">
               <FiPlus /> {goodwill ? 'Keep in touch' : 'Remind someone'}
@@ -572,6 +752,15 @@ export default function Reminders() {
       )}
 
       {adding && <NewReminderModal kind={kind} onClose={() => setAdding(false)} />}
+      {wishing && (
+        <WishManyModal
+          onClose={() => setWishing(false)}
+          onSent={() => {
+            queryClient.invalidateQueries({ queryKey: ['reminders'] })
+            queryClient.invalidateQueries({ queryKey: ['sms-balance'] })
+          }}
+        />
+      )}
 
       {/* Where the clipboard is blocked, the words are shown to copy by hand. */}
       {reading && (

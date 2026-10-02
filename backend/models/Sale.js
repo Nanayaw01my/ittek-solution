@@ -258,6 +258,51 @@ SaleSchema.pre('validate', async function assignReceiptBarcode() {
   }
 });
 
+/**
+ * Remember whoever left a number.
+ *
+ * On the sale rather than in the till code, for the same reason the receipt
+ * barcode is: there are a dozen ways a sale gets written — the counter, a
+ * short payment, a queued offline sale syncing, a quotation accepted — and a
+ * contact book that depends on each of them remembering is a contact book
+ * with holes in it.
+ *
+ * post('save') and not pre: a customer is only worth recording once the sale
+ * they came from is actually on the books. It also runs detached, because
+ * nothing about a contact is worth failing a sale over.
+ */
+SaleSchema.post('save', function rememberCustomer(doc) {
+  if (!doc?.customer_phone) return;
+  setImmediate(async () => {
+    try {
+      const { normaliseGhanaPhone } = require('../utils/phone');
+      const phone = normaliseGhanaPhone(doc.customer_phone);
+      // Not a number anybody could be messaged on, so not worth a row.
+      if (!phone) return;
+
+      const Contact = require('./Contact');
+      const name = String(doc.customer_name || '').trim();
+      const when = doc.sale_date || new Date();
+      const spent = Number(doc.total_amount) || 0;
+
+      await Contact.findOneAndUpdate(
+        { phone },
+        {
+          $inc: { visits: 1, total_spent: spent },
+          $max: { last_seen: when },
+          $setOnInsert: { phone, first_seen: when },
+          // A fuller name replaces a blank one; a blank never replaces a name.
+          ...(name ? { $set: { name } } : {}),
+        },
+        { upsert: true, setDefaultsOnInsert: true }
+      );
+    } catch (err) {
+      // A sale is already written and must not be undone over a contact.
+      console.error('Remember customer failed:', err.message);
+    }
+  });
+});
+
 SaleSchema.index({ user_id: 1, sale_date: -1 });
 SaleSchema.index({ sale_date: -1 });
 SaleSchema.index({ invoice_no: 1 });

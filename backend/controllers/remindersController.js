@@ -439,6 +439,21 @@ const sendBySms = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Send at most 100 at a time.' });
     }
 
+    // Whoever has asked not to be messaged. Looked up once for the whole run
+    // rather than per message: the only decent answer to "stop texting me" is
+    // a switch that works, and it has to work on a list of forty as well as on
+    // a single send.
+    const Contact = require('../models/Contact');
+    const { normaliseGhanaPhone } = require('../utils/phone');
+    const numbers = items
+      .map((i) => normaliseGhanaPhone(i?.customer_phone))
+      .filter(Boolean);
+    const optedOut = new Set(
+      (await Contact.find({ phone: { $in: numbers }, do_not_contact: true })
+        .select('phone').lean().catch(() => []))
+        .map((c) => c.phone)
+    );
+
     const results = [];
     for (const item of items) {
       const { reminder_id, customer_name, customer_phone, about, amount, message } = item || {};
@@ -446,6 +461,14 @@ const sendBySms = async (req, res) => {
 
       if (!message || !String(message).trim()) {
         results.push({ reminder_id, customer_name: who, ok: false, message: 'There was nothing to send.' });
+        continue;
+      }
+
+      if (optedOut.has(normaliseGhanaPhone(customer_phone))) {
+        results.push({
+          reminder_id, customer_name: who, ok: false,
+          message: 'They asked not to be messaged.',
+        });
         continue;
       }
 
