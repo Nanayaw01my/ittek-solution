@@ -402,6 +402,108 @@ const logSend = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/reminders/send
+ *
+ * Actually send it, through Arkesel, and write down that it went.
+ *
+ * The WhatsApp button opens a chat with the words ready and trusts somebody
+ * to press send; the log then says a message was prepared, which is not the
+ * same as saying it arrived. This sends it outright, and only logs the ones
+ * the gateway accepted — a log that records failures as sends is worse than
+ * no log, because it is believed.
+ *
+ * Takes a list, because the thing a shop actually wants to do is chase
+ * everybody overdue at once. Each is reported on separately: a wrong number
+ * in the middle must not stop the rest.
+ */
+const sendBySms = async (req, res) => {
+  try {
+    const { smsCredentials } = require('./settingsController');
+    const { sendSms } = require('../utils/arkesel');
+
+    const { apiKey, sender, enabled } = await smsCredentials();
+    if (!enabled) {
+      return res.status(400).json({ success: false, message: 'Texting is switched off in Settings.' });
+    }
+    if (!apiKey || !sender) {
+      return res.status(400).json({
+        success: false,
+        message: 'Set the Arkesel key and sender ID in Settings before texting.',
+      });
+    }
+
+    const items = Array.isArray(req.body?.messages) ? req.body.messages : [req.body];
+    if (!items.length) return res.status(400).json({ success: false, message: 'Nothing to send.' });
+    if (items.length > 100) {
+      return res.status(400).json({ success: false, message: 'Send at most 100 at a time.' });
+    }
+
+    const results = [];
+    for (const item of items) {
+      const { reminder_id, customer_name, customer_phone, about, amount, message } = item || {};
+      const who = customer_name || 'Customer';
+
+      if (!message || !String(message).trim()) {
+        results.push({ reminder_id, customer_name: who, ok: false, message: 'There was nothing to send.' });
+        continue;
+      }
+
+      // One at a time rather than one call with every number: the gateway
+      // answers for the batch as a whole, and "some of them failed" is not an
+      // answer anybody can act on.
+      const sent = await sendSms({ apiKey, sender, to: customer_phone, message });
+      results.push({
+        reminder_id, customer_name: who, ok: sent.ok, message: sent.message, credits: sent.credits,
+      });
+      if (!sent.ok) continue;
+
+      // Only now is it true.
+      const send = { channel: 'sms', sent_at: new Date(), sent_by: req.user._id, note: 'Sent by Arkesel' };
+      try {
+        const existing = reminder_id ? await Reminder.findById(reminder_id).catch(() => null) : null;
+        if (existing) {
+          existing.sends.push(send);
+          existing.status = 'sent';
+          await existing.save();
+        } else if (customer_phone) {
+          await Reminder.create({
+            customer_name: who,
+            customer_phone,
+            about: about || 'reminder',
+            amount: Math.max(0, Number(amount) || 0),
+            kind: item.kind === 'goodwill' ? 'goodwill' : 'money',
+            purpose: ['wish', 'note', 'checkup'].includes(item.purpose) ? item.purpose : undefined,
+            source: 'custom',
+            status: 'sent',
+            sends: [send],
+            created_by: req.user._id,
+          });
+        }
+      } catch (logErr) {
+        // The message is gone and cannot be unsent. Say so rather than
+        // reporting a failure that would have somebody send it twice.
+        console.error('Logged send failed for', who, '-', logErr.message);
+      }
+    }
+
+    const sent = results.filter((r) => r.ok).length;
+    const failed = results.length - sent;
+    return res.status(200).json({
+      success: sent > 0,
+      message: failed === 0
+        ? `Sent to ${sent}.`
+        : sent === 0
+          ? (results[0]?.message || 'None of them went.')
+          : `Sent to ${sent}. ${failed} did not go.`,
+      data: { sent, failed, results },
+    });
+  } catch (err) {
+    console.error('Send reminder SMS error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 /** PUT /api/reminders/:id — settle or cancel a hand-written one. */
 const updateReminder = async (req, res) => {
   try {
@@ -441,5 +543,6 @@ const deleteReminder = async (req, res) => {
 };
 
 module.exports = {
-  getReminders, createReminder, logSend, updateReminder, deleteReminder, composeMessage,
+  getReminders, createReminder, logSend, sendBySms, updateReminder, deleteReminder,
+  composeMessage, composeGoodwill,
 };

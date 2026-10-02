@@ -52,6 +52,25 @@ const SettingsSchema = new mongoose.Schema(
       smtp_pass: { type: String, select: false },
       from_email: { type: String },
     },
+    /**
+     * Sending an SMS for real, through Arkesel.
+     *
+     * The key is select:false and is never sent back to the browser — only
+     * whether one is set, and its last four characters, which is enough to
+     * tell one key from another without handing anybody a working one.
+     *
+     * Kept in settings rather than only in an environment variable because
+     * the person who buys the credits is the person who should be able to
+     * paste the key in, without a deploy.
+     */
+    sms_config: {
+      provider: { type: String, enum: ['arkesel'], default: 'arkesel' },
+      api_key: { type: String, select: false },
+      // Arkesel registers this and refuses anything longer than 11 characters.
+      sender_id: { type: String, trim: true, maxlength: 11 },
+      enabled: { type: Boolean, default: false },
+    },
+
     notification_settings: {
       large_sale_threshold: { type: Number, default: 5000 },
       expense_threshold: { type: Number, default: 1000 },

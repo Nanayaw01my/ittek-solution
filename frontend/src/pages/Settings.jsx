@@ -2,8 +2,8 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiSettings, FiBell, FiMail, FiSave, FiTrash2, FiAlertTriangle, FiX } from 'react-icons/fi'
-import { getSettings, updateSettings, testEmail } from '../api/settings'
+import { FiSettings, FiBell, FiMail, FiSave, FiTrash2, FiAlertTriangle, FiX, FiMessageSquare, FiSend, FiCheckCircle } from 'react-icons/fi'
+import { getSettings, updateSettings, testEmail, updateSmsConfig, testSms, getSmsBalance } from '../api/settings'
 import api from '../api/axios'
 import { clearAllOfflineData } from '../utils/offlineQueue'
 import useAuthStore from '../store/authStore'
@@ -11,7 +11,7 @@ import PageHeader from '../components/PageHeader'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ImageUpload from '../components/ImageUpload'
 
-const TABS = ['Company', 'Notifications', 'Email Config']
+const TABS = ['Company', 'Notifications', 'Text messages', 'Email Config']
 
 /**
  * The API speaks snake_case; these forms were written in camelCase, so every
@@ -253,6 +253,149 @@ function NotificationsTab({ settings, onSave, loading }) {
   )
 }
 
+
+/**
+ * Arkesel: the key, the sender ID, and proof that it works.
+ *
+ * The key is never sent to this screen — only whether one is set and its last
+ * four characters — so the box is left blank to keep the key that is there
+ * and filled in only to replace it. A blank box on save would otherwise wipe
+ * a working key every time the sender ID was touched.
+ */
+function SmsConfigTab({ settings }) {
+  const queryClient = useQueryClient()
+  const cfg = settings?.sms_config || {}
+  const [apiKey, setApiKey] = useState('')
+  const [senderId, setSenderId] = useState(cfg.sender_id || '')
+  const [enabled, setEnabled] = useState(cfg.enabled !== false)
+  const [testNumber, setTestNumber] = useState('')
+
+  const { data: credits, refetch: refetchCredits, isFetching: checkingCredits } = useQuery({
+    queryKey: ['sms-balance'],
+    queryFn: () => getSmsBalance().then((r) => r.data),
+    retry: false,
+    enabled: !!cfg.api_key_set,
+  })
+
+  const save = useMutation({
+    mutationFn: () => updateSmsConfig({
+      api_key: apiKey.trim() || undefined,
+      sender_id: senderId,
+      enabled,
+    }),
+    onSuccess: () => {
+      toast.success('SMS settings saved.')
+      setApiKey('')
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['sms-balance'] })
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not save'),
+  })
+
+  const test = useMutation({
+    mutationFn: () => testSms(testNumber),
+    onSuccess: (res) => toast.success(res.data?.message || 'Sent.', { duration: 7000 }),
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not send', { duration: 9000 }),
+  })
+
+  const field = 'w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400'
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-5">
+      <div className="flex items-start gap-3">
+        <FiMessageSquare className="text-orange-500 mt-0.5 flex-shrink-0" size={18} />
+        <div>
+          <h3 className="font-black text-gray-900">Sending text messages</h3>
+          <p className="text-xs text-gray-500">
+            Reminders go out as real text messages through Arkesel, instead of
+            opening WhatsApp and trusting somebody to press send.
+          </p>
+        </div>
+      </div>
+
+      <label className="flex items-start gap-2.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3 cursor-pointer">
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)}
+          className="mt-0.5 w-4 h-4 accent-orange-500" />
+        <span>
+          <span className="font-bold">Texting is on</span>
+          <span className="block text-xs text-gray-500">
+            Turn this off to stop every Text button at once, without deleting the key.
+          </span>
+        </span>
+      </label>
+
+      <div>
+        <label className="block text-xs font-semibold text-gray-600 mb-1">
+          Arkesel API key
+          {cfg.api_key_set && (
+            <span className="ml-2 inline-flex items-center gap-1 font-normal text-green-700">
+              <FiCheckCircle size={11} /> set, ending {cfg.api_key_tail}
+            </span>
+          )}
+        </label>
+        <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+          placeholder={cfg.api_key_set ? 'Leave blank to keep the key you have' : 'Paste the key from your Arkesel dashboard'}
+          className={field} autoComplete="new-password" />
+        <p className="mt-1 text-[11px] text-gray-400">
+          Nobody can read it back out afterwards, including this screen.
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-gray-600 mb-1">
+          Sender ID <span className="font-normal text-gray-400">— what the customer sees it from</span>
+        </label>
+        <input value={senderId} onChange={(e) => setSenderId(e.target.value.slice(0, 11))}
+          placeholder="e.g. DANDOR" maxLength={11} className={field} />
+        <p className="mt-1 text-[11px] text-gray-400">
+          {senderId.length}/11 characters. It has to be one Arkesel has registered
+          for you, or every message is refused.
+        </p>
+      </div>
+
+      {cfg.api_key_set && (
+        <div className="flex items-center justify-between gap-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+          <div>
+            <p className="text-xs text-orange-700 font-semibold">Credits left</p>
+            <p className="text-xl font-black text-orange-600">
+              {checkingCredits ? '…' : credits?.balance ?? '—'}
+            </p>
+          </div>
+          <button onClick={() => refetchCredits()} disabled={checkingCredits}
+            className="px-3 py-1.5 text-xs font-bold text-orange-700 border border-orange-300 rounded-lg hover:bg-orange-100 disabled:opacity-50">
+            Check again
+          </button>
+        </div>
+      )}
+
+      <button onClick={() => save.mutate()} disabled={save.isPending}
+        className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded-xl font-bold text-sm inline-flex items-center justify-center gap-2">
+        <FiSave size={15} /> {save.isPending ? 'Saving…' : 'Save SMS settings'}
+      </button>
+
+      {/* A wrong key, an unregistered sender ID and an empty account all look
+          the same from the Reminders screen — nobody replies. This tells them
+          apart before a whole list is sent into nothing. */}
+      <div className="border-t border-gray-100 pt-5">
+        <label className="block text-xs font-semibold text-gray-600 mb-1">
+          Send a test message to a phone you are holding
+        </label>
+        <div className="flex gap-2">
+          <input value={testNumber} onChange={(e) => setTestNumber(e.target.value)}
+            placeholder="0244…" className={field} />
+          <button onClick={() => test.mutate()} disabled={!testNumber.trim() || test.isPending}
+            className="px-4 py-2.5 bg-gray-900 hover:bg-black disabled:opacity-40 text-white rounded-xl font-bold text-sm inline-flex items-center gap-1.5 flex-shrink-0">
+            <FiSend size={14} /> {test.isPending ? 'Sending…' : 'Test'}
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-gray-400">
+          Save the key first. This spends one credit.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function EmailConfigTab({ settings, onSave, loading }) {
   const { register, handleSubmit, getValues } = useForm({ defaultValues: settings })
   const [testing, setTesting] = useState(false)
@@ -346,7 +489,7 @@ export default function Settings() {
   })
 
   const isSuperAdmin = user?.role === 'Super Admin'
-  const tabs = isSuperAdmin ? TABS : TABS.slice(0, 2)
+  const tabs = isSuperAdmin ? TABS : TABS.slice(0, 3)
 
   const handleClearData = async () => {
     if (confirmText !== 'CLEAR') return
@@ -376,6 +519,7 @@ export default function Settings() {
   const tabComponents = [
     <CompanyTab key="company" settings={settings} onSave={d => updateMutation.mutate(d)} loading={updateMutation.isPending} />,
     <NotificationsTab key="notif" settings={settings} onSave={d => updateMutation.mutate(d)} loading={updateMutation.isPending} />,
+    <SmsConfigTab key="sms" settings={settings} />,
     <EmailConfigTab key="email" settings={settings} onSave={d => updateMutation.mutate(d)} loading={updateMutation.isPending} />,
   ]
 

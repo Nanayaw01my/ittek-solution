@@ -1,5 +1,6 @@
 const Settings = require('../models/Settings');
 const multer = require('multer');
+const { sendSms, smsBalance } = require('../utils/arkesel');
 const path = require('path');
 
 const CLEARABLE_MODELS = [
@@ -23,7 +24,20 @@ const getSettings = async (req, res) => {
         currency_symbol: 'GH₵',
       });
     }
-    return res.status(200).json({ success: true, data: settings });
+    // The SMS key is select:false, so it is already absent — but the screen
+    // still has to show whether one is set, and which. The last four
+    // characters tell one key from another without handing over a working one.
+    const withKey = await Settings.findById(settings._id).select('+sms_config.api_key').lean();
+    const key = withKey?.sms_config?.api_key || '';
+    const data = settings.toObject();
+    data.sms_config = {
+      ...(data.sms_config || {}),
+      api_key: undefined,
+      api_key_set: !!key,
+      api_key_tail: key ? key.slice(-4) : '',
+    };
+
+    return res.status(200).json({ success: true, data });
   } catch (err) {
     console.error('Get settings error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
@@ -94,6 +108,116 @@ const updateSettings = async (req, res) => {
     return res.status(200).json({ success: true, message: 'Settings updated.', data: settings });
   } catch (err) {
     console.error('Update settings error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * The key and sender in force, whichever way they were set.
+ *
+ * Settings win over the environment, so the person who buys the credits can
+ * change the key without a deploy — but an environment variable still works,
+ * which is how a fresh install sends anything before anybody has opened
+ * Settings at all.
+ */
+const smsCredentials = async () => {
+  const settings = await Settings.findOne().select('+sms_config.api_key').lean();
+  const cfg = settings?.sms_config || {};
+  return {
+    apiKey: cfg.api_key || process.env.ARKESEL_API_KEY || '',
+    sender: cfg.sender_id || process.env.ARKESEL_SENDER_ID || '',
+    enabled: cfg.enabled !== false,
+  };
+};
+
+/** PUT /api/settings/sms — the Arkesel key, sender ID and on/off switch. */
+const updateSmsConfig = async (req, res) => {
+  try {
+    const { api_key, sender_id, enabled } = req.body;
+
+    let settings = await Settings.findOne().select('+sms_config.api_key');
+    if (!settings) settings = new Settings();
+
+    const next = { ...(settings.sms_config?.toObject?.() || settings.sms_config || {}) };
+
+    // An empty key means "leave it alone", not "delete it" — the screen never
+    // receives the key, so it cannot send it back, and a blank box on save
+    // would wipe a working key every time anything else was changed.
+    if (typeof api_key === 'string' && api_key.trim()) next.api_key = api_key.trim();
+
+    if (typeof sender_id === 'string') {
+      const id = sender_id.trim();
+      if (id.length > 11) {
+        return res.status(400).json({
+          success: false,
+          message: 'Arkesel allows at most 11 characters in a sender ID.',
+        });
+      }
+      next.sender_id = id;
+    }
+    if (typeof enabled === 'boolean') next.enabled = enabled;
+    next.provider = 'arkesel';
+
+    settings.sms_config = next;
+    settings.updated_at = new Date();
+    settings.updated_by = req.user._id;
+    await settings.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'SMS settings saved.',
+      data: {
+        provider: 'arkesel',
+        sender_id: next.sender_id || '',
+        enabled: next.enabled !== false,
+        api_key_set: !!next.api_key,
+        api_key_tail: next.api_key ? String(next.api_key).slice(-4) : '',
+      },
+    });
+  } catch (err) {
+    console.error('Update SMS config error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * POST /api/settings/sms/test — send one message to a number you can check.
+ *
+ * Worth its own button: a key that is wrong, a sender ID that was never
+ * registered and an account with no credit all look identical from the
+ * Reminders screen, where the only sign is that nobody replies.
+ */
+const testSms = async (req, res) => {
+  try {
+    const { to } = req.body;
+    if (!to) return res.status(400).json({ success: false, message: 'Which number should it go to?' });
+
+    const { apiKey, sender } = await smsCredentials();
+    const settings = await Settings.findOne().select('company_name').lean();
+    const result = await sendSms({
+      apiKey,
+      sender,
+      to,
+      message: `Test message from ${settings?.company_name || 'your shop'}. If you are reading this, SMS is working.`,
+    });
+
+    if (!result.ok) return res.status(400).json({ success: false, message: result.message });
+    return res.status(200).json({ success: true, message: `Sent to ${result.to}. Check the phone.` });
+  } catch (err) {
+    console.error('Test SMS error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/** GET /api/settings/sms/balance — credits left, before a run of reminders. */
+const getSmsBalance = async (req, res) => {
+  try {
+    const { apiKey } = await smsCredentials();
+    const result = await smsBalance({ apiKey });
+    if (!result.ok) return res.status(400).json({ success: false, message: result.message });
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    console.error('SMS balance error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -191,4 +315,7 @@ const clearAllData = async (req, res) => {
   }
 };
 
-module.exports = { getSettings, updateSettings, updateEmailConfig, uploadLogo, clearAllData };
+module.exports = {
+  getSettings, updateSettings, updateEmailConfig, uploadLogo, clearAllData,
+  updateSmsConfig, testSms, getSmsBalance, smsCredentials,
+};

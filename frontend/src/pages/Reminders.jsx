@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import {
   FiBell, FiPlus, FiMessageCircle, FiCopy, FiPhone, FiCheck, FiTrash2, FiAlertCircle,
-  FiHeart, FiGift, FiRepeat,
+  FiHeart, FiGift, FiRepeat, FiSend, FiZap,
 } from 'react-icons/fi'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -15,7 +15,9 @@ import { formatCurrency } from '../utils/helpers'
 import { normaliseGhanaPhone } from '../utils/phone'
 import {
   getReminders, createReminder, logReminderSent, deleteReminder, updateReminder,
+  sendReminderSms,
 } from '../api/reminders'
+import { getSmsBalance } from '../api/settings'
 
 const SOURCE_LABELS = {
   debt: 'Debt',
@@ -268,6 +270,61 @@ export default function Reminders() {
     },
   })
 
+  /**
+   * Text them, through Arkesel.
+   *
+   * The WhatsApp button below opens a chat and trusts somebody to press send.
+   * This actually sends, and the log afterwards says what arrived rather than
+   * what was prepared.
+   */
+  const [texting, setTexting] = useState(false)
+  const [textingAll, setTextingAll] = useState(false)
+
+  const { data: credits } = useQuery({
+    queryKey: ['sms-balance'],
+    queryFn: () => getSmsBalance().then((r) => r.data).catch(() => null),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const textThem = async (list) => {
+    const able = list.filter((r) => r.can_message)
+    if (able.length === 0) {
+      toast.error('None of these have a number we can text.')
+      return
+    }
+    const many = able.length > 1
+    if (many) setTextingAll(true); else setTexting(able[0]._id)
+    try {
+      const res = await sendReminderSms({
+        messages: able.map((r) => ({
+          reminder_id: r.is_custom ? r._id : undefined,
+          customer_name: r.customer_name,
+          customer_phone: r.customer_phone,
+          about: r.about,
+          amount: r.amount,
+          kind: r.kind,
+          purpose: r.purpose,
+          message: r.message,
+        })),
+      })
+      const { sent = 0, failed = 0, results = [] } = res.data || {}
+      if (sent > 0) toast.success(`Texted ${sent}${failed ? `, ${failed} did not go` : ''}.`)
+      // Name the ones that failed — "3 did not go" without saying who is
+      // something nobody can act on.
+      results.filter((x) => !x.ok).slice(0, 4).forEach((x) => {
+        toast.error(`${x.customer_name}: ${x.message}`, { duration: 7000 })
+      })
+      queryClient.invalidateQueries({ queryKey: ['reminders'] })
+      queryClient.invalidateQueries({ queryKey: ['sms-balance'] })
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not send.', { duration: 8000 })
+    } finally {
+      setTexting(false)
+      setTextingAll(false)
+    }
+  }
+
   /** Open the chat with the words ready, then write down that we did. */
   const send = (r) => {
     const link = whatsAppLink(r.customer_phone, r.message)
@@ -367,6 +424,29 @@ export default function Reminders() {
         </div>
       </div>
 
+      {rows.some((r) => r.can_message) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-gray-100 rounded-2xl px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-900">
+              Text everybody on this list
+            </p>
+            <p className="text-[11px] text-gray-500">
+              {rows.filter((r) => r.can_message).length} with a number
+              {rows.length - rows.filter((r) => r.can_message).length > 0
+                && ` · ${rows.length - rows.filter((r) => r.can_message).length} have none`}
+              {credits?.balance != null && ` · ${credits.balance} credits left`}
+            </p>
+          </div>
+          <button
+            onClick={() => textThem(rows)}
+            disabled={textingAll}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded-xl font-bold text-sm flex-shrink-0"
+          >
+            <FiZap size={14} /> {textingAll ? 'Sending…' : 'Text them all'}
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 text-sm">
         <span className="text-xs font-semibold text-gray-600">
           {goodwill ? 'Showing what comes up within' : 'Showing what is due within'}
@@ -460,6 +540,12 @@ export default function Reminders() {
                         <FiPhone size={14} />
                       </a>
                     )}
+                    <button onClick={() => textThem([r])}
+                      disabled={!r.can_message || texting === r._id || textingAll}
+                      title="Send it as a text message now"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-orange-500 rounded-lg hover:bg-orange-600 disabled:opacity-40">
+                      <FiSend size={13} /> {texting === r._id ? 'Sending…' : 'Text'}
+                    </button>
                     <button onClick={() => send(r)} disabled={!r.can_message}
                       className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-40">
                       <FiMessageCircle size={13} /> WhatsApp

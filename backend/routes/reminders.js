@@ -4,7 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
-  getReminders, createReminder, logSend, updateReminder, deleteReminder,
+  getReminders, createReminder, logSend, sendBySms, updateReminder, deleteReminder,
 } = require('../controllers/remindersController');
 
 // Chasing what a customer owes shows what every customer owes, so it sits
@@ -15,6 +15,7 @@ router.get('/', getReminders);
 router.post('/', auditLog('CREATE_REMINDER', (req) => ({
   customer: req.body.customer_name, about: req.body.about,
 })), createReminder);
+router.post('/send', auditLog('SEND_SMS'), sendBySms);
 router.post('/sent', auditLog('SEND_REMINDER', (req) => ({
   customer: req.body.customer_name, channel: req.body.channel,
 })), logSend);

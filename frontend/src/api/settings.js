@@ -3,6 +3,11 @@ import api from './axios'
 export const getSettings = () => api.get('/settings')
 export const updateSettings = (data) => api.put('/settings', data)
 export const testEmail = (data) => api.post('/settings/test-email', data)
+
+/** Arkesel: the key, the sender ID, and the switch. The key never comes back. */
+export const updateSmsConfig = (data) => api.put('/settings/sms', data)
+export const testSms = (to) => api.post('/settings/sms/test', { to })
+export const getSmsBalance = () => api.get('/settings/sms/balance')
 export const getAuditLogs = (params) => api.get('/audit-logs', { params })
 /** The whole database, as a file. Long-running on a big shop, so no timeout. */
 export const createBackup = () =>
