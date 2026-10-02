@@ -3,6 +3,7 @@ const Debt = require('../models/Debt');
 const Product = require('../models/Product');
 const Notification = require('../models/Notification');
 const { createSaleWithInvoice } = require('../utils/generateInvoice');
+const { acceptReceiptBarcode } = require('../utils/barcode');
 const { buildSaleItems, deductStock, validatePayments } = require('../utils/saleHelpers');
 const { normaliseGhanaPhone } = require('../utils/phone');
 const loyalty = require('../utils/loyalty');
@@ -59,6 +60,8 @@ const processSingleSale = async (type, payload, userId, username) => {
 
     const sale = await createSaleWithInvoice({
       client_ref: client_ref || undefined,
+    // The code the till printed on the slip it already handed over.
+    receipt_barcode: await acceptReceiptBarcode(Sale, payload?.receipt_barcode) || undefined,
       user_id: userId, customer_name, customer_phone,
       subtotal, discount, discount_type,
       total_amount: paidAmount, cart_total, debt_amount: debtAmount,
@@ -90,6 +93,8 @@ const processSingleSale = async (type, payload, userId, username) => {
 
   const sale = await createSaleWithInvoice({
     client_ref: client_ref || undefined,
+    // The code the till printed on the slip it already handed over.
+    receipt_barcode: await acceptReceiptBarcode(Sale, payload?.receipt_barcode) || undefined,
     user_id: userId, customer_name, customer_phone,
     subtotal, discount, discount_type,
     total_amount: cart_total, cart_total, debt_amount: 0,

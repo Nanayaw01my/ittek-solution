@@ -92,7 +92,25 @@ const nextFreeReceiptBarcode = async (Sale, attempts = 12) => {
   return null;
 };
 
+/**
+ * A receipt code a till sent in, if it can be trusted, otherwise null.
+ *
+ * A till that sold with no connection minted its own code and printed it, so
+ * that number has to be the one stored — the slip in the customer's hand says
+ * so. But it arrives over the wire like anything else, so it is checked:
+ * a real EAN-13, in the receipt range, and not already another sale's.
+ *
+ * Returning null is not a failure. The model mints a fresh code when there is
+ * none, so a rejected one costs the printed slip its scan and nothing more.
+ */
+const acceptReceiptBarcode = async (Sale, supplied) => {
+  const code = String(supplied || '').trim();
+  if (!code || !isReceiptBarcode(code)) return null;
+  const taken = await Sale.findOne({ receipt_barcode: code }).select('_id').lean();
+  return taken ? null : code;
+};
+
 module.exports = {
   checkDigit, isValidEan13, mintEan13, nextFreeBarcode,
-  mintReceiptBarcode, isReceiptBarcode, nextFreeReceiptBarcode,
+  mintReceiptBarcode, isReceiptBarcode, nextFreeReceiptBarcode, acceptReceiptBarcode,
 };

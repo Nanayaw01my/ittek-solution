@@ -210,6 +210,35 @@ const SaleSchema = new mongoose.Schema(
   }
 );
 
+/**
+ * Every sale gets its receipt barcode, whoever wrote it.
+ *
+ * Minting it in the one helper that most sales go through left the others
+ * without one — a debt payment written straight to the collection, a sale
+ * arriving from a till that queued it offline — and a receipt with no barcode
+ * cannot be scanned at the refund screen. So it is done here instead, where
+ * nothing can go round it.
+ *
+ * pre('validate') rather than pre('save'): validation is mongoose's first
+ * save hook, so a field filled in pre('save') is one validation has already
+ * decided was missing.
+ *
+ * A till that minted its own code offline keeps it — the slip in the
+ * customer's hand carries that number, and it has to be the one stored.
+ */
+SaleSchema.pre('validate', async function assignReceiptBarcode() {
+  if (this.receipt_barcode) return;
+  try {
+    const { nextFreeReceiptBarcode } = require('../utils/barcode');
+    const code = await nextFreeReceiptBarcode(this.constructor);
+    if (code) this.receipt_barcode = code;
+  } catch (err) {
+    // A sale must never be lost over a barcode. Without one the receipt still
+    // prints and the invoice number still finds it.
+    console.error('Receipt barcode mint failed:', err.message);
+  }
+});
+
 SaleSchema.index({ user_id: 1, sale_date: -1 });
 SaleSchema.index({ sale_date: -1 });
 SaleSchema.index({ invoice_no: 1 });

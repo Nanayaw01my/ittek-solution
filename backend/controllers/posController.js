@@ -5,7 +5,7 @@ const Product = require('../models/Product');
 const Notification = require('../models/Notification');
 const Settings = require('../models/Settings');
 const { createSaleWithInvoice } = require('../utils/generateInvoice');
-const { nextFreeReceiptBarcode } = require('../utils/barcode');
+const { nextFreeReceiptBarcode, acceptReceiptBarcode } = require('../utils/barcode');
 const { queueEmail, templates } = require('../utils/email');
 const { generateReceipt } = require('../utils/pdfGenerator');
 const { withReceiptQr, buildReceiptUrl, generateReceiptQrBuffer } = require('../utils/receipt');
@@ -100,6 +100,9 @@ const processSale = async (req, res) => {
     // till takes the number first.
     const sale = await createSaleWithInvoice({
       client_ref: client_ref || undefined,
+      // A till that sold offline printed its own code; keep that one so the
+      // slip the customer is holding still scans.
+      receipt_barcode: await acceptReceiptBarcode(Sale, req.body?.receipt_barcode) || undefined,
       user_id: req.user._id,
       customer_name,
       customer_phone,
@@ -244,6 +247,8 @@ const processShortPayment = async (req, res) => {
 
     // Create sale
     const sale = await createSaleWithInvoice({
+      // The code the till printed, when it sold this with no connection.
+      receipt_barcode: await acceptReceiptBarcode(Sale, req.body?.receipt_barcode) || undefined,
       user_id: req.user._id,
       customer_name,
       customer_phone,

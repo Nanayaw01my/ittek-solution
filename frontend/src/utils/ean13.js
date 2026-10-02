@@ -82,3 +82,20 @@ export const isGuard = (start, width) => {
   const end = start + width
   return start < 3 || (start > 45 && end < 51) || end > 92
 }
+
+/**
+ * A receipt's own barcode, minted on the till.
+ *
+ * Offline the server cannot be asked for one, and the slip in the customer's
+ * hand has to carry the same code the sale ends up with — so the till mints
+ * it, prints it, and sends it along with the queued sale.
+ *
+ * Starts with 9, where a product's starts with 2, exactly as the server's
+ * does. Random, because two tills closing a sale in the same second must not
+ * mint the same number; the unique index is still the last word.
+ */
+export const mintReceiptBarcode = () => {
+  let body = '9'
+  for (let i = 0; i < 11; i++) body += Math.floor(Math.random() * 10)
+  return body + checkDigit(body)
+}

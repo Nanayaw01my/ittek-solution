@@ -19,6 +19,7 @@ import { buildWhatsAppReceiptLink } from '../utils/phone'
 import { printReceipt } from '../utils/printReceipt'
 import Modal from '../components/Modal'
 import Ean13 from '../components/Ean13'
+import { mintReceiptBarcode } from '../utils/ean13'
 import SplitPaymentModal from '../components/SplitPaymentModal'
 import HeldSalesModal from '../components/HeldSalesModal'
 import VariantPickerModal from '../components/VariantPickerModal'
@@ -769,6 +770,11 @@ export default function POS() {
 
   const buildSalePayload = (extras = {}) => ({
     client_ref: newClientRef(),
+    // The receipt's barcode, minted here rather than on the server so the
+    // same number goes onto the slip and into the sale — including a sale
+    // made with no connection, where the slip is printed and handed over
+    // long before the server ever sees it.
+    receipt_barcode: mintReceiptBarcode(),
     cart: cart.map(i => ({
       product_id: i._id,
       variant_sku: i.variant_sku,
@@ -803,7 +809,10 @@ export default function POS() {
    */
   const keepForLater = (type, payload, receiptExtras = {}) => {
     queueSale(type, payload)
-    setLastSale(buildOfflineReceipt(receiptExtras))
+    setLastSale(buildOfflineReceipt({
+      receipt_barcode: payload?.receipt_barcode,
+      ...receiptExtras,
+    }))
     setShowReceipt(true)
     clearCart()
     toast.success('No connection — sale saved on this device and will sync automatically.',
@@ -922,7 +931,7 @@ export default function POS() {
     // fail when there is no connection.
     if (!isOnline) {
       queueSale('sale', payload)
-      setLastSale(buildOfflineReceipt({ payments }))
+      setLastSale(buildOfflineReceipt({ receipt_barcode: payload.receipt_barcode, payments }))
       setShowReceipt(true)
       clearCart()
       toast.success('Offline split sale queued — will sync when connected')
@@ -957,6 +966,10 @@ export default function POS() {
 
   const buildOfflineReceipt = (extras = {}) => ({
     invoiceNo: nextOfflineInvoiceNo(),
+    // Overridden by extras below with the code that went into the queued
+    // sale. A receipt printed with a different number from the one stored
+    // would scan to nothing, which is worse than scanning to no barcode.
+    receipt_barcode: mintReceiptBarcode(),
     items: cart.map(i => ({ name: i.name, quantity: i.qty, unitPrice: i.selling_price, total: i.selling_price * i.qty })),
     subtotal,
     discount: discountAmount,
@@ -979,7 +992,7 @@ export default function POS() {
     const payload = buildSalePayload()
     if (!isOnline) {
       queueSale('sale', payload)
-      setLastSale(buildOfflineReceipt())
+      setLastSale(buildOfflineReceipt({ receipt_barcode: payload.receipt_barcode }))
       setShowReceipt(true)
       clearCart()
       toast.success('Offline sale queued — will sync when connected')
@@ -997,7 +1010,10 @@ export default function POS() {
     if (!isOnline) {
       queueSale('short_payment', payload)
       const paid = parseFloat(ap)
-      setLastSale(buildOfflineReceipt({ amountPaid: paid, change: 0, balanceDue: grandTotal - paid }))
+      setLastSale(buildOfflineReceipt({
+        receipt_barcode: payload.receipt_barcode,
+        amountPaid: paid, change: 0, balanceDue: grandTotal - paid,
+      }))
       setShowShortModal(false)
       setShowReceipt(true)
       clearCart()
