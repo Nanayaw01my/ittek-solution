@@ -58,11 +58,14 @@ const lookupSaleByInvoice = async (req, res) => {
     // Exact first, then the same code in any case. Staff read these off a
     // printed slip and type them back by hand; "inv-0001" is the same sale as
     // "INV-0001" and refusing it helps nobody.
+    const safe = typed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const exact = new RegExp(`^${safe}$`, 'i');
+    // A sale made with no connection printed POS-20260930-0001 and was given
+    // its INV- number on sync, so the number on the customer's slip is the
+    // one they quote. Both are accepted.
     let sale = await Sale.findOne({ invoice_no: typed });
-    if (!sale) {
-      const safe = typed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      sale = await Sale.findOne({ invoice_no: new RegExp(`^${safe}$`, 'i') });
-    }
+    if (!sale) sale = await Sale.findOne({ offline_ref: typed });
+    if (!sale) sale = await Sale.findOne({ $or: [{ invoice_no: exact }, { offline_ref: exact }] });
     if (!sale) return res.status(404).json({ success: false, message: 'Invoice not found.' });
     return res.status(200).json({ success: true, data: sale });
   } catch (err) {
@@ -93,7 +96,10 @@ const searchSales = async (req, res) => {
       // and an unescaped one would either error or match the wrong sales.
       const safe = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const rx = new RegExp(safe, 'i');
-      filter.$or = [{ invoice_no: rx }, { customer_name: rx }, { customer_phone: rx }];
+      filter.$or = [
+        { invoice_no: rx }, { offline_ref: rx },
+        { customer_name: rx }, { customer_phone: rx },
+      ];
     }
 
     // A Sales user sees only their own sales here, matching how the sales
@@ -101,7 +107,7 @@ const searchSales = async (req, res) => {
     if (req.user.role === 'Sales') filter.user_id = req.user._id;
 
     const sales = await Sale.find(filter)
-      .select('invoice_no customer_name customer_phone total_amount sale_date items')
+      .select('invoice_no offline_ref customer_name customer_phone total_amount sale_date items')
       .populate('user_id', 'username')
       .sort({ sale_date: -1 })
       .limit(15)
@@ -112,6 +118,7 @@ const searchSales = async (req, res) => {
       data: sales.map((s) => ({
         _id: s._id,
         invoice_no: s.invoice_no,
+        offline_ref: s.offline_ref || '',
         customer_name: s.customer_name || '',
         customer_phone: s.customer_phone || '',
         total_amount: s.total_amount,
@@ -152,7 +159,11 @@ const scanForRefund = async (req, res) => {
     // produces. Then the invoice number, for a code read off the slip by eye.
     let sale = await Sale.findOne({ receipt_barcode: code });
     if (!sale) sale = await Sale.findOne({ invoice_no: code });
-    if (!sale) sale = await Sale.findOne({ invoice_no: new RegExp(`^${safe}$`, 'i') });
+    if (!sale) sale = await Sale.findOne({ offline_ref: code });
+    if (!sale) {
+      const exact = new RegExp(`^${safe}$`, 'i');
+      sale = await Sale.findOne({ $or: [{ invoice_no: exact }, { offline_ref: exact }] });
+    }
     if (sale) {
       return res.status(200).json({ success: true, data: { kind: 'sale', sale } });
     }
@@ -170,7 +181,7 @@ const scanForRefund = async (req, res) => {
     if (req.user.role === 'Sales') filter.user_id = req.user._id;
 
     const sales = await Sale.find(filter)
-      .select('invoice_no customer_name customer_phone total_amount sale_date items')
+      .select('invoice_no offline_ref customer_name customer_phone total_amount sale_date items')
       .sort({ sale_date: -1 })
       .limit(15)
       .lean();
@@ -190,6 +201,7 @@ const scanForRefund = async (req, res) => {
         sales: sales.map((s) => ({
           _id: String(s._id),
           invoice_no: s.invoice_no,
+          offline_ref: s.offline_ref || '',
           customer_name: s.customer_name || '',
           customer_phone: s.customer_phone || '',
           total_amount: s.total_amount,

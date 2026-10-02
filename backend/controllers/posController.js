@@ -103,6 +103,8 @@ const processSale = async (req, res) => {
       // A till that sold offline printed its own code; keep that one so the
       // slip the customer is holding still scans.
       receipt_barcode: await acceptReceiptBarcode(Sale, req.body?.receipt_barcode) || undefined,
+      // And the number it printed, so that slip can still be looked up.
+      offline_ref: String(req.body?.offline_ref || '').trim() || undefined,
       user_id: req.user._id,
       customer_name,
       customer_phone,
@@ -247,8 +249,10 @@ const processShortPayment = async (req, res) => {
 
     // Create sale
     const sale = await createSaleWithInvoice({
-      // The code the till printed, when it sold this with no connection.
+      // The code and number the till printed, when it sold this with no
+      // connection, so the slip it handed over can still be found.
       receipt_barcode: await acceptReceiptBarcode(Sale, req.body?.receipt_barcode) || undefined,
+      offline_ref: String(req.body?.offline_ref || '').trim() || undefined,
       user_id: req.user._id,
       customer_name,
       customer_phone,

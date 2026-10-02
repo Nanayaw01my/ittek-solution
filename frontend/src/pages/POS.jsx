@@ -775,6 +775,11 @@ export default function POS() {
     // made with no connection, where the slip is printed and handed over
     // long before the server ever sees it.
     receipt_barcode: mintReceiptBarcode(),
+    // Offline the invoice number is the till's own, POS-20260930-0001, and
+    // the server issues the real INV- number on sync. Sent with the sale so
+    // the number printed on the customer's slip still finds it afterwards —
+    // without this the slip quotes a number nothing has ever heard of.
+    offline_ref: isOnline ? undefined : nextOfflineInvoiceNo(),
     cart: cart.map(i => ({
       product_id: i._id,
       variant_sku: i.variant_sku,
@@ -808,8 +813,13 @@ export default function POS() {
    * gone: not on the server, not on the device, nothing to sync later.
    */
   const keepForLater = (type, payload, receiptExtras = {}) => {
-    queueSale(type, payload)
+    // Built while the connection still looked up, so it has no till number.
+    // One is given now, and goes into the queued sale as well as onto the
+    // slip — the two must not be allowed to differ.
+    const ref = payload?.offline_ref || nextOfflineInvoiceNo()
+    queueSale(type, { ...payload, offline_ref: ref })
     setLastSale(buildOfflineReceipt({
+      invoiceNo: ref,
       receipt_barcode: payload?.receipt_barcode,
       ...receiptExtras,
     }))
@@ -931,7 +941,11 @@ export default function POS() {
     // fail when there is no connection.
     if (!isOnline) {
       queueSale('sale', payload)
-      setLastSale(buildOfflineReceipt({ receipt_barcode: payload.receipt_barcode, payments }))
+      setLastSale(buildOfflineReceipt({
+        invoiceNo: payload.offline_ref,
+        receipt_barcode: payload.receipt_barcode,
+        payments,
+      }))
       setShowReceipt(true)
       clearCart()
       toast.success('Offline split sale queued — will sync when connected')
@@ -965,7 +979,9 @@ export default function POS() {
   })
 
   const buildOfflineReceipt = (extras = {}) => ({
-    invoiceNo: nextOfflineInvoiceNo(),
+    // Whatever number went into the queued sale. Generating another here
+    // would print one number and store a different one.
+    invoiceNo: extras.invoiceNo || nextOfflineInvoiceNo(),
     // Overridden by extras below with the code that went into the queued
     // sale. A receipt printed with a different number from the one stored
     // would scan to nothing, which is worse than scanning to no barcode.
@@ -992,7 +1008,10 @@ export default function POS() {
     const payload = buildSalePayload()
     if (!isOnline) {
       queueSale('sale', payload)
-      setLastSale(buildOfflineReceipt({ receipt_barcode: payload.receipt_barcode }))
+      setLastSale(buildOfflineReceipt({
+        invoiceNo: payload.offline_ref,
+        receipt_barcode: payload.receipt_barcode,
+      }))
       setShowReceipt(true)
       clearCart()
       toast.success('Offline sale queued — will sync when connected')
@@ -1011,6 +1030,7 @@ export default function POS() {
       queueSale('short_payment', payload)
       const paid = parseFloat(ap)
       setLastSale(buildOfflineReceipt({
+        invoiceNo: payload.offline_ref,
         receipt_barcode: payload.receipt_barcode,
         amountPaid: paid, change: 0, balanceDue: grandTotal - paid,
       }))

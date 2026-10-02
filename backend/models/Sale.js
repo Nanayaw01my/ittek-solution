@@ -68,6 +68,25 @@ const SaleSchema = new mongoose.Schema(
       default: generateReceiptToken,
     },
     /**
+     * The number the till printed when it sold this with no connection.
+     *
+     * A till offline cannot be given an invoice number — those come from the
+     * server, in sequence — so it prints its own, POS-20260930-0001, and the
+     * server issues the real INV- number when the sale syncs. That left the
+     * slip in the customer's hand quoting a number the system had never heard
+     * of: typing it into Refunds found nothing, and the customer's own
+     * receipt was no use for the one thing a receipt is kept for.
+     *
+     * So the till's number is kept here, and every lookup that takes an
+     * invoice number takes this too.
+     */
+    offline_ref: {
+      type: String,
+      trim: true,
+      index: true,
+      sparse: true,
+    },
+    /**
      * The receipt's own barcode, printed on it so a return can be scanned.
      *
      * The invoice number itself cannot be the barcode: INV-20260930-0001 has

@@ -204,7 +204,7 @@ function RefundForm({ onClose, onSuccess, seed }) {
               onChange={e => { setInvoiceInput(e.target.value); setPicking(true) }}
               onFocus={() => setPicking(true)}
               onKeyDown={e => { if (e.key === 'Enter') handleLookup(); if (e.key === 'Escape') setPicking(false) }}
-              placeholder="Invoice code, customer name or phone…"
+              placeholder="Invoice or receipt code, name or phone…"
               className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
 
@@ -229,6 +229,13 @@ function RefundForm({ onClose, onSuccess, seed }) {
                       <span className="font-mono text-xs font-bold text-gray-800">{m.invoice_no}</span>
                       <span className="text-sm font-bold text-gray-900">{formatCurrency(m.total_amount)}</span>
                     </div>
+                    {/* What the customer's slip says, when it was sold with no
+                        connection and given its real number later. */}
+                    {m.offline_ref && (
+                      <p className="text-[11px] text-gray-400 font-mono">
+                        Receipt says {m.offline_ref}
+                      </p>
+                    )}
                     <p className="text-xs text-gray-500 truncate">
                       {m.customer_name || 'Walk-in customer'}
                       {m.customer_phone ? ` · ${m.customer_phone}` : ''}
@@ -289,6 +296,9 @@ function RefundForm({ onClose, onSuccess, seed }) {
                 <span className="font-mono text-xs font-bold text-gray-800">{s.invoice_no}</span>
                 <span className="text-sm font-bold text-gray-900">{formatCurrency(s.total_amount)}</span>
               </div>
+              {s.offline_ref && (
+                <p className="text-[11px] text-gray-400 font-mono">Receipt says {s.offline_ref}</p>
+              )}
               <p className="text-xs text-gray-500 truncate">
                 {s.customer_name || 'Walk-in customer'}
                 {s.customer_phone ? ` · ${s.customer_phone}` : ''}
