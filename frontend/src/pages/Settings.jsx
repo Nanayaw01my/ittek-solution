@@ -11,7 +11,21 @@ import PageHeader from '../components/PageHeader'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ImageUpload from '../components/ImageUpload'
 
-const TABS = ['Company', 'Notifications', 'Text messages', 'Email Config']
+/**
+ * Each tab carries its own icon.
+ *
+ * These were two lists — the names here and the icons down in the render —
+ * and adding a tab to one without the other handed React an undefined
+ * component, which is a blank page with a minified error code on it. Worse,
+ * it only broke for a Super Admin, because everybody else is shown a shorter
+ * slice of the list and never reached the missing icon.
+ */
+const TABS = [
+  { label: 'Company', icon: FiSettings },
+  { label: 'Notifications', icon: FiBell },
+  { label: 'Text messages', icon: FiMessageSquare },
+  { label: 'Email Config', icon: FiMail },
+]
 
 /**
  * The API speaks snake_case; these forms were written in camelCase, so every
@@ -528,21 +542,20 @@ export default function Settings() {
       <PageHeader title="Settings" subtitle="Configure system preferences" />
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
-        {tabs.map((tab, i) => {
-          const icons = [FiSettings, FiBell, FiMail]
-          const Icon = icons[i]
-          return (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(i)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors
-                ${activeTab === i ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
-            >
-              <Icon size={14} /> {tab}
-            </button>
-          )
-        })}
+      {/* A fourth tab stopped the row fitting on a phone, so it scrolls
+          sideways rather than being clipped at the edge of the screen. */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit max-w-full overflow-x-auto">
+        {tabs.map(({ label, icon: Icon }, i) => (
+          <button
+            key={label}
+            onClick={() => setActiveTab(i)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors
+              whitespace-nowrap flex-shrink-0
+              ${activeTab === i ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
+          >
+            <Icon size={14} /> {label}
+          </button>
+        ))}
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
