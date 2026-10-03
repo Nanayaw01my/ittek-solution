@@ -61,6 +61,26 @@ const DispatchSchema = new mongoose.Schema(
     },
     issued_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     issued_at: { type: Date, default: Date.now },
+
+    /**
+     * Every time more goods were put on this same sheet.
+     *
+     * An agent who is already out does not come back for a new sheet each
+     * time the shop hands them another panel — they take it and carry on. So
+     * stock added for an agent who is still out goes onto the sheet they
+     * already have, and this records when, by whom, and how much, because
+     * "issued 2 October" stops being the whole truth the moment it happens.
+     */
+    top_ups: [
+      {
+        at: { type: Date, default: Date.now },
+        by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        lines: { type: Number, default: 0 },
+        quantity: { type: Number, default: 0 },
+        value: { type: Number, default: 0 },
+        _id: false,
+      },
+    ],
     closed_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     closed_at: { type: Date },
   },

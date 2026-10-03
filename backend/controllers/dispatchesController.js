@@ -215,6 +215,80 @@ const createDispatch = async (req, res) => {
       cost_price: i.cost_price || 0,
     }));
 
+    // ── Onto the sheet they already have ──────────────────────────────────
+    //
+    // An agent already out on the field does not come back for a fresh sheet
+    // every time the shop hands them another panel. Issuing a second sheet
+    // split one person's goods across two rows that had to be reconciled
+    // separately — the same agent appearing three times on the screen, each
+    // with its own returns and its own payments to chase.
+    //
+    // So stock for an agent who is still out is added to their open sheet.
+    // `new_sheet` forces a separate one, for the time it really is a separate
+    // trip.
+    const openFilter = agent_user_id
+      ? { agent_user_id }
+      : { agent_name: String(agent_name).trim() };
+    const existing = req.body?.new_sheet
+      ? null
+      : await Dispatch.findOne({ ...openFilter, status: { $ne: 'closed' } })
+        .sort({ issued_at: -1 });
+
+    if (existing) {
+      let addedQty = 0;
+      let addedValue = 0;
+
+      for (const item of dispatchItems) {
+        // Merged onto an existing line only when the money matches as well as
+        // the product. Two batches that cost the shop different amounts must
+        // stay apart, or the profit on a field sale is worked out against a
+        // price neither batch was bought at.
+        const line = existing.items.find((l) => (
+          String(l.product_id || '') === String(item.product_id || '')
+          && (l.variant_sku || '') === (item.variant_sku || '')
+          && Number(l.unit_price) === Number(item.unit_price)
+          && Number(l.cost_price) === Number(item.cost_price)
+        ));
+        if (line) line.quantity_issued += item.quantity_issued;
+        else existing.items.push(item);
+
+        addedQty += item.quantity_issued;
+        addedValue += item.quantity_issued * (item.unit_price || 0);
+      }
+
+      // Where they are now, if the shop said. An agent who has moved on to the
+      // next town should not still read as the one they left this morning.
+      if (destination && String(destination).trim()) existing.destination = destination;
+      if (notes && String(notes).trim()) {
+        existing.notes = existing.notes ? `${existing.notes}\n${notes}` : notes;
+      }
+      if (agent_phone) existing.agent_phone = agent_phone;
+
+      existing.top_ups.push({
+        at: new Date(),
+        by: req.user._id,
+        lines: dispatchItems.length,
+        quantity: addedQty,
+        value: Number(addedValue.toFixed(2)),
+      });
+
+      await existing.save();
+      await deductStock(built.items);
+
+      // The fact rides inside `data`: the browser's axios interceptor unwraps
+      // { success, data } and throws the rest away, so anything the screen
+      // needs to know has to be in there.
+      return res.status(200).json({
+        success: true,
+        message: `${addedQty} more piece${addedQty === 1 ? '' : 's'} added to ${agent_name}'s sheet ${existing.dispatch_no}. Stock has been deducted.`,
+        data: {
+          ...existing.toObject(),
+          added_to_existing: true,
+          added_quantity: addedQty,
+        },
+      });
+    }
+
     const datePart = todayPart();
     let dispatch = null;
     for (let attempt = 0; attempt < 8 && !dispatch; attempt++) {

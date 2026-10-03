@@ -41,6 +41,9 @@ function NewDispatchModal({ onClose }) {
   const [agentId, setAgentId] = useState('')
   const [agentPhone, setAgentPhone] = useState('')
   const [destination, setDestination] = useState('')
+  // Stock for an agent already out joins the sheet they have. Ticked only
+  // when it really is a separate trip.
+  const [newSheet, setNewSheet] = useState(false)
   const [notes, setNotes] = useState('')
   const [search, setSearch] = useState('')
   const [lines, setLines] = useState([])
@@ -93,12 +96,19 @@ function NewDispatchModal({ onClose }) {
       agent_phone: agentPhone || undefined,
       destination: destination || undefined,
       notes: notes || undefined,
+      new_sheet: newSheet || undefined,
       items: lines.map((l) => ({ product_id: l.product_id, quantity: Number(l.quantity) })),
     }),
     onSuccess: (res) => {
       // The interceptor unwraps { success, data }, so res.data is the dispatch.
       const dispatch = res.data
-      toast.success(`Dispatch ${dispatch?.dispatch_no || ''} issued — stock deducted`)
+      // The interceptor keeps only `data`, so the top-up is flagged inside it.
+      toast.success(
+        dispatch?.added_to_existing
+          ? `${dispatch.added_quantity} more added to ${dispatch.dispatch_no} — stock deducted`
+          : `Dispatch ${dispatch?.dispatch_no || ''} issued — stock deducted`,
+        { duration: 6000 }
+      )
       queryClient.invalidateQueries({ queryKey: ['dispatches'] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
       onClose()
@@ -150,6 +160,19 @@ function NewDispatchModal({ onClose }) {
             />
           </div>
         </div>
+
+        <label className="flex items-start gap-2.5 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3 cursor-pointer">
+          <input type="checkbox" checked={newSheet} onChange={(e) => setNewSheet(e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-orange-500" />
+          <span>
+            <span className="font-bold">Start a separate sheet</span>
+            <span className="block text-gray-500">
+              Normally goods for an agent who is still out are added to the sheet
+              they already have, so everything of theirs is reconciled in one
+              place. Tick this only when it is genuinely a different trip.
+            </span>
+          </span>
+        </label>
 
         <div>
           <div className="relative">
@@ -620,6 +643,17 @@ export default function FieldDispatch() {
                     {d.destination ? ` · ${d.destination}` : ''}
                     {d.issued_by?.username ? ` · issued by ${d.issued_by.username}` : ''}
                   </p>
+                  {/* Goods added later, so the issue date above stops being the
+                      whole story. Said plainly rather than left to be worked
+                      out from a quantity that does not match the first load. */}
+                  {d.top_ups?.length > 0 && (
+                    <p className="text-[11px] text-orange-600 font-semibold mt-0.5">
+                      topped up {d.top_ups.length} time{d.top_ups.length === 1 ? '' : 's'}
+                      {' · last '}
+                      {format(new Date(d.top_ups[d.top_ups.length - 1].at), 'dd MMM')}
+                      {` · ${d.top_ups.reduce((t, u) => t + (u.quantity || 0), 0)} pieces added`}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-600 mt-1">
                     {d.items.length} item(s) · {issued} issued · {sold} sold · {back} returned ·
                     {' '}{out} still with agent
