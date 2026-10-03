@@ -471,15 +471,20 @@ export default function Reminders() {
     if (many) setTextingAll(true); else setTexting(able[0]._id)
     try {
       const res = await sendReminderSms({
+        // The facts, not the words. The message shown on this screen carries
+        // the shop's name at the bottom for WhatsApp, where nothing else says
+        // who sent it; a text message already shows DANDOR beside it, and
+        // those 31 characters are what take a reminder past the 160 a single
+        // SMS holds. The server writes the right one for the channel.
         messages: able.map((r) => ({
           reminder_id: r.is_custom ? r._id : undefined,
           customer_name: r.customer_name,
           customer_phone: r.customer_phone,
           about: r.about,
           amount: r.amount,
+          due_date: r.due_date || undefined,
           kind: r.kind,
           purpose: r.purpose,
-          message: r.message,
         })),
       })
       const { sent = 0, failed = 0, results = [] } = res.data || {}

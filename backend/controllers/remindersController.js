@@ -35,8 +35,34 @@ const whenWords = (days) => {
  * thing, and so it can be changed in one place when the shop decides how it
  * wants to sound.
  */
-const composeMessage = ({ company, name, about, amount, days }) => {
-  const greeting = `Good day ${String(name || '').split(' ')[0] || 'there'},`;
+/**
+ * The town the office is in, out of the full address.
+ *
+ * Settings holds "Bogoso, Western Region", and "come in to our Bogoso,
+ * Western Region office" is not how anybody says it. Taken from settings
+ * rather than written into the code so the message follows the shop if it
+ * ever moves.
+ */
+const officeTown = (address) => {
+  const first = String(address || '').split(',')[0].trim();
+  return first || '';
+};
+
+/** The shop's number as a customer would dial it: 0595413632, not +233…. */
+const localPhone = (phone) => {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('233')) return `0${digits.slice(3)}`;
+  if (digits.length === 10 && digits.startsWith('0')) return digits;
+  if (digits.length === 9) return `0${digits}`;
+  return String(phone || '').trim();
+};
+
+const composeMessage = ({ company, address, phone, name, about, amount, days, signoff = true }) => {
+  // The full name, not the first. This is a notice about money owed — it is
+  // addressed the way a letter about money is addressed, and "Good day Ama"
+  // to somebody who owes GH¢2,000 reads like a friend asking a favour.
+  const fullName = String(name || '').trim();
+  const greeting = `Good day ${fullName || 'there'},`;
   const owing = amount > 0 ? ` of ${gh(amount)}` : '';
 
   let line;
@@ -48,13 +74,25 @@ const composeMessage = ({ company, name, about, amount, days }) => {
   else if (days === 0) line = `your ${about}${owing} is due today.`;
   else line = `your ${about}${owing} is ${whenWords(days)}.`;
 
+  // Say where to go and what to ring. "Call us" with no number is a reminder
+  // that cannot be acted on without first finding the number somewhere else.
+  const town = officeTown(address);
+  const tel = localPhone(phone);
+  const where = town ? `come in to our ${town} office` : 'come in to our office';
+  const how = tel ? `Please call ${tel} or ${where} to settle it.` : `Please call us or ${where} to settle it.`;
+
+  // The shop's name is dropped on SMS, where the sender ID beside the message
+  // already says DANDOR. Carrying it costs 31 characters, and 31 characters is
+  // what takes a reminder past the 160 a single message holds — so leaving it
+  // on would double what every reminder costs to send, to say something the
+  // customer's phone is already showing them.
   return [
     greeting,
     '',
     line,
     '',
-    'Kindly come in or call us to settle it. Thank you.',
-    company || 'DAN & DOR SOLAR COMPANY LIMITED',
+    how,
+    ...(signoff ? [company || 'DAN & DOR SOLAR COMPANY LIMITED'] : []),
   ].join('\n');
 };
 
@@ -147,8 +185,11 @@ const getReminders = async (req, res) => {
     const horizon = new Date();
     horizon.setDate(horizon.getDate() + within);
 
-    const settings = await Settings.findOne().select('company_name').lean();
+    const settings = await Settings.findOne()
+      .select('company_name company_address company_phone').lean();
     const company = settings?.company_name;
+    const address = settings?.company_address;
+    const phone = settings?.company_phone;
 
     const none = () => Promise.resolve([]);
     const [debts, layaways, credits, phones, custom] = await Promise.all([
@@ -260,7 +301,8 @@ const getReminders = async (req, res) => {
           company, name: r.customer_name, about: r.about, purpose: r.purpose, days: r.days,
         })
         : composeMessage({
-          company, name: r.customer_name, about: r.about, amount: r.amount, days: r.days,
+          company, address, phone,
+          name: r.customer_name, about: r.about, amount: r.amount, days: r.days,
         }),
       // "No date set" reads as neglect on a debt. On a birthday card with no
       // date it only means there is nothing stopping you sending it.
@@ -461,8 +503,11 @@ const sendBySms = async (req, res) => {
     // screen and this one say exactly the same thing to a customer. Two
     // screens composing their own wording is two wordings to keep in step,
     // and the customer eventually gets both.
-    const shop = await Settings.findOne().select('company_name').lean();
+    const shop = await Settings.findOne()
+      .select('company_name company_address company_phone').lean();
     const company = shop?.company_name;
+    const address = shop?.company_address;
+    const phone = shop?.company_phone;
     const wordsFor = (item) => {
       if (item.message && String(item.message).trim()) return String(item.message);
       // Nothing to compose around. Composing anyway produces "a reminder about
@@ -474,7 +519,8 @@ const sendBySms = async (req, res) => {
           company, name: item.customer_name, about: item.about, purpose: item.purpose, days,
         })
         : composeMessage({
-          company, name: item.customer_name, about: item.about, amount: item.amount, days,
+          company, address, phone, signoff: false,
+          name: item.customer_name, about: item.about, amount: item.amount, days,
         });
     };
 
