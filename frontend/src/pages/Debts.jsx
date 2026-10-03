@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp, FiTrash2, FiPrinter, FiPlus } from 'react-icons/fi'
+import { FiAlertCircle, FiDollarSign, FiChevronDown, FiChevronUp, FiTrash2, FiPrinter, FiPlus, FiSend } from 'react-icons/fi'
 import { getDebts, recordDebtPayment, getDebtSummary, deleteDebt, createDebt } from '../api/debts'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
@@ -12,6 +12,8 @@ import StatCard from '../components/StatCard'
 import Badge from '../components/Badge'
 import { isPast, parseISO } from 'date-fns'
 import { getSettings } from '../api/settings'
+import { sendReminderSms } from '../api/reminders'
+import { normaliseGhanaPhone } from '../utils/phone'
 import { printReceipt } from '../utils/printReceipt'
 import RefreshButton from '../components/RefreshButton'
 
@@ -216,7 +218,7 @@ function PaymentModal({ debt, onClose, isOpen, onPaid }) {
   )
 }
 
-function DebtRow({ debt, onPay, onDelete, onReprint, canDelete }) {
+function DebtRow({ debt, onPay, onDelete, onReprint, onRemind, reminding, canDelete }) {
   const [showHistory, setShowHistory] = useState(false)
 
   const remaining = Math.max(0, (debt.amount_owed || 0) - (debt.amount_paid || 0))
@@ -255,6 +257,20 @@ function DebtRow({ debt, onPay, onDelete, onReprint, canDelete }) {
                 className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold hover:bg-orange-600 transition-colors"
               >
                 Pay
+              </button>
+            )}
+            {/* Chasing a balance is the other half of this page, and walking
+                over to Reminders to do it is the reason it did not happen. */}
+            {debt.status !== 'paid' && (
+              <button
+                onClick={() => onRemind(debt)}
+                disabled={reminding || !normaliseGhanaPhone(debt.customer_phone || '')}
+                title={normaliseGhanaPhone(debt.customer_phone || '')
+                  ? 'Text them about this balance'
+                  : 'No number we can text'}
+                className="inline-flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-700 rounded-lg text-xs font-bold hover:bg-gray-50 disabled:opacity-40 transition-colors"
+              >
+                <FiSend size={12} /> {reminding ? '…' : 'Remind'}
               </button>
             )}
             {payments.length > 0 && (
@@ -510,6 +526,48 @@ export default function Debts() {
 
   const debts = data?.debts || (Array.isArray(data) ? data : [])
 
+  // Texting a debtor. The words are written on the server from the facts
+  // below, so this page and the Reminders page say exactly the same thing.
+  const [reminding, setReminding] = useState(null)
+
+  const owedOn = (d) => Math.max(0, (d.amount_owed || 0) - (d.amount_paid || 0))
+  const asMessage = (d) => ({
+    customer_name: d.customer_name,
+    customer_phone: d.customer_phone,
+    about: 'outstanding balance',
+    amount: owedOn(d),
+    due_date: d.due_date || undefined,
+    kind: 'money',
+  })
+
+  const remind = async (list) => {
+    const able = list.filter((d) => d.status !== 'paid'
+      && owedOn(d) > 0
+      && normaliseGhanaPhone(d.customer_phone || ''))
+    if (able.length === 0) {
+      toast.error('None of these have a number we can text.')
+      return
+    }
+    setReminding(able.length === 1 ? able[0]._id : 'all')
+    try {
+      const res = await sendReminderSms({ messages: able.map(asMessage) })
+      const { sent = 0, failed = 0, results = [] } = res.data || {}
+      if (sent > 0) toast.success(`Texted ${sent}${failed ? `, ${failed} did not go` : ''}.`)
+      results.filter((x) => !x.ok).slice(0, 4).forEach((x) => {
+        toast.error(`${x.customer_name}: ${x.message}`, { duration: 7000 })
+      })
+      if (sent === 0 && failed === 0) toast.error('Nothing was sent.')
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not send.', { duration: 8000 })
+    } finally {
+      setReminding(null)
+    }
+  }
+
+  const chaseable = debts.filter((d) => d.status !== 'paid'
+    && Math.max(0, (d.amount_owed || 0) - (d.amount_paid || 0)) > 0
+    && normaliseGhanaPhone(d.customer_phone || ''))
+
   const totalOutstanding = (summary?.active?.total || 0) + (summary?.overdue?.total || 0)
   const totalDebtors = (summary?.active?.count || 0) + (summary?.overdue?.count || 0)
 
@@ -521,6 +579,17 @@ export default function Debts() {
         action={
           <div className="flex items-center gap-2">
             <RefreshButton keys={['debts', 'debt-summary']} />
+            {chaseable.length > 0 && (
+              <button
+                onClick={() => remind(debts)}
+                disabled={!!reminding}
+                title="Text everybody showing who still owes and has a number"
+                className="flex items-center gap-2 px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-bold text-sm transition-colors disabled:opacity-50"
+              >
+                <FiSend size={15} />
+                {reminding === 'all' ? 'Sending…' : `Remind ${chaseable.length}`}
+              </button>
+            )}
             <button
               onClick={() => setAdding(true)}
               className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm transition-colors"
@@ -598,6 +667,8 @@ export default function Debts() {
                     onPay={setPayTarget}
                     onDelete={setDeleteTarget}
                     onReprint={reprint}
+                    onRemind={(d) => remind([d])}
+                    reminding={reminding === debt._id || reminding === 'all'}
                     canDelete={canDelete}
                   />
                 ))

@@ -40,7 +40,10 @@ const composeMessage = ({ company, name, about, amount, days }) => {
   const owing = amount > 0 ? ` of ${gh(amount)}` : '';
 
   let line;
-  if (days === null) line = `this is a reminder about your ${about}${owing}.`;
+  // "this is a reminder about" rather than "a reminder about" pushed this one
+  // variant to 161 characters — a single character over the 160 an SMS
+  // carries, which doubles what every undated reminder costs to send.
+  if (days === null) line = `a reminder about your ${about}${owing}.`;
   else if (days < 0) line = `your ${about}${owing} was due ${whenWords(days).replace(' overdue', ' ago')}.`;
   else if (days === 0) line = `your ${about}${owing} is due today.`;
   else line = `your ${about}${owing} is ${whenWords(days)}.`;
@@ -454,10 +457,32 @@ const sendBySms = async (req, res) => {
         .map((c) => c.phone)
     );
 
+    // Written here when the caller sends facts rather than words, so the Debts
+    // screen and this one say exactly the same thing to a customer. Two
+    // screens composing their own wording is two wordings to keep in step,
+    // and the customer eventually gets both.
+    const shop = await Settings.findOne().select('company_name').lean();
+    const company = shop?.company_name;
+    const wordsFor = (item) => {
+      if (item.message && String(item.message).trim()) return String(item.message);
+      // Nothing to compose around. Composing anyway produces "a reminder about
+      // your ." , which is worse than not sending at all.
+      if (!item.about || !String(item.about).trim()) return '';
+      const days = item.due_date === undefined ? null : daysAway(item.due_date);
+      return item.kind === 'goodwill'
+        ? composeGoodwill({
+          company, name: item.customer_name, about: item.about, purpose: item.purpose, days,
+        })
+        : composeMessage({
+          company, name: item.customer_name, about: item.about, amount: item.amount, days,
+        });
+    };
+
     const results = [];
     for (const item of items) {
-      const { reminder_id, customer_name, customer_phone, about, amount, message } = item || {};
+      const { reminder_id, customer_name, customer_phone, about, amount } = item || {};
       const who = customer_name || 'Customer';
+      const message = wordsFor(item || {});
 
       if (!message || !String(message).trim()) {
         results.push({ reminder_id, customer_name: who, ok: false, message: 'There was nothing to send.' });
