@@ -282,7 +282,7 @@ const createDispatch = async (req, res) => {
         success: true,
         message: `${addedQty} more piece${addedQty === 1 ? '' : 's'} added to ${agent_name}'s sheet ${existing.dispatch_no}. Stock has been deducted.`,
         data: {
-          ...existing.toObject(),
+          ...(typeof existing.toObject === 'function' ? existing.toObject() : existing),
           added_to_existing: true,
           added_quantity: addedQty,
         },
