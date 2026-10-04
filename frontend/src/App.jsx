@@ -193,7 +193,7 @@ export default function App() {
         <Route path="installations" element={<ProtectedRoute minLevel={1}><Installations /></ProtectedRoute>} />
         {/* Backups, keys and credits — the owners'. */}
         <Route path="system-health" element={<ProtectedRoute minLevel={3}><SystemHealth /></ProtectedRoute>} />
-        <Route path="payables" element={<ProtectedRoute minLevel={2} page="purchases"><Payables /></ProtectedRoute>} />
+        <Route path="payables" element={<ProtectedRoute minLevel={3}><Payables /></ProtectedRoute>} />
         <Route path="margins" element={<ProtectedRoute minLevel={3} page="reports"><MarginWatch /></ProtectedRoute>} />
         {/* Not a document: printing one records money. */}
         <Route path="packages-receipt" element={<ProtectedRoute minLevel={2}><PackagesReceipt /></ProtectedRoute>} />

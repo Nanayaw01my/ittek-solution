@@ -44,7 +44,7 @@ const NAV_ITEMS = [
   { to: '/receipt-approvals', label: 'Receipt Approvals', icon: FiCheckSquare, minLevel: 2 },
   { to: '/reminders', label: 'Reminders', icon: FiBell, minLevel: 2 },
   { to: '/installations', label: 'Installations', icon: FiTool, minLevel: 1 },
-  { to: '/payables', label: 'What We Owe', icon: FiTruck, minLevel: 2, page: 'purchases' },
+  { to: '/payables', label: 'What We Owe', icon: FiTruck, minLevel: 3 },
   { to: '/margins', label: 'Margin Watch', icon: FiTrendingUp, minLevel: 3, page: 'reports' },
   { to: '/system-health', label: 'System Health', icon: FiShield, minLevel: 3 },
   { to: '/packages-receipt', label: 'Packages Receipt', icon: FiFileText, minLevel: 2 },

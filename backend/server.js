@@ -261,6 +261,7 @@ app.use('/api/reminders', require('./routes/reminders'));
 app.use('/api/contacts', require('./routes/contacts'));
 app.use('/api/installations', require('./routes/installations'));
 app.use('/api/health', require('./routes/health'));
+app.use('/api/payables', require('./routes/payables'));
 app.use('/api/credit-agreements', require('./routes/creditAgreements'));
 app.use('/api/financial', require('./routes/financial'));
 app.use('/api/reports', require('./routes/reports'));
