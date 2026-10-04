@@ -175,6 +175,13 @@ const DAILY_JOBS = [
   // First, before anything else can go wrong with the day.
   { name: 'nightly_backup', hour: 2, run: () => require('./autoBackup').runNightlyBackup() },
   { name: 'low_stock', hour: 9, run: () => checkLowStock() },
+  // Before the day starts, so nobody is waiting at home for a team that
+  // never knew it was going.
+  {
+    name: 'todays_installations',
+    hour: 7,
+    run: () => require('../controllers/installationsController').announceTodaysJobs(),
+  },
   // The hour is the shop's, out of Settings — a debt notice at 2am is worse
   // than none. Read at run time so changing it does not need a restart.
   {

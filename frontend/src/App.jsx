@@ -43,6 +43,7 @@ import Quotations from './pages/Quotations'
 import Reorder from './pages/Reorder'
 import ReceiptApprovals from './pages/ReceiptApprovals'
 import Reminders from './pages/Reminders'
+import Installations from './pages/Installations'
 import FraudAlerts from './pages/FraudAlerts'
 import DeleteRecords from './pages/DeleteRecords'
 import ReceiptForms from './pages/ReceiptForms'
@@ -184,6 +185,9 @@ export default function App() {
         <Route path="receipt-approvals" element={<ProtectedRoute minLevel={2}><ReceiptApprovals /></ProtectedRoute>} />
         {/* Chasing what is owed shows what everybody owes — manager and above. */}
         <Route path="reminders" element={<ProtectedRoute minLevel={2}><Reminders /></ProtectedRoute>} />
+        {/* A fitter needs their own jobs, so this is open to everybody signed
+            in — the server shows them only what they are on. */}
+        <Route path="installations" element={<ProtectedRoute minLevel={1}><Installations /></ProtectedRoute>} />
         {/* Not a document: printing one records money. */}
         <Route path="packages-receipt" element={<ProtectedRoute minLevel={2}><PackagesReceipt /></ProtectedRoute>} />
         <Route path="search" element={<ProtectedRoute minLevel={3} page="search"><Search /></ProtectedRoute>} />

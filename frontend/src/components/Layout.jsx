@@ -43,6 +43,7 @@ const NAV_ITEMS = [
   { to: '/reorder', label: 'What to Order', icon: FiTrendingUp, minLevel: 2 },
   { to: '/receipt-approvals', label: 'Receipt Approvals', icon: FiCheckSquare, minLevel: 2 },
   { to: '/reminders', label: 'Reminders', icon: FiBell, minLevel: 2 },
+  { to: '/installations', label: 'Installations', icon: FiTool, minLevel: 1 },
   { to: '/packages-receipt', label: 'Packages Receipt', icon: FiFileText, minLevel: 2 },
   // CEO+ only
   { to: '/debts', label: 'Debts', icon: FiAlertCircle, minLevel: 2 },

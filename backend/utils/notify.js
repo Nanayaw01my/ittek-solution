@@ -36,6 +36,23 @@ const push = async (userIds, { title, message, link, tag }) => {
 };
 
 /**
+ * The notification's level, whatever the caller called it.
+ *
+ * The collection only accepts 'critical', 'important' or 'info', and callers
+ * all over this code have been passing what the notification is *about* —
+ * 'sale', 'refund_spike', 'rapid_sales', 'redeem'. Mongoose rejected every
+ * one of those, the create threw, the caller's catch swallowed it, and the
+ * alert simply never appeared. A fraud sweep that found something said
+ * nothing.
+ *
+ * So anything unrecognised becomes 'info' rather than being thrown away. A
+ * notification filed under the wrong heading is worth incomparably more than
+ * a notification that does not exist.
+ */
+const LEVELS = ['critical', 'important', 'info'];
+const levelFor = (type, fallback) => (LEVELS.includes(type) ? type : fallback);
+
+/**
  * The owners — CEO and Super Admin.
  *
  * The bell row keeps user_id null, which is how every existing screen reads
@@ -51,7 +68,7 @@ const notifyOwners = async ({
   exclude_user_id = null,
 } = {}) => {
   const row = await Notification.create({
-    user_id: null, type, title, message, link,
+    user_id: null, type: levelFor(type, 'important'), title, message, link,
   });
 
   if (silent) return row;
@@ -68,7 +85,9 @@ const notifyOwners = async ({
 /** One named person, on the bell and on their phone. */
 const notifyUser = async (userId, { type = 'info', title, message, link, tag }) => {
   if (!userId) return null;
-  const row = await Notification.create({ user_id: userId, type, title, message, link });
+  const row = await Notification.create({
+    user_id: userId, type: levelFor(type, 'info'), title, message, link,
+  });
   await push([userId], { title, message, link, tag });
   return row;
 };
