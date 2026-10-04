@@ -25,6 +25,11 @@ router.get('/price-list', authenticate, getPriceList);
 // Reading a report can be granted to an individual user by the CEO.
 router.use(authenticate, requirePage('reports'));
 
+// Costs, margins and what each person sold — the owner's numbers, so they
+// sit behind the reports page like everything else below.
+router.get('/margins', require('../controllers/marginsController').getMargins);
+router.get('/staff', require('../controllers/staffReportController').getStaffPerformance);
+
 router.get('/daily-sales', getDailySales);
 router.get('/sales-by-user', getSalesByUser);
 router.get('/top-products', getTopProducts);

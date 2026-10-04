@@ -23,3 +23,8 @@ export const getDayEndReport = (date) =>
 /** Printable price list — selling prices only, safe to hand to a customer. */
 export const getPriceList = (params) =>
   api.get('/reports/price-list', { params, responseType: 'blob' })
+
+/** Products being sold too cheaply, judged on what was actually paid. */
+export const getMargins = (params) => api.get('/reports/margins', { params })
+/** What each person sold over a period. */
+export const getStaffPerformance = (params) => api.get('/reports/staff', { params })
