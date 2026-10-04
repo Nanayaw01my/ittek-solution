@@ -45,6 +45,7 @@ import ReceiptApprovals from './pages/ReceiptApprovals'
 import Reminders from './pages/Reminders'
 import Installations from './pages/Installations'
 import SystemHealth from './pages/SystemHealth'
+import Payables from './pages/Payables'
 import FraudAlerts from './pages/FraudAlerts'
 import DeleteRecords from './pages/DeleteRecords'
 import ReceiptForms from './pages/ReceiptForms'
@@ -191,6 +192,7 @@ export default function App() {
         <Route path="installations" element={<ProtectedRoute minLevel={1}><Installations /></ProtectedRoute>} />
         {/* Backups, keys and credits — the owners'. */}
         <Route path="system-health" element={<ProtectedRoute minLevel={3}><SystemHealth /></ProtectedRoute>} />
+        <Route path="payables" element={<ProtectedRoute minLevel={2} page="purchases"><Payables /></ProtectedRoute>} />
         {/* Not a document: printing one records money. */}
         <Route path="packages-receipt" element={<ProtectedRoute minLevel={2}><PackagesReceipt /></ProtectedRoute>} />
         <Route path="search" element={<ProtectedRoute minLevel={3} page="search"><Search /></ProtectedRoute>} />

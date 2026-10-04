@@ -175,4 +175,173 @@ const deletePurchase = async (req, res) => {
   }
 };
 
-module.exports = { getPurchases, createPurchase, getPurchase, deletePurchase };
+/**
+ * POST /api/purchases/:id/pay — hand money to a supplier.
+ *
+ * Writes no Expense, deliberately. The goods are already carried at cost on
+ * the shelf and that cost reaches the profit figure when they are sold;
+ * recording the payment as an expense as well would charge the shop twice for
+ * the same goods. This settles a debt that was already incurred.
+ */
+const payPurchase = async (req, res) => {
+  try {
+    const purchase = await Purchase.findById(req.params.id).populate('supplier_id', 'name');
+    if (!purchase) return res.status(404).json({ success: false, message: 'Purchase not found.' });
+
+    const amount = Number(req.body?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'How much was paid?' });
+    }
+
+    const owed = Math.max(0, Number(((purchase.total_amount || 0) - (purchase.amount_paid || 0)).toFixed(2)));
+    if (owed <= 0) {
+      return res.status(400).json({ success: false, message: 'This one is already settled.' });
+    }
+    // Paying more than is owed is a typo, every time. Refusing it is kinder
+    // than recording a supplier balance that reads as negative for ever.
+    if (amount > owed + 0.004) {
+      return res.status(400).json({
+        success: false,
+        message: `Only ${owed.toFixed(2)} is still owed on this delivery.`,
+      });
+    }
+
+    const method = ['cash', 'bank', 'mobile_money', 'cheque', 'other'].includes(req.body?.method)
+      ? req.body.method : 'cash';
+
+    purchase.payments.push({
+      amount: Number(amount.toFixed(2)),
+      method,
+      reference: req.body?.reference,
+      note: req.body?.note,
+      paid_at: new Date(),
+      paid_by: req.user._id,
+    });
+    await purchase.save();
+
+    const left = purchase.balance();
+    const who = purchase.supplier_id?.name || 'the supplier';
+    return res.status(200).json({
+      success: true,
+      message: left > 0
+        ? `GH¢${amount.toFixed(2)} paid to ${who}. GH¢${left.toFixed(2)} still owed.`
+        : `GH¢${amount.toFixed(2)} paid to ${who}. Settled in full.`,
+      data: purchase,
+    });
+  } catch (err) {
+    console.error('Pay purchase error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not record it: ${err.message}` });
+  }
+};
+
+/**
+ * PUT /api/purchases/:id/terms — when the supplier expects to be paid.
+ *
+ * Kept apart from editing the delivery itself: agreeing a date is a thing
+ * that happens after the goods have arrived and the sheet is otherwise
+ * finished with.
+ */
+const setPurchaseTerms = async (req, res) => {
+  try {
+    const purchase = await Purchase.findById(req.params.id);
+    if (!purchase) return res.status(404).json({ success: false, message: 'Purchase not found.' });
+
+    if (req.body?.due_date === null || req.body?.due_date === '') purchase.due_date = undefined;
+    else if (req.body?.due_date) {
+      const when = new Date(req.body.due_date);
+      if (Number.isNaN(when.getTime())) {
+        return res.status(400).json({ success: false, message: 'That date did not make sense.' });
+      }
+      purchase.due_date = when;
+    }
+    if (typeof req.body?.notes === 'string') purchase.notes = req.body.notes.trim();
+
+    await purchase.save();
+    return res.status(200).json({ success: true, message: 'Saved.', data: purchase });
+  } catch (err) {
+    console.error('Set purchase terms error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * GET /api/purchases/payables — what the shop owes, by supplier.
+ *
+ * Grouped by supplier because that is who gets paid. A list of eleven
+ * deliveries is not an answer to "what do we owe Kofi Trading?"
+ */
+const getPayables = async (req, res) => {
+  try {
+    const open = await Purchase.find({ payment_status: { $ne: 'paid' } })
+      .populate('supplier_id', 'name phone')
+      .sort({ due_date: 1, purchase_date: 1 })
+      .lean();
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const bySupplier = new Map();
+    let total = 0;
+    let overdue = 0;
+
+    for (const p of open) {
+      const owed = Math.max(0, Number(((p.total_amount || 0) - (p.amount_paid || 0)).toFixed(2)));
+      if (owed <= 0) continue;
+      total += owed;
+
+      const late = p.due_date && new Date(p.due_date) < today;
+      if (late) overdue += owed;
+
+      // Deliveries bought without naming a supplier still have to be shown,
+      // or the total on screen quietly disagrees with the deliveries below it.
+      const key = p.supplier_id?._id ? String(p.supplier_id._id) : 'unknown';
+      if (!bySupplier.has(key)) {
+        bySupplier.set(key, {
+          supplier_id: p.supplier_id?._id ? String(p.supplier_id._id) : null,
+          supplier_name: p.supplier_id?.name || 'No supplier recorded',
+          supplier_phone: p.supplier_id?.phone || '',
+          owed: 0,
+          overdue: 0,
+          deliveries: [],
+        });
+      }
+      const row = bySupplier.get(key);
+      row.owed = Number((row.owed + owed).toFixed(2));
+      if (late) row.overdue = Number((row.overdue + owed).toFixed(2));
+      row.deliveries.push({
+        _id: String(p._id),
+        purchase_date: p.purchase_date,
+        due_date: p.due_date || null,
+        total_amount: p.total_amount,
+        amount_paid: p.amount_paid || 0,
+        owed,
+        overdue: !!late,
+        item_count: (p.items || []).length,
+        payment_status: p.payment_status,
+      });
+    }
+
+    const suppliers = [...bySupplier.values()].sort((a, b) => b.owed - a.owed);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        suppliers,
+        summary: {
+          owed: Number(total.toFixed(2)),
+          overdue: Number(overdue.toFixed(2)),
+          suppliers: suppliers.length,
+          deliveries: suppliers.reduce((n, s) => n + s.deliveries.length, 0),
+        },
+      },
+    });
+  } catch (err) {
+    console.error('Get payables error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+module.exports = {
+  getPurchases, createPurchase, getPurchase, deletePurchase,
+  payPurchase, setPurchaseTerms, getPayables,
+};

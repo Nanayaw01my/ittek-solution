@@ -63,6 +63,8 @@ const EVENTS = {
   AUTO_MERGE_DUPLICATE_PRODUCTS: ['auto-merged duplicate products', 'high'],
   GENERATE_ALL_BARCODES: ['barcoded the whole catalogue', 'high'],
   CREATE_PURCHASE: ['recorded a purchase', 'low'],
+  PAY_SUPPLIER: ['paid a supplier', 'high'],
+  UPDATE_PURCHASE_TERMS: ['changed when a supplier is paid', 'low'],
   DELETE_PURCHASE: ['deleted a purchase', 'high'],
   CREATE_CATEGORY: ['added a category', 'low'],
   UPDATE_CATEGORY: ['changed a category', 'low'],
