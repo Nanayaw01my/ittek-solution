@@ -134,6 +134,7 @@ const EVENTS = {
   SEND_SMS: ['texted a customer', 'low'],
   UPLOAD_LOGO: ['changed the logo', 'low'],
   CREATE_BACKUP: ['made a backup', 'high'],
+  RUN_JOBS_NOW: ['ran the scheduled jobs by hand', 'high'],
   RESTORE_BACKUP: ['restored a backup', 'high'],
   DELETE_RECORDS: ['deleted records in bulk', 'high'],
   CLEAR_ALL_DATA: ['cleared all data', 'high'],
