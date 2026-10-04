@@ -175,6 +175,18 @@ const DAILY_JOBS = [
   // First, before anything else can go wrong with the day.
   { name: 'nightly_backup', hour: 2, run: () => require('./autoBackup').runNightlyBackup() },
   { name: 'low_stock', hour: 9, run: () => checkLowStock() },
+  // The hour is the shop's, out of Settings — a debt notice at 2am is worse
+  // than none. Read at run time so changing it does not need a restart.
+  {
+    name: 'chase_debts',
+    hour: 9,
+    hourFrom: async () => {
+      const Settings = require('../models/Settings');
+      const s = await Settings.findOne().select('debt_chasing.hour').lean();
+      return s?.debt_chasing?.hour;
+    },
+    run: () => require('./debtChaser').chaseOverdueDebts(),
+  },
   { name: 'overdue_debts', hour: 0, run: () => updateOverdueDebts() },
   { name: 'overdue_layaways', hour: 1, run: () => markOverdueLayaways() },
   { name: 'daily_summary', hour: 23, run: () => sendDailySummary() },
@@ -206,15 +218,26 @@ const runDueJobs = async ({ reason = 'timer' } = {}) => {
   const today = dayKey(now);
   const ran = [];
 
+  // Jobs the shop can retime from Settings say so; the table's hour is only
+  // a default for them.
+  const hourFor = async (job) => {
+    if (!job.hourFrom) return job.hour;
+    try {
+      const h = await job.hourFrom();
+      return Number.isFinite(h) ? h : job.hour;
+    } catch { return job.hour; }
+  };
+
   for (const job of DAILY_JOBS) {
-    if (now.getUTCHours() < job.hour) continue;
+    const hour = await hourFor(job);
+    if (now.getUTCHours() < hour) continue;
 
     let claim;
     try {
       claim = await JobRun.create({
         job: job.name,
         run_for: today,
-        caught_up: now.getUTCHours() > job.hour,
+        caught_up: now.getUTCHours() > hour,
       });
     } catch (err) {
       // 11000 means somebody else has it. Anything else is worth seeing.

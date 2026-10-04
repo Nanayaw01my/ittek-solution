@@ -283,6 +283,18 @@ function SmsConfigTab({ settings }) {
   const [senderId, setSenderId] = useState(cfg.sender_id || '')
   const [enabled, setEnabled] = useState(cfg.enabled !== false)
   const [testNumber, setTestNumber] = useState('')
+  // Chasing rides on this screen because it is the same question: what does
+  // this shop send, and when.
+  const chaseNow = settings?.debt_chasing || {}
+  const [chase, setChase] = useState({
+    enabled: chaseNow.enabled ?? false,
+    on_due_day: chaseNow.on_due_day ?? true,
+    repeat_every_days: chaseNow.repeat_every_days ?? 7,
+    max_reminders: chaseNow.max_reminders ?? 4,
+    hour: chaseNow.hour ?? 9,
+    minimum_amount: chaseNow.minimum_amount ?? 0,
+  })
+  const setChaseField = (k, v) => setChase((p) => ({ ...p, [k]: v }))
 
   const { data: credits, refetch: refetchCredits, isFetching: checkingCredits } = useQuery({
     queryKey: ['sms-balance'],
@@ -296,6 +308,7 @@ function SmsConfigTab({ settings }) {
       api_key: apiKey.trim() || undefined,
       sender_id: senderId,
       enabled,
+      debt_chasing: chase,
     }),
     onSuccess: () => {
       toast.success('SMS settings saved.')
@@ -382,9 +395,98 @@ function SmsConfigTab({ settings }) {
         </div>
       )}
 
+
+      {/* ── Chasing debts on its own ───────────────────────────────────── */}
+      <div className="border-t border-gray-100 pt-5 space-y-4">
+        <div>
+          <h4 className="font-black text-gray-900 text-sm">Chase overdue debts automatically</h4>
+          <p className="text-xs text-gray-500">
+            Works off the due date you type in when you record a debt. Nothing here
+            decides who is late — you do. These only say how often to follow up
+            afterwards, and when to stop.
+          </p>
+        </div>
+
+        <label className="flex items-start gap-2.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3 cursor-pointer">
+          <input type="checkbox" checked={chase.enabled}
+            onChange={(e) => setChaseField('enabled', e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-orange-500" />
+          <span>
+            <span className="font-bold">Send these without me</span>
+            <span className="block text-xs text-gray-500">
+              Off until you turn it on. It spends credits and texts customers on its own.
+            </span>
+          </span>
+        </label>
+
+        {chase.enabled && (
+          <>
+            <label className="flex items-center gap-2.5 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" checked={chase.on_due_day}
+                onChange={(e) => setChaseField('on_due_day', e.target.checked)}
+                className="w-4 h-4 accent-orange-500" />
+              Text them on the day it falls due
+            </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Then every</label>
+                <select value={chase.repeat_every_days}
+                  onChange={(e) => setChaseField('repeat_every_days', Number(e.target.value))}
+                  className={field}>
+                  <option value={0}>never again</option>
+                  <option value={3}>3 days overdue</option>
+                  <option value={7}>7 days overdue</option>
+                  <option value={14}>14 days overdue</option>
+                  <option value={30}>30 days overdue</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Stop after</label>
+                <select value={chase.max_reminders}
+                  onChange={(e) => setChaseField('max_reminders', Number(e.target.value))}
+                  className={field}>
+                  {[1, 2, 3, 4, 5, 6, 8, 10].map((n) => (
+                    <option key={n} value={n}>{n} reminder{n === 1 ? '' : 's'}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Send at</label>
+                <select value={chase.hour} onChange={(e) => setChaseField('hour', Number(e.target.value))}
+                  className={field}>
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  Only above <span className="font-normal text-gray-400">GH₵</span>
+                </label>
+                <input type="number" min="0" step="1" value={chase.minimum_amount}
+                  onChange={(e) => setChaseField('minimum_amount', e.target.value)}
+                  placeholder="0" className={field} />
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-600 bg-orange-50 border border-orange-200 rounded-xl p-3">
+              A customer who owes more than GH₵{Number(chase.minimum_amount) || 0} gets a text
+              {chase.on_due_day ? ' on the day it is due' : ''}
+              {chase.repeat_every_days > 0
+                ? `${chase.on_due_day ? ', then' : ''} every ${chase.repeat_every_days} days late`
+                : `${chase.on_due_day ? ' and nothing after that' : ''}`}
+              , at {String(chase.hour).padStart(2, '0')}:00, up to {chase.max_reminders} time
+              {chase.max_reminders === 1 ? '' : 's'} in all. Anyone who asked not to be
+              messaged is left out.
+            </p>
+          </>
+        )}
+      </div>
+
       <button onClick={() => save.mutate()} disabled={save.isPending}
         className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded-xl font-bold text-sm inline-flex items-center justify-center gap-2">
-        <FiSave size={15} /> {save.isPending ? 'Saving…' : 'Save SMS settings'}
+        <FiSave size={15} /> {save.isPending ? 'Saving…' : 'Save SMS and chasing settings'}
       </button>
 
       {/* A wrong key, an unregistered sender ID and an empty account all look

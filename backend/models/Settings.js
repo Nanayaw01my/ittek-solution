@@ -71,6 +71,31 @@ const SettingsSchema = new mongoose.Schema(
       enabled: { type: Boolean, default: false },
     },
 
+    /**
+     * Chasing overdue debts by text, on its own.
+     *
+     * Driven entirely by the due date typed in when the debt was recorded —
+     * the shop decides when somebody is late, not the system. These settings
+     * only say how often to follow up once that date has passed, and when to
+     * stop.
+     *
+     * Off until switched on. It spends SMS credits and texts customers, and
+     * neither should start happening because of a deploy.
+     */
+    debt_chasing: {
+      enabled: { type: Boolean, default: false },
+      /** Text them on the day it falls due, before they are late at all. */
+      on_due_day: { type: Boolean, default: true },
+      /** Then every this many days overdue. 0 means never follow up again. */
+      repeat_every_days: { type: Number, default: 7, min: 0, max: 90 },
+      /** Stop after this many, so a forgotten debt is not a monthly nuisance. */
+      max_reminders: { type: Number, default: 4, min: 1, max: 20 },
+      /** The hour it goes out. Nobody wants a debt notice at 2am. */
+      hour: { type: Number, default: 9, min: 0, max: 23 },
+      /** Below this, chasing costs more in credits than it recovers. */
+      minimum_amount: { type: Number, default: 0, min: 0 },
+    },
+
     notification_settings: {
       large_sale_threshold: { type: Number, default: 5000 },
       expense_threshold: { type: Number, default: 1000 },

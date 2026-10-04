@@ -157,8 +157,25 @@ const updateSmsConfig = async (req, res) => {
     }
     if (typeof enabled === 'boolean') next.enabled = enabled;
     next.provider = 'arkesel';
-
     settings.sms_config = next;
+
+    // Chasing rides on the same screen, because it is the same question:
+    // what does this shop send, and when.
+    const chase = req.body?.debt_chasing;
+    if (chase && typeof chase === 'object') {
+      const now = { ...(settings.debt_chasing?.toObject?.() || settings.debt_chasing || {}) };
+      if (typeof chase.enabled === 'boolean') now.enabled = chase.enabled;
+      if (typeof chase.on_due_day === 'boolean') now.on_due_day = chase.on_due_day;
+      const num = (v, lo, hi, fallback) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : fallback;
+      };
+      if (chase.repeat_every_days !== undefined) now.repeat_every_days = num(chase.repeat_every_days, 0, 90, now.repeat_every_days ?? 7);
+      if (chase.max_reminders !== undefined) now.max_reminders = num(chase.max_reminders, 1, 20, now.max_reminders ?? 4);
+      if (chase.hour !== undefined) now.hour = num(chase.hour, 0, 23, now.hour ?? 9);
+      if (chase.minimum_amount !== undefined) now.minimum_amount = Math.max(0, Number(chase.minimum_amount) || 0);
+      settings.debt_chasing = now;
+    }
     settings.updated_at = new Date();
     settings.updated_by = req.user._id;
     await settings.save();
@@ -172,6 +189,7 @@ const updateSmsConfig = async (req, res) => {
         enabled: next.enabled !== false,
         api_key_set: !!next.api_key,
         api_key_tail: next.api_key ? String(next.api_key).slice(-4) : '',
+        debt_chasing: settings.debt_chasing,
       },
     });
   } catch (err) {

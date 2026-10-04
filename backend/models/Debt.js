@@ -42,6 +42,17 @@ const DebtSchema = new mongoose.Schema(
         return date;
       },
     },
+    /**
+     * How many times this debt has been chased, and when last.
+     *
+     * Counted on the debt rather than worked out from the message log,
+     * because the question being asked is about this balance — "have we
+     * already sent Ama four reminders about this one?" — and a log keyed on
+     * her phone number cannot answer it once she owes for two things.
+     */
+    reminders_sent: { type: Number, default: 0 },
+    last_reminded_at: { type: Date },
+
     status: {
       type: String,
       enum: ['active', 'paid', 'overdue'],
