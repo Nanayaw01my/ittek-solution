@@ -25,6 +25,7 @@ const SOURCE_LABELS = {
   layaway: 'Layaway',
   credit: 'Credit agreement',
   phone_credit: 'Phone credit',
+  warranty: 'Warranty ending',
   custom: 'Reminder',
 }
 
@@ -41,6 +42,7 @@ const SOURCE_STYLES = {
   layaway: 'bg-blue-100 text-blue-700',
   credit: 'bg-purple-100 text-purple-700',
   phone_credit: 'bg-indigo-100 text-indigo-700',
+  warranty: 'bg-emerald-100 text-emerald-700',
   custom: 'bg-gray-200 text-gray-700',
 }
 

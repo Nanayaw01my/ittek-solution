@@ -3,6 +3,7 @@ const Debt = require('../models/Debt');
 const Layaway = require('../models/Layaway');
 const CreditAgreement = require('../models/CreditAgreement');
 const PhoneSale = require('../models/PhoneSale');
+const Warranty = require('../models/Warranty');
 const Settings = require('../models/Settings');
 
 const gh = (n) => `GH¢${Number(n || 0).toFixed(2)}`;
@@ -123,7 +124,9 @@ const nextYearly = (date) => {
 const composeGoodwill = ({ company, name, about, purpose, days }) => {
   const first = String(name || '').split(' ')[0] || 'there';
   const sign = company || 'DAN & DOR SOLAR COMPANY LIMITED';
-  const subject = String(about || '').trim();
+  // Dropped so "your the 300W panels" cannot happen: staff write the subject
+  // however it reads to them, and it is inserted after "your".
+  const subject = String(about || '').trim().replace(/^the\s+/i, '');
 
   if (purpose === 'wish') {
     return [
@@ -136,6 +139,22 @@ const composeGoodwill = ({ company, name, about, purpose, days }) => {
   }
 
   if (purpose === 'checkup') {
+    // A warranty running out is a different conversation from a general
+    // "how is it going" — it has a deadline, and saying so is the whole
+    // value of the call.
+    const warranty = /warranty$/i.test(subject);
+    const when = days === null ? '' : days === 0 ? ' today' : days === 1 ? ' tomorrow' : ` in ${days} days`;
+
+    if (warranty) {
+      return [
+        `Good day ${first},`, '',
+        `Your ${subject} ends${when}.`,
+        '',
+        'Shall we come and check it over before it does? Call us to arrange a day.',
+        sign,
+      ].join('\n');
+    }
+
     return [
       `Good day ${first},`, '',
       subject
@@ -192,11 +211,16 @@ const getReminders = async (req, res) => {
     const phone = settings?.company_phone;
 
     const none = () => Promise.resolve([]);
-    const [debts, layaways, credits, phones, custom] = await Promise.all([
+    const [debts, layaways, credits, phones, custom, warranties] = await Promise.all([
       goodwill ? none() : Debt.find({ status: { $ne: 'paid' } }).lean(),
       goodwill ? none() : Layaway.find({ status: { $nin: ['completed', 'cancelled'] } }).lean(),
       goodwill ? none() : CreditAgreement.find({ status: 'active' }).lean(),
       goodwill ? none() : PhoneSale.find({ status: 'approved' }).lean(),
+      // A warranty running out is the best reason there is to ring somebody:
+      // it is a service call that often becomes a sale, and it is the one
+      // date the shop knows and the customer has forgotten. Derived rather
+      // than written down, like the debts are, so it cannot drift out of step
+      // with the warranty itself.
       Reminder.find({
         status: { $in: ['pending', 'sent'] },
         // Rows written before this split have no kind and are money, which is
@@ -206,6 +230,18 @@ const getReminders = async (req, res) => {
       })
         .populate('created_by', 'username')
         .lean(),
+      // A warranty running out is the best reason there is to ring somebody:
+      // it is a service call that often becomes a sale, and it is the one
+      // date the shop knows and the customer has forgotten. Derived rather
+      // than written down, like the debts are, so it cannot drift out of step
+      // with the warranty itself.
+      goodwill
+        ? Warranty.find({
+          status: { $nin: ['void', 'rejected', 'claimed'] },
+          customer_phone: { $nin: [null, ''] },
+          expires_on: { $gte: new Date() },
+        }).lean()
+        : none(),
     ]);
 
     const rows = [];
@@ -249,6 +285,16 @@ const getReminders = async (req, res) => {
         _id: String(p._id), source: 'phone_credit', about: `${p.phone_model} instalment`,
         customer_name: p.customer_name, customer_phone: p.customer_phone,
         amount: p.balance, due_date: p.final_due_date,
+      });
+    }
+
+    for (const w of warranties) {
+      add({
+        _id: String(w._id), source: 'warranty',
+        about: `${w.product_name} warranty`,
+        customer_name: w.customer_name, customer_phone: w.customer_phone,
+        amount: 0, due_date: w.expires_on,
+        kind: 'goodwill', purpose: 'checkup',
       });
     }
 
