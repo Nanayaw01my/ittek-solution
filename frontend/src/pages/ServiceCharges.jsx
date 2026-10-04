@@ -14,6 +14,7 @@ import {
   getServiceCharges, createServiceCharge, deleteServiceCharge,
 } from '../api/serviceCharges'
 import useAuthStore from '../store/authStore'
+import { isOwner } from '../config/pageAccess'
 
 const METHODS = [['cash', 'Cash'], ['mobile_money', 'Mobile Money'], ['card', 'Card']]
 
@@ -209,7 +210,7 @@ function NewChargeModal({ onClose, onRecorded }) {
 export default function ServiceCharges() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
-  const isOwner = ['CEO', 'Super Admin'].includes(user?.role)
+  const owner = isOwner(user?.role)
 
   const [showNew, setShowNew] = useState(false)
   const [printing, setPrinting] = useState(null)
@@ -310,7 +311,7 @@ export default function ServiceCharges() {
                 >
                   <FiPrinter />
                 </button>
-                {isOwner && (
+                {owner && (
                   <button
                     onClick={() => setDeleting(c)}
                     title="Delete"

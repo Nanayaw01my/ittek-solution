@@ -24,7 +24,7 @@ router.post('/:id/pay', auditLog('PAY_PHONE_SALE', (req) => ({ id: req.params.id
 
 // Approving is the whole control. Nothing is sold on credit until an owner has
 // read the paperwork and agreed to it, so it stays with the two of them.
-const ownersOnly = requireRoles('CEO', 'Super Admin');
+const ownersOnly = requireRoles(...require('../middleware/rbac').OWNER_ROLES);
 router.put('/:id/approve', ownersOnly, auditLog('APPROVE_PHONE_SALE', (req) => ({ id: req.params.id })), approvePhoneSale);
 router.put('/:id/reject', ownersOnly, auditLog('REJECT_PHONE_SALE', (req) => ({ id: req.params.id })), rejectPhoneSale);
 

@@ -16,6 +16,7 @@ import { format, startOfMonth } from 'date-fns'
 import RefreshButton from '../components/RefreshButton'
 
 import { EXPENSE_CATEGORIES } from '../config/expenseCategories'
+import { isOwner } from '../config/pageAccess'
 
 function ExpenseForm({ expense, onSubmit, loading }) {
   const { register, handleSubmit, formState: { errors } } = useForm({
@@ -169,7 +170,7 @@ function RiderForm({ onSubmit, loading }) {
 export default function Expenses() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
-  const isManager = ['Super Admin', 'CEO', 'Manager'].includes(user?.role)
+  const isManager = user?.role === 'Manager' || isOwner(user?.role)
 
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'))

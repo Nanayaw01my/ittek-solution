@@ -8,19 +8,25 @@ import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUs
 import { getCategories } from '../api/products'
 import { resizeImageToDataUrl, dataUrlToFile } from '../utils/resizeImage'
 import { uploadImage } from '../api/upload'
-import { GRANTABLE_PAGES, MODE_LABELS } from '../config/pageAccess'
+import { GRANTABLE_PAGES, MODE_LABELS, badgeLoginAllowed } from '../config/pageAccess'
 import { formatDate, getRoleLabel, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
 import useBarcodeScanner from '../hooks/useBarcodeScanner'
 
+/**
+ * Who each level may create. A CEO cannot make another CEO or a COO — those
+ * are the Super Admin's to appoint, so somebody at level three cannot quietly
+ * manufacture a peer.
+ */
 const ROLES_FOR_LEVEL = {
   3: ['Manager', 'Sales', 'Field Agent'],
-  4: ['Super Admin', 'CEO', 'Manager', 'Sales', 'Field Agent'],
+  4: ['Super Admin', 'CEO', 'COO', 'Manager', 'Sales', 'Field Agent'],
 }
 
 const ROLE_COLORS = {
   'Super Admin': 'bg-purple-100 text-purple-700',
   'CEO': 'bg-blue-100 text-blue-700',
+  'COO': 'bg-indigo-100 text-indigo-700',
   'Manager': 'bg-orange-100 text-orange-700',
   'Sales': 'bg-green-100 text-green-700',
   'Field Agent': 'bg-teal-100 text-teal-700',
@@ -329,7 +335,7 @@ function BadgeModal({ user, onClose }) {
   const [issued, setIssued] = useState(null)
 
   const needsPin = user.role === 'Field Agent'
-  const blocked = ['CEO', 'Super Admin'].includes(user.role)
+  const blocked = !badgeLoginAllowed(user.role)
 
   const issue = useMutation({
     mutationFn: () => issueBadge(user._id, { pin: pin || undefined }),
@@ -828,7 +834,7 @@ export default function Users() {
   const users = data?.users || data || []
   const myLevel = getRoleLevel(me?.role)
 
-  const visibleUsers = me?.role === 'CEO'
+  const visibleUsers = ['CEO', 'COO'].includes(me?.role)
     ? users.filter(u => ['Manager', 'Sales', 'Field Agent'].includes(u.role))
     : users
 

@@ -11,7 +11,8 @@ const canManage = (actorRole, targetRole) => {
   const targetLevel = ROLE_LEVELS[targetRole] || 0;
   // Super Admin can manage anyone; CEO can manage Manager and Sales only
   if (actorRole === 'Super Admin') return true;
-  if (actorRole === 'CEO') return targetLevel <= 2; // Manager=2, Sales=1
+  // A CEO or COO manages the staff below them, never each other.
+  if (['CEO', 'COO'].includes(actorRole)) return targetLevel <= 2;
   return false;
 };
 
@@ -24,7 +25,7 @@ const getUsers = async (req, res) => {
     // A CEO manages the staff below them, not the other owners. Every role
     // below CEO belongs here — leaving one out hides those people from the
     // only screen that can edit them.
-    if (req.user.role === 'CEO') {
+    if (['CEO', 'COO'].includes(req.user.role)) {
       filter.role = { $in: ['Manager', 'Sales', 'Field Agent'] };
     }
 

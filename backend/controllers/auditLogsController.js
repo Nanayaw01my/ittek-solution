@@ -8,8 +8,8 @@ const getAuditLogs = async (req, res) => {
     const { user_id, action, startDate, endDate, search, page = 1, limit = 50 } = req.query;
     const filter = {};
 
-    // CEO cannot see Super Admin logs
-    if (req.user.role === 'CEO') {
+    // A CEO or COO cannot see what the Super Admin did.
+    if (['CEO', 'COO'].includes(req.user.role)) {
       filter.role = { $ne: 'Super Admin' };
     }
 

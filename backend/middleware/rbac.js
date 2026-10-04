@@ -11,6 +11,11 @@
 const ROLE_LEVELS = {
   'Super Admin': 4,
   CEO: 3,
+  // The COO runs the operation, so they reach everything the CEO reaches.
+  // Only the Super Admin sits above, and only for the things that destroy
+  // data — clearing records and restoring backups — which are gated by role
+  // rather than by level precisely so a level cannot grant them by accident.
+  COO: 3,
   Manager: 2,
   Sales: 1,
   // A DSR on the field. Level 1 so everything gated at Manager and above is
@@ -100,4 +105,17 @@ const requirePage = (page, ...modes) => {
   };
 };
 
-module.exports = { requireRoles, requireLevel, requirePage, ROLE_LEVELS };
+/**
+ * The roles that run the business.
+ *
+ * Kept here, beside the levels, because a dozen files were each carrying
+ * their own ['CEO', 'Super Admin'] — and a role added to the levels but not
+ * to those lists exists everywhere except the places that actually decide
+ * what somebody can do. Which is how a new role half-works.
+ */
+const OWNER_ROLES = ['CEO', 'COO', 'Super Admin'];
+const isOwner = (role) => OWNER_ROLES.includes(role);
+
+module.exports = {
+  requireRoles, requireLevel, requirePage, ROLE_LEVELS, OWNER_ROLES, isOwner,
+};

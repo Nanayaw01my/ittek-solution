@@ -50,9 +50,27 @@ export const MODE_LABELS = {
  * dashboard — which the field-agent guard bounced straight back, looping
  * thousands of times a second until the page froze white.
  */
-export const ROLE_LEVELS = { 'Field Agent': 1, Sales: 1, Manager: 2, CEO: 3, 'Super Admin': 4 }
+export const ROLE_LEVELS = { 'Field Agent': 1, Sales: 1, Manager: 2, COO: 3, CEO: 3, 'Super Admin': 4 }
 
 export const roleLevel = (role) => ROLE_LEVELS[role] || 0
+
+/**
+ * The roles that run the business.
+ *
+ * One list, because half a dozen screens were each carrying their own
+ * ['CEO', 'Super Admin'] — and a role added to the levels but not to those
+ * lists can open a page and then find half of it missing.
+ */
+export const OWNER_ROLES = ['CEO', 'COO', 'Super Admin']
+export const isOwner = (role) => OWNER_ROLES.includes(role)
+
+/**
+ * Who may not sign in by scanning a card — the browser's copy of
+ * backend/config/badges.js. A card can be photographed and copied, and these
+ * accounts reach every screen in the shop.
+ */
+export const BADGE_BLOCKED_ROLES = ['CEO', 'COO', 'Super Admin']
+export const badgeLoginAllowed = (role) => !BADGE_BLOCKED_ROLES.includes(role)
 
 /** What a user can do on a page: 'full' by role, else the granted mode, else null. */
 export function effectiveMode(user, page) {

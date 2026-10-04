@@ -2,7 +2,9 @@ const Installation = require('../models/Installation');
 const User = require('../models/User');
 const { notifyUser, notifyOwners } = require('../utils/notify');
 
-const ROLE_LEVELS = { 'Super Admin': 4, CEO: 3, Manager: 2, Sales: 1, 'Field Agent': 1 };
+// Taken from the one place that defines them, rather than copied — a second
+// table is a table that disagrees the first time a role is added.
+const { ROLE_LEVELS } = require('../middleware/rbac');
 const levelOf = (role) => ROLE_LEVELS[role] || 0;
 
 const startOfDay = (d = new Date()) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };

@@ -8,7 +8,7 @@ router.use(authenticate);
 
 // Manager+ only — adjusting points is effectively handing out money.
 const requireManager = (req, res, next) => {
-  const allowed = ['Manager', 'CEO', 'Super Admin'];
+  const allowed = ['Manager', ...require('../middleware/rbac').OWNER_ROLES];
   if (!allowed.includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Manager access required.' });
   }

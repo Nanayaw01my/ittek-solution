@@ -47,6 +47,7 @@ export const getRoleBadgeColor = (role) => {
   const colors = {
     'Super Admin': 'bg-purple-100 text-purple-800',
     'CEO': 'bg-blue-100 text-blue-800',
+    'COO': 'bg-indigo-100 text-indigo-800',
     'Manager': 'bg-green-100 text-green-800',
     'Sales': 'bg-orange-100 text-orange-700',
   }

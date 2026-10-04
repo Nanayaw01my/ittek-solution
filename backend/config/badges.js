@@ -12,7 +12,7 @@
  */
 
 /** Cannot *sign in* with a badge — username and password only. */
-const BADGE_BLOCKED_ROLES = ['CEO', 'Super Admin'];
+const BADGE_BLOCKED_ROLES = ['CEO', 'COO', 'Super Admin'];
 
 /**
  * Must enter a PIN after scanning. A field agent works away from the shop

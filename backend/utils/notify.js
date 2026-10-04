@@ -16,7 +16,11 @@ const { sendToSubscriptions } = require('./push');
  * happened.
  */
 
-const OWNER_ROLES = ['CEO', 'Super Admin'];
+// Defined once, in rbac, so that who counts as an owner cannot differ
+// between who is told about something and who is allowed to do it. The COO
+// is among them: an account that can approve a refund and never hears one
+// was raised is an approval queue nobody is watching.
+const { OWNER_ROLES } = require('../middleware/rbac');
 
 const push = async (userIds, { title, message, link, tag }) => {
   try {

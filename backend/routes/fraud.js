@@ -10,7 +10,7 @@ router.use(authenticate);
 // business alone — a Manager who is themselves the subject of an alert must
 // not be able to read it, so the line is drawn above them.
 router.use((req, res, next) => {
-  const allowed = ['CEO', 'Super Admin'];
+  const allowed = require('../middleware/rbac').OWNER_ROLES;
   if (!allowed.includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Access denied.' });
   }

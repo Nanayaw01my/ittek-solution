@@ -140,7 +140,7 @@ router.post('/test', async (req, res) => {
 
       if ((ROLE_LEVELS[req.user.role] || 0) >= 3) {
         const others = await User.countDocuments({
-          role: { $in: ['CEO', 'Super Admin'] },
+          role: { $in: require('../middleware/rbac').OWNER_ROLES },
           is_active: { $ne: false },
           _id: { $ne: req.user._id },
         });

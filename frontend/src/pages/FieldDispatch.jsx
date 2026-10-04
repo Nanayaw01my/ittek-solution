@@ -18,6 +18,7 @@ import {
   closeDispatch, deleteDispatch, getDispatchSheet,
 } from '../api/dispatches'
 import useAuthStore from '../store/authStore'
+import { isOwner } from '../config/pageAccess'
 
 const STATUS_STYLES = {
   issued: 'bg-blue-100 text-blue-700',
@@ -532,12 +533,12 @@ function PayModal({ dispatch, onClose }) {
 export default function FieldDispatch() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
-  const isOwner = ['CEO', 'Super Admin'].includes(user?.role)
+  const owner = isOwner(user?.role)
   // Only the shop takes money. A rep on the field carries goods and comes in
   // to account; the server refuses the payment either way.
   // The agent settles their own sheet from the field; a manager can settle
   // anyone's. A Sales hand at the counter cannot.
-  const canTakeMoney = ['Field Agent', 'Manager', 'CEO', 'Super Admin'].includes(user?.role)
+  const canTakeMoney = ['Field Agent', 'Manager'].includes(user?.role) || isOwner(user?.role)
   // A rep is handed goods at the counter; they never issue their own sheet,
   // and they cannot see the shop's stock to build one from.
   const isAgent = user?.role === 'Field Agent'
@@ -699,7 +700,7 @@ export default function FieldDispatch() {
                       <FiCheckCircle /> Close
                     </button>
                   )}
-                  {isOwner && (
+                  {owner && (
                     <button
                       onClick={() => {
                         if (window.confirm('Cancel this dispatch and put everything still out back into stock?')) {

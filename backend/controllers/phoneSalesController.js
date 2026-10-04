@@ -5,7 +5,8 @@ const { createSaleWithInvoice } = require('../utils/generateInvoice');
 const gh = (n) => 'GHC' + Number(n || 0).toFixed(2);
 
 /** Only these two ever see a customer's address, card number or photographs. */
-const isOwner = (user) => ['CEO', 'Super Admin'].includes(user.role);
+const { isOwner: ownerRole } = require('../middleware/rbac');
+const isOwner = (user) => ownerRole(user?.role);
 
 const todayPart = () => {
   const now = new Date();

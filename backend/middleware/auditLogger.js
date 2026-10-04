@@ -86,7 +86,7 @@ const tellOwners = async (req, action, details) => {
     if ((ROLE_LEVELS[req.user.role] || 0) >= 3) {
       const User = require('../models/User');
       const others = await User.countDocuments({
-        role: { $in: ['CEO', 'Super Admin'] },
+        role: { $in: require('./rbac').OWNER_ROLES },
         is_active: { $ne: false },
         _id: { $ne: req.user._id },
       });

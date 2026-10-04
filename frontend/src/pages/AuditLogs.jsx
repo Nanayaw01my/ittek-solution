@@ -20,6 +20,7 @@ const ACTION_COLORS = {
 const ROLE_COLORS = {
   'Super Admin': 'bg-purple-100 text-purple-700',
   'CEO': 'bg-blue-100 text-blue-700',
+  'COO': 'bg-indigo-100 text-indigo-700',
   'Manager': 'bg-orange-100 text-orange-700',
   'Sales': 'bg-green-100 text-green-700',
 }

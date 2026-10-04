@@ -49,7 +49,7 @@ const UserSchema = new mongoose.Schema(
       // Field Agent is a DSR out on the field. They carry goods and nothing
       // else: one screen, no till, and no way to take money — the accounting
       // is done at the shop with a manager present.
-      enum: ['Super Admin', 'CEO', 'Manager', 'Sales', 'Field Agent'],
+      enum: ['Super Admin', 'CEO', 'COO', 'Manager', 'Sales', 'Field Agent'],
       required: [true, 'Role is required'],
     },
     is_active: {
