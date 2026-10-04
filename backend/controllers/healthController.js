@@ -113,8 +113,13 @@ const systemHealth = async (req, res) => {
         || (lastBackup ? null : 'No backup has ever been taken by the system.'),
     };
 
+    // Leaf paths only. Asking for sms_config and sms_config.api_key together
+    // is a path collision, which mongo rejects outright — so this whole check
+    // failed against a real database while passing every test that stubbed
+    // the query.
     const settings = await Settings.findOne()
-      .select('+sms_config.api_key sms_config debt_chasing company_email').lean();
+      .select('company_email debt_chasing sms_config.sender_id sms_config.enabled +sms_config.api_key')
+      .lean();
 
     // ── Texting ───────────────────────────────────────────────────────────
     const apiKey = settings?.sms_config?.api_key || process.env.ARKESEL_API_KEY || '';

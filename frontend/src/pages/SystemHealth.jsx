@@ -56,11 +56,12 @@ function Check({ title, icon: Icon, state, children }) {
 export default function SystemHealth() {
   const queryClient = useQueryClient()
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['system-health'],
     queryFn: () => getSystemHealth().then((r) => r.data),
     // Reading it is cheap and a stale answer here is worse than none.
     refetchInterval: 60000,
+    retry: false,
   })
 
   const run = useMutation({
@@ -73,6 +74,45 @@ export default function SystemHealth() {
   })
 
   if (isLoading) return <div className="p-6"><LoadingSpinner text="Checking…" /></div>
+
+  /**
+   * A health screen that cannot reach the server must say so.
+   *
+   * It used to render its empty shells — "Checked", amber warnings, blank
+   * figures — which reads as "I looked and things are middling". On this
+   * screen above all others that is the worst possible lie: the one page
+   * whose job is to tell you something is wrong, quietly implying it has
+   * checked when it has not.
+   */
+  if (error || !data?.checks) {
+    const why = error?.response?.data?.message
+      || error?.message
+      || 'The server answered, but not with anything this page could read.'
+    return (
+      <div className="space-y-5">
+        <PageHeader title="System health" subtitle="Whether the things that run on their own are actually running" />
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+          <div className="flex items-start gap-4">
+            <FiXCircle size={28} className="text-red-600 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-lg font-black text-red-700">Could not check</p>
+              <p className="text-sm text-gray-700 mt-1">
+                Nothing below is known — this is not a report that things are
+                middling, it is a report that the check itself failed.
+              </p>
+              <p className="text-xs text-gray-600 mt-2 break-words">
+                <span className="font-semibold">The server said:</span> {why}
+              </p>
+              <button onClick={() => queryClient.invalidateQueries({ queryKey: ['system-health'] })}
+                className="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-sm">
+                Try again
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const h = data || {}
   const c = h.checks || {}
