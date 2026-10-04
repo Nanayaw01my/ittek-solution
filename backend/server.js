@@ -10,7 +10,7 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 
 const connectDB = require('./config/db');
-const { startSchedulers } = require('./utils/scheduler');
+const { startSchedulers, catchUpOnRequest } = require('./utils/scheduler');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -117,6 +117,11 @@ const corsDelegate = (req, callback) => {
 };
 
 app.use('/api', cors(corsDelegate));
+
+// A request is also how a sleeping service finds out what it missed. Runs
+// after the response is on its way, and at most once every few minutes, so
+// nobody waits on a stock check to see their screen.
+app.use('/api', catchUpOnRequest());
 
 // ─── STEP 5: RATE LIMITING — scoped to /api only ────────────────────────────
 

@@ -40,15 +40,18 @@ const queueEmail = async ({ to, toName = '', subject, html, priority = 'normal' 
 
 /**
  * Send an email directly (bypassing queue).
- * @param {Object} options - { to, subject, html }
+ * @param {Object} options - { to, subject, html, attachments }
  */
-const sendEmail = async ({ to, subject, html }) => {
+const sendEmail = async ({ to, subject, html, attachments }) => {
   const transporter = createTransporter();
   const mailOptions = {
     from: process.env.EMAIL_FROM || `ITTEK Solution <${process.env.EMAIL_USER}>`,
     to,
     subject,
     html,
+    // A nightly backup is only a backup once it is somewhere other than the
+    // machine it came from, and email is the one place this shop already has.
+    ...(attachments?.length ? { attachments } : {}),
   };
   const info = await transporter.sendMail(mailOptions);
   console.log(`Email sent to ${to}: ${info.messageId}`);
