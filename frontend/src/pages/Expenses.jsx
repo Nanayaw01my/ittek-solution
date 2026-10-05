@@ -3,7 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { FiPlus, FiEdit2, FiTrash2, FiDollarSign, FiTruck } from 'react-icons/fi'
-import { getExpenses, createExpense, updateExpense, deleteExpense, getExpenseSummary } from '../api/expenses'
+import {
+  getExpenses, createExpense, updateExpense, deleteExpense, getExpenseSummary,
+  approveExpense, rejectExpense,
+} from '../api/expenses'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
@@ -171,6 +174,23 @@ export default function Expenses() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
   const isManager = user?.role === 'Manager' || isOwner(user?.role)
+  // Only an owner lets money leave the books.
+  const canApprove = isOwner(user?.role)
+  const [rejecting, setRejecting] = useState(null)
+  const [rejectReason, setRejectReason] = useState('')
+
+  const decide = useMutation({
+    mutationFn: ({ id, approve, reason }) => (approve ? approveExpense(id) : rejectExpense(id, reason)),
+    onSuccess: (res, vars) => {
+      toast.success(vars.approve ? 'Approved — it now counts.' : 'Turned down.')
+      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+      queryClient.invalidateQueries({ queryKey: ['expense-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      setRejecting(null)
+      setRejectReason('')
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not do it'),
+  })
 
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'))
@@ -200,7 +220,7 @@ export default function Expenses() {
   const createMutation = useMutation({
     mutationFn: createExpense,
     onSuccess: () => {
-      toast.success('Expense recorded!')
+      toast.success(canApprove ? 'Expense recorded!' : 'Sent to the CEO to approve.')
       queryClient.invalidateQueries(['expenses'])
       queryClient.invalidateQueries(['expense-summary'])
       // The dashboard's expense total is now stale.
@@ -236,6 +256,7 @@ export default function Expenses() {
 
   const expenses = data?.expenses || (Array.isArray(data) ? data : [])
   const summary = summaryData || {}
+  const waiting = data?.awaiting_approval || 0
 
   const columns = [
     { header: 'Date', key: 'expense_date', render: v => formatDate(v) },
@@ -244,9 +265,66 @@ export default function Expenses() {
       <span className="px-2 py-1 bg-orange-50 text-orange-700 rounded-lg text-xs font-semibold">{v}</span>
     )},
     { header: 'Description', key: 'description', render: v => v || '—' },
-    { header: 'Amount', key: 'amount', render: v => (
-      <span className="font-bold text-red-600">{formatCurrency(v)}</span>
+    { header: 'Amount', key: 'amount', render: (v, row) => (
+      <span className={`font-bold ${row.status === 'approved' ? 'text-red-600' : 'text-gray-400'}`}>
+        {formatCurrency(v)}
+      </span>
     )},
+    {
+      header: 'Status',
+      key: 'status',
+      render: (v, row) => {
+        const status = v || 'approved'
+        if (status === 'pending') {
+          return (
+            <div className="flex items-center gap-1.5">
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700">
+                Waiting
+              </span>
+              {canApprove && (
+                <>
+                  <button
+                    onClick={e => { e.stopPropagation(); decide.mutate({ id: row._id, approve: true }) }}
+                    disabled={decide.isPending}
+                    className="px-2 py-1 rounded-lg bg-green-600 hover:bg-green-700 text-white text-[11px] font-bold disabled:opacity-50"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); setRejecting(row) }}
+                    className="px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 text-[11px] font-bold"
+                  >
+                    Reject
+                  </button>
+                </>
+              )}
+            </div>
+          )
+        }
+        if (status === 'rejected') {
+          return (
+            <div>
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-gray-200 text-gray-600">
+                Turned down
+              </span>
+              {row.rejection_reason && (
+                <p className="text-[11px] text-gray-400 mt-0.5 max-w-[160px] truncate">{row.rejection_reason}</p>
+              )}
+            </div>
+          )
+        }
+        return (
+          <div>
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-700">
+              Approved
+            </span>
+            {row.approved_by?.username && (
+              <p className="text-[11px] text-gray-400 mt-0.5">by {row.approved_by.username}</p>
+            )}
+          </div>
+        )
+      },
+    },
     {
       header: 'Actions',
       key: '_id',
@@ -323,6 +401,17 @@ export default function Expenses() {
         </select>
       </div>
 
+      {waiting > 0 && (
+        <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2">
+          <span className="text-amber-600 font-bold text-sm">{waiting}</span>
+          <p className="text-sm text-amber-800">
+            {canApprove
+              ? `expense${waiting === 1 ? '' : 's'} waiting for you to approve. Nothing waiting is counted in the totals above.`
+              : `of your expense${waiting === 1 ? ' is' : 's are'} waiting for the CEO to approve. They are not counted yet.`}
+          </p>
+        </div>
+      )}
+
       <Table
         columns={columns}
         data={expenses}
@@ -338,6 +427,12 @@ export default function Expenses() {
         title={editExpense ? 'Edit Expense' : 'Add Expense'}
         size="md"
       >
+        {!canApprove && !editExpense && (
+          <p className="mx-5 mt-5 -mb-1 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+            This goes to the CEO as a request. It will not count against the shop
+            until it is approved.
+          </p>
+        )}
         <ExpenseForm
           expense={editExpense}
           loading={createMutation.isPending || updateMutation.isPending}
@@ -361,6 +456,39 @@ export default function Expenses() {
           loading={createMutation.isPending}
           onSubmit={(data) => createMutation.mutate(data)}
         />
+      </Modal>
+
+      {/* Turning one down keeps the record and says why, so the person who
+          entered it is told rather than left wondering where it went. */}
+      <Modal
+        isOpen={!!rejecting}
+        onClose={() => { setRejecting(null); setRejectReason('') }}
+        title="Turn down this expense"
+        size="sm"
+      >
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-gray-600">
+            {rejecting?.category} — {formatCurrency(rejecting?.amount || 0)}
+            {rejecting?.user_id?.username ? ` entered by ${rejecting.user_id.username}` : ''}.
+          </p>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Why?</label>
+            <textarea
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+              rows={3}
+              placeholder="They will see this, so say what was wrong with it."
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+          <button
+            onClick={() => decide.mutate({ id: rejecting._id, approve: false, reason: rejectReason })}
+            disabled={decide.isPending}
+            className="w-full py-3 bg-red-500 hover:bg-red-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
+          >
+            {decide.isPending ? 'Saving...' : 'Turn it down'}
+          </button>
+        </div>
       </Modal>
 
       <ConfirmDialog

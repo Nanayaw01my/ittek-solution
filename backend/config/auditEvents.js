@@ -25,6 +25,8 @@ const EVENTS = {
   DELETE_REFUND: ['deleted a refund', 'high'],
   PROCESS_SHORT_PAYMENT: ['took a part payment', 'high'],
   CREATE_EXPENSE: ['recorded an expense', 'low'],
+  APPROVE_EXPENSE: ['approved an expense', 'high'],
+  REJECT_EXPENSE: ['turned down an expense', 'high'],
   UPDATE_EXPENSE: ['changed an expense', 'high'],
   DELETE_EXPENSE: ['deleted an expense', 'high'],
   CREATE_WORKER_PAYMENT: ['paid a worker', 'high'],
