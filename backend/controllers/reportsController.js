@@ -10,6 +10,7 @@ const Refund = require('../models/Refund');
 const Layaway = require('../models/Layaway');
 const { generateReport, generatePriceList, generateTableReport, generateDayEndReport } = require('../utils/pdfGenerator');
 const Settings = require('../models/Settings');
+const mongoose = require('mongoose');
 
 /**
  * GET /api/reports/dashboard-stats
@@ -21,14 +22,22 @@ const getDashboardStats = async (req, res) => {
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const isLimitedRole = ['Sales', 'Manager'].includes(req.user.role);
-    const userId = req.user._id;
+    // Cast rather than trusted. find() casts a string id against the schema
+    // and an aggregation does not — so a string here would match nothing,
+    // silently, and a member of staff would be told they had sold nothing all
+    // day while every other screen showed their sales. Making that impossible
+    // costs one line.
+    const userId = new mongoose.Types.ObjectId(String(req.user._id));
 
     if (isLimitedRole) {
       // Anyone below CEO sees only the day they had: their own sales, their
       // own expenses, their own Pay & Pick Later collections. How much stock
       // the shop holds and what is running low is the owners' business, so it
       // is not computed here at all rather than sent and hidden in the browser.
-      const [myTodaySalesAgg, myTodayExpensesAgg, myTodayLayawayAgg, outstandingDebtsCount, pendingStockCount] = await Promise.all([
+      const [
+        myTodaySalesAgg, myTodayExpensesAgg, myTodayLayawayAgg,
+        outstandingDebtsCount, pendingStockCount, myTodaySalesList,
+      ] = await Promise.all([
         // Sales they rang up today, EXCLUDING one written when a Pay & Pick
         // Later plan was collected — every cedi of that was already counted as
         // an instalment on the day it came in, so counting it again here would
@@ -51,6 +60,15 @@ const getDashboardStats = async (req, res) => {
         ]),
         Debt.countDocuments({ status: { $in: ['active', 'overdue'] } }),
         StockRequest.countDocuments({ status: 'pending' }),
+        // The sales themselves, not just their total. A number on its own
+        // cannot be checked: a member of staff who believes they sold
+        // something and is shown GHC 0.00 has no way to tell whether the
+        // figure is wrong or the sale went somewhere else.
+        Sale.find({ user_id: userId, sale_date: { $gte: startOfToday } })
+          .select('invoice_no total_amount sale_date customer_name payment_status layaway_ref')
+          .sort({ sale_date: -1 })
+          .limit(10)
+          .lean(),
       ]);
       // What they actually took today: sales over the counter plus instalments
       // paid in on Pay & Pick Later plans. The money is the money.
@@ -63,6 +81,18 @@ const getDashboardStats = async (req, res) => {
           myTodayLayawayCollections: myTodayLayawayAgg[0]?.total || 0,
           outstandingDebts: outstandingDebtsCount,
           pendingStockRequests: pendingStockCount,
+          myTodaySalesCount: myTodaySalesList.length,
+          myTodaySalesList: myTodaySalesList.map((x) => ({
+            _id: String(x._id),
+            invoice_no: x.invoice_no,
+            total_amount: x.total_amount,
+            sale_date: x.sale_date,
+            customer_name: x.customer_name || '',
+            // Released layaways are left out of the takings on purpose — the
+            // money was counted as it came in — so the row says why rather
+            // than appearing to be missing from the total.
+            counted: !x.layaway_ref,
+          })),
         },
       });
     }

@@ -10,6 +10,7 @@ import useAuthStore from '../store/authStore'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import Badge from '../components/Badge'
 import RefreshButton from '../components/RefreshButton'
+import { format } from 'date-fns'
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -134,6 +135,59 @@ export default function Dashboard() {
             </>
           )}
         </div>
+
+        {/* What the takings above are actually made of.
+            A number on its own cannot be checked: somebody who knows they
+            rang up a sale and is shown GHC 0.00 has no way to tell whether
+            the figure is wrong or the sale was recorded against somebody
+            else's name. The list answers that without anybody asking. */}
+        {!statsError && (
+          <div className="mt-6 bg-white border border-gray-100 rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
+              <p className="font-black text-gray-900 text-sm">My sales today</p>
+              <span className="text-xs text-gray-500">
+                {stats.myTodaySalesCount ?? 0} sale{stats.myTodaySalesCount === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            {(stats.myTodaySalesList || []).length === 0 ? (
+              <div className="px-4 py-6 text-center">
+                <p className="text-sm text-gray-500">Nothing rung up under your name today.</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  If you made a sale and it is not here, it was recorded against
+                  another account — tell the office which sale it was.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {stats.myTodaySalesList.map((s) => (
+                  <div key={s._id} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">
+                        {s.customer_name || 'Walk-in customer'}
+                      </p>
+                      <p className="text-[11px] text-gray-500 font-mono">
+                        {s.invoice_no} · {format(new Date(s.sale_date), 'HH:mm')}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="font-black text-gray-900">{formatCurrency(s.total_amount)}</p>
+                      {/* Released layaways are deliberately outside the
+                          takings — the money was counted as the instalments
+                          came in — so the row says so rather than looking
+                          like it went missing. */}
+                      {!s.counted && (
+                        <p className="text-[11px] text-gray-400">
+                          counted when it was paid
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Quick actions */}
         <div className="mt-8 bg-orange-50 border border-orange-200 rounded-xl p-5">
