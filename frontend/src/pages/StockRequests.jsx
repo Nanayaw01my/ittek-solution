@@ -22,7 +22,7 @@ function CreateRequestModal({ isOpen, onClose }) {
   const products = productsData?.products || productsData || []
 
   const { register, handleSubmit, control, watch, formState: { errors } } = useForm({
-    defaultValues: { items: [{ product: '', quantity: 1, estimatedCost: '' }], notes: '' }
+    defaultValues: { items: [{ product: '', isNew: false, newName: '', sellingPrice: '', quantity: 1, estimatedCost: '' }], notes: '' }
   })
   const { fields, append, remove } = useFieldArray({ control, name: 'items' })
   const items = watch('items')
@@ -37,22 +37,34 @@ function CreateRequestModal({ isOpen, onClose }) {
    */
   const submit = (d) => {
     const lines = (d.items || [])
-      .filter((i) => i.product && Number(i.quantity) > 0)
+      // A new item has a typed name instead of a chosen product, so either
+      // one makes the line real.
+      .filter((i) => (i.isNew ? String(i.newName || '').trim() : i.product) && Number(i.quantity) > 0)
       .map((i) => {
         const product = products.find((p) => String(p._id) === String(i.product))
         const quantity = Number(i.quantity) || 0
         const cost = parseFloat(i.estimatedCost) || 0
-        return {
-          product_id: i.product,
-          product_name: product?.name || 'Unknown product',
+        const line = {
+          product_name: i.isNew ? String(i.newName).trim() : (product?.name || 'Unknown product'),
           quantity_requested: quantity,
           estimated_cost: cost,
           total: Number((quantity * cost).toFixed(2)),
+          is_new_product: !!i.isNew,
         }
+        if (i.isNew) line.selling_price = parseFloat(i.sellingPrice) || 0
+        else line.product_id = i.product
+        return line
       })
 
     if (lines.length === 0) {
-      toast.error('Pick a product and a quantity first')
+      toast.error('Pick a product — or tick "New item" and type its name — and a quantity')
+      return
+    }
+    // Said here rather than letting the server bounce the whole request back
+    // with one line's problem.
+    const missing = lines.find((l) => l.is_new_product && (!l.estimated_cost || !l.selling_price))
+    if (missing) {
+      toast.error(`${missing.product_name} is new, so it needs both a cost and a selling price`)
       return
     }
     mutation.mutate({ items: lines, notes: d.notes || undefined })
@@ -75,13 +87,29 @@ function CreateRequestModal({ isOpen, onClose }) {
           {fields.map((field, index) => (
             <div key={field.id} className="grid grid-cols-12 gap-2 items-center">
               <div className="col-span-5">
-                <select
-                  {...register(`items.${index}.product`, { required: true })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
-                >
-                  <option value="">Select Product</option>
-                  {products.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
-                </select>
+                {items?.[index]?.isNew ? (
+                  <input
+                    type="text"
+                    placeholder="Name of the new item"
+                    {...register(`items.${index}.newName`)}
+                    className="w-full px-3 py-2 border border-amber-300 bg-amber-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                ) : (
+                  <select
+                    {...register(`items.${index}.product`)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
+                  >
+                    <option value="">Select Product</option>
+                    {products.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
+                  </select>
+                )}
+                {/* Something the shop has never sold still has to be askable
+                    for. Only an owner can create a product, so approving the
+                    request is what adds it. */}
+                <label className="flex items-center gap-1.5 mt-1 text-[11px] text-gray-500 cursor-pointer">
+                  <input type="checkbox" {...register(`items.${index}.isNew`)} className="rounded" />
+                  New item — not in the list yet
+                </label>
               </div>
               <div className="col-span-2">
                 <input
@@ -102,6 +130,18 @@ function CreateRequestModal({ isOpen, onClose }) {
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
+              {items?.[index]?.isNew && (
+                <div className="col-span-11 sm:col-span-4 col-start-1 sm:col-start-8">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Selling price (GH₵)"
+                    {...register(`items.${index}.sellingPrice`)}
+                    className="w-full px-3 py-2 border border-amber-300 bg-amber-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+              )}
               <div className="col-span-1 flex justify-center">
                 {fields.length > 1 && (
                   <button type="button" onClick={() => remove(index)} className="text-red-400 hover:text-red-600 p-1">
@@ -114,7 +154,7 @@ function CreateRequestModal({ isOpen, onClose }) {
 
           <button
             type="button"
-            onClick={() => append({ product: '', quantity: 1, estimatedCost: '' })}
+            onClick={() => append({ product: '', isNew: false, newName: '', sellingPrice: '', quantity: 1, estimatedCost: '' })}
             className="flex items-center gap-2 text-sm text-orange-600 hover:text-orange-700 font-semibold"
           >
             <FiPlus size={14} /> Add Item
@@ -205,7 +245,17 @@ export default function StockRequests() {
       key: 'items',
       render: (items) => (
         <div>
-          <p className="font-semibold text-gray-800">{items?.length || 0} item(s)</p>
+          <p className="font-semibold text-gray-800 flex items-center gap-1.5">
+            {items?.length || 0} item(s)
+            {/* Approving can be done from this row without opening the
+                request, so the row has to say when saying yes also puts a
+                new product on the list. */}
+            {(items || []).some(i => i.is_new_product) && (
+              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-bold">
+                {(items || []).filter(i => i.is_new_product).length} NEW
+              </span>
+            )}
+          </p>
           <p className="text-xs text-gray-500 line-clamp-1">
             {(items || []).map(i => i.product_name).filter(Boolean).join(', ') || '—'}
           </p>
@@ -317,7 +367,18 @@ export default function StockRequests() {
               </div>
               {(viewing.items || []).map((i, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2 px-3 py-2 border-t text-sm">
-                  <span className="col-span-6 truncate">{i.product_name}</span>
+                  <span className="col-span-6 min-w-0">
+                    <span className="block truncate">{i.product_name}</span>
+                    {/* The owner is told which lines they are also agreeing to
+                        add to the products list, and what it will sell for —
+                        on its own line, because the price is the part they are
+                        judging and it was being cut off beside the name. */}
+                    {i.is_new_product && (
+                      <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-bold whitespace-nowrap">
+                        NEW{i.selling_price ? ` · sells ${formatCurrency(i.selling_price)}` : ''}
+                      </span>
+                    )}
+                  </span>
                   <span className="col-span-2 text-center">{i.quantity_requested}</span>
                   <span className="col-span-2 text-right text-gray-600">
                     {i.estimated_cost ? formatCurrency(i.estimated_cost) : '—'}
@@ -328,6 +389,13 @@ export default function StockRequests() {
                 </div>
               ))}
             </div>
+
+            {viewing.status === 'pending' && (viewing.items || []).some(i => i.is_new_product) && (
+              <p className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                Approving this also adds the items marked NEW to the products list,
+                at zero stock. The quantity lands when the goods are received.
+              </p>
+            )}
 
             <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex justify-between items-center">
               <span className="text-sm font-semibold text-orange-800">Estimated total</span>

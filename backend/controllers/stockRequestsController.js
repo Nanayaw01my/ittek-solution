@@ -1,6 +1,7 @@
 const { validationResult } = require('express-validator');
 const StockRequest = require('../models/StockRequest');
 const Notification = require('../models/Notification');
+const Product = require('../models/Product');
 
 /**
  * GET /api/stock-requests
@@ -62,11 +63,29 @@ const createStockRequest = async (req, res) => {
       const name = String(raw.product_name || raw.name || '').trim();
       const quantity = Number(raw.quantity_requested ?? raw.quantity);
       const cost = Number(raw.estimated_cost ?? raw.estimatedCost) || 0;
+      // A line with no product behind it is a new item being asked for.
+      const isNew = !!(raw.is_new_product ?? raw.isNew) || !(raw.product_id || raw.product);
+      const sellingPrice = Number(raw.selling_price ?? raw.sellingPrice);
 
       if (!name) {
         return res.status(400).json({
           success: false,
-          message: 'Every line needs a product. Pick one from the list.',
+          message: 'Every line needs a product — pick one, or type the name of a new one.',
+        });
+      }
+      // The two prices are what a product cannot exist without, so they are
+      // asked for here rather than leaving the owner to guess them at the
+      // moment of approval.
+      if (isNew && (!Number.isFinite(cost) || cost <= 0)) {
+        return res.status(400).json({
+          success: false,
+          message: `What does ${name} cost to buy? A new item needs its cost.`,
+        });
+      }
+      if (isNew && (!Number.isFinite(sellingPrice) || sellingPrice <= 0)) {
+        return res.status(400).json({
+          success: false,
+          message: `What should ${name} sell for? A new item needs a selling price.`,
         });
       }
       if (!Number.isFinite(quantity) || quantity < 1) {
@@ -82,6 +101,9 @@ const createStockRequest = async (req, res) => {
         quantity_requested: quantity,
         estimated_cost: cost,
         total: Number((raw.total ?? quantity * cost).toFixed(2)),
+        is_new_product: isNew,
+        selling_price: isNew ? Number(sellingPrice.toFixed(2)) : undefined,
+        category_id: raw.category_id || raw.category || undefined,
       });
     }
 
@@ -99,7 +121,13 @@ const createStockRequest = async (req, res) => {
       user_id: null,
       type: 'important',
       title: 'New Stock Request',
-      message: `${req.user.username} submitted a stock request for ${items.length} item(s).`,
+      message: (() => {
+        const brandNew = lines.filter((l) => l.is_new_product).map((l) => l.product_name);
+        const base = `${req.user.username} submitted a stock request for ${lines.length} item(s).`;
+        return brandNew.length
+          ? `${base} ${brandNew.length} not stocked before: ${brandNew.join(', ')}.`
+          : base;
+      })(),
       link: `/stock-requests/${request._id}`,
     });
 
@@ -156,6 +184,44 @@ const approveStockRequest = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Request is not pending.' });
     }
 
+    /**
+     * Approving a new item is how it gets onto the shelf.
+     *
+     * Only an owner may create a product, and the owner is the one standing
+     * here saying yes — so this is the right moment to make it, rather than
+     * sending them off to the products screen to type the same thing again
+     * and probably spell it differently.
+     *
+     * It is created with no stock. Nothing has arrived yet; the request is
+     * permission to buy it. The quantity lands when the delivery is received
+     * against the purchase, the same as for anything already stocked.
+     */
+    const created = [];
+    for (const line of request.items) {
+      if (!line.is_new_product || line.product_id) continue;
+
+      // Somebody may well have added it by hand in the meantime, and a second
+      // copy of the same item is worse than no new item at all.
+      const existing = await Product.findOne({
+        name: new RegExp(`^${String(line.product_name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+      }).select('_id name');
+
+      if (existing) {
+        line.product_id = existing._id;
+        continue;
+      }
+
+      const product = await Product.create({
+        name: line.product_name,
+        cost_price: line.estimated_cost || 0,
+        selling_price: line.selling_price || line.estimated_cost || 0,
+        category_id: line.category_id || undefined,
+        quantity: 0,
+      });
+      line.product_id = product._id;
+      created.push(product.name);
+    }
+
     request.status = 'approved';
     request.approved_by = req.user._id;
     request.approved_date = new Date();
@@ -165,11 +231,20 @@ const approveStockRequest = async (req, res) => {
       user_id: request.created_by,
       type: 'info',
       title: 'Stock Request Approved',
-      message: `Your stock request has been approved by ${req.user.username}.`,
+      message: created.length
+        ? `Your stock request has been approved by ${req.user.username}. `
+          + `${created.join(', ')} ${created.length === 1 ? 'is' : 'are'} now in the products list, at zero stock until the goods come in.`
+        : `Your stock request has been approved by ${req.user.username}.`,
       link: `/stock-requests/${request._id}`,
     });
 
-    return res.status(200).json({ success: true, message: 'Stock request approved.', data: request });
+    return res.status(200).json({
+      success: true,
+      message: created.length
+        ? `Approved. Added to products: ${created.join(', ')}.`
+        : 'Stock request approved.',
+      data: request,
+    });
   } catch (err) {
     console.error('Approve stock request error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
