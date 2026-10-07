@@ -25,11 +25,15 @@ export default function DeleteRecords() {
   const [confirming, setConfirming] = useState(false)
   const [confirmText, setConfirmText] = useState('')
 
-  const { data: typesData, isLoading: typesLoading } = useQuery({
+  const { data: typesData, isLoading: typesLoading, error: typesError, refetch: refetchTypes } = useQuery({
     queryKey: ['deletable-types'],
     queryFn: () => getDeletableTypes().then(r => r.data),
   })
-  const types = typesData?.data || typesData || []
+  // Only ever an array. An older server answers an unknown /api path with the
+  // app's own HTML, and a string here used to take the whole screen down on
+  // .find() rather than saying anything useful.
+  const types = Array.isArray(typesData) ? typesData : []
+  const typesBroken = !typesLoading && (!!typesError || types.length === 0)
   const activeType = types.find(t => t.key === type)
 
   const { data, isLoading } = useQuery({
@@ -89,14 +93,40 @@ export default function DeleteRecords() {
             disabled={typesLoading}
             className="w-full sm:w-96 px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
           >
-            <option value="">Select a record type…</option>
+            <option value="">
+              {typesLoading ? 'Loading…' : typesBroken ? 'Nothing to choose from' : 'Select a record type…'}
+            </option>
             {types.map(t => (
               <option key={t.key} value={t.key}>
-                {t.label} ({t.count})
+                {/* A count that could not be read is left off rather than
+                    shown as a confident zero. */}
+                {t.label}{typeof t.count === 'number' ? ` (${t.count})` : ''}
               </option>
             ))}
           </select>
         </div>
+
+        {/* An empty dropdown with nothing said is the worst of both: it looks
+            like the screen works and like there is nothing to delete. */}
+        {typesBroken && (
+          <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-xl">
+            <FiAlertTriangle className="text-red-600 flex-shrink-0 mt-0.5" size={16} />
+            <div className="text-xs text-red-800">
+              <p className="font-semibold">The list of what can be deleted did not load.</p>
+              <p className="mt-0.5">
+                {typesError?.response?.data?.message
+                  || typesError?.message
+                  || 'The server answered, but with nothing in it.'}
+              </p>
+              <button
+                onClick={() => refetchTypes()}
+                className="mt-2 px-3 py-1.5 rounded-lg bg-white border border-red-200 font-semibold hover:bg-red-50"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        )}
 
         {activeType?.warning && (
           <div className="flex gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">

@@ -279,6 +279,22 @@ app.use('/api/upload', require('./routes/upload'));
 app.use('/api/data-admin', require('./routes/dataAdmin'));
 app.use('/api/forms', require('./routes/forms'));
 
+/**
+ * An API path nobody serves is an error, not the app's front page.
+ *
+ * Without this, the React catch-all below answers every unknown /api call
+ * with index.html and a 200. The browser then gets a page of HTML where it
+ * expected its data, and the screen quietly shows nothing — no error, no
+ * clue. That is how a deployment running behind the frontend looks exactly
+ * like a working screen with no records in it.
+ */
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `No such endpoint: ${req.method} /api${req.path}. This server may be older than the app.`,
+  });
+});
+
 // ─── STEP 9: REACT ROUTER CATCH-ALL ──────────────────────────────────────────
 
 if (process.env.NODE_ENV === 'production') {

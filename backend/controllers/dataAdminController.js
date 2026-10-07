@@ -218,19 +218,36 @@ const MAX_PER_DELETE = 200;
  */
 const getTypes = async (req, res) => {
   try {
+    // One count that will not run must not empty the whole dropdown. The
+    // screen's job is to let an owner pick a kind of record; a number beside
+    // it is a convenience, and losing the convenience is no reason to lose
+    // the screen.
     const entries = await Promise.all(
-      Object.entries(TYPES).map(async ([key, def]) => ({
-        key,
-        label: def.label,
-        warning: def.warning || null,
-        softDelete: !!def.softDelete,
-        count: await def.model.countDocuments(def.baseFilter || {}),
-      }))
+      Object.entries(TYPES).map(async ([key, def]) => {
+        let count = null;
+        try {
+          count = await def.model.countDocuments(def.baseFilter || {});
+        } catch (err) {
+          console.error(`Data admin count failed for ${key}:`, err.stack || err.message);
+        }
+        return {
+          key,
+          label: def.label,
+          warning: def.warning || null,
+          softDelete: !!def.softDelete,
+          count,
+        };
+      })
     );
     return res.status(200).json({ success: true, data: entries });
   } catch (err) {
-    console.error('Data admin types error:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error.' });
+    // The real reason, on screen and in the log. 'Server error.' left the
+    // dropdown empty with nothing to say why.
+    console.error('Data admin types error:', err.stack || err.message);
+    return res.status(500).json({
+      success: false,
+      message: `Could not list what can be deleted: ${err.message}`,
+    });
   }
 };
 
