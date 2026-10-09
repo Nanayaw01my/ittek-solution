@@ -143,6 +143,15 @@ export default function SystemHealth() {
             Checked {h.checked_at ? format(new Date(h.checked_at), 'HH:mm') : '—'}
             {' · up '}{Math.floor((h.uptime_seconds || 0) / 60)} min
           </p>
+          {/* What is actually deployed. Compare this with the latest commit
+              when a change you were told about is not on the screen. */}
+          <p className="text-[11px] text-gray-400 mt-0.5">
+            {h.version?.commit
+              ? <>Running <span className="font-mono font-semibold">{h.version.commit}</span>
+                  {h.version.branch ? ` on ${h.version.branch}` : ''}
+                  {h.version.started_at ? `, deployed ${format(new Date(h.version.started_at), 'd MMM HH:mm')}` : ''}</>
+              : 'This server does not report which version it is running.'}
+          </p>
         </div>
       </div>
 

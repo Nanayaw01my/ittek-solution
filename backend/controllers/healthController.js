@@ -187,6 +187,14 @@ const systemHealth = async (req, res) => {
         checked_at: now,
         day: today,
         uptime_seconds: Math.floor(process.uptime()),
+        // Which code is actually running. "Is the server behind the app?" has
+        // cost several rounds of guessing; Render sets RENDER_GIT_COMMIT on
+        // every deploy, so the answer can simply be read off the screen.
+        version: {
+          commit: (process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || '').slice(0, 7) || null,
+          branch: process.env.RENDER_GIT_BRANCH || null,
+          started_at: new Date(Date.now() - process.uptime() * 1000),
+        },
         checks,
         jobs,
       },

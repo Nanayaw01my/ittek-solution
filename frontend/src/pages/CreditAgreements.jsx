@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
@@ -332,14 +332,41 @@ const buildSchedule = (agreement) => {
   return { plan, every, count, each, balance, rows, extra: pot }
 }
 
-function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange }) {
+function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, startSwapping }) {
   const queryClient = useQueryClient()
   const [payAmount, setPayAmount] = useState('')
   const [swapping, setSwapping] = useState(false)
+  const swapRef = useRef(null)
   const [swap, setSwap] = useState({
     returned_description: '', returned_serial: '', returned_condition: '', returned_value: '',
     replacement_description: '', replacement_serial: '', replacement_value: '', reason: '',
   })
+
+  const beginSwap = () => {
+    setSwap(prev => ({
+      ...prev,
+      // Prefilled with what the agreement says they have, since that is what
+      // is coming back nine times out of ten.
+      returned_description: agreement?.product_description || agreement?.product_type || '',
+      returned_serial: agreement?.serial_number || '',
+      returned_value: String(agreement?.total_amount || ''),
+    }))
+    setSwapping(true)
+  }
+
+  // Asked for from the list row: open the form and bring it into view, rather
+  // than leaving it below a screenful of payment history.
+  useEffect(() => {
+    if (isOpen && startSwapping && agreement && agreement.status !== 'completed') {
+      beginSwap()
+      const t = setTimeout(() => swapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250)
+      return () => clearTimeout(t)
+    }
+    // Opened plainly, or closed. A half-typed swap left over from the last
+    // time this window was open is not something to show against a different
+    // agreement.
+    setSwapping(false)
+  }, [isOpen, startSwapping, agreement?._id])
 
   /** Open the note for a swap in a new tab, ready to print. */
   const openNote = async (exchangeId, reference) => {
@@ -583,20 +610,10 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange }) {
 
         {/* Swap the goods. The agreement stands; only the item changes. */}
         {agreement.status !== 'completed' && (
-          <div className="border border-blue-200 rounded-xl p-4">
+          <div ref={swapRef} className="border border-blue-200 rounded-xl p-4">
             {!swapping ? (
               <button
-                onClick={() => {
-                  setSwap(prev => ({
-                    ...prev,
-                    // Prefilled with what the agreement says they have, since
-                    // that is what is coming back nine times out of ten.
-                    returned_description: agreement.product_description || agreement.product_type || '',
-                    returned_serial: agreement.serial_number || '',
-                    returned_value: String(agreement.total_amount || ''),
-                  }))
-                  setSwapping(true)
-                }}
+                onClick={beginSwap}
                 className="w-full flex items-center justify-center gap-2 py-2.5 text-blue-700 font-bold text-sm hover:bg-blue-50 rounded-xl"
               >
                 <FiRepeat size={15} /> Change the product
@@ -747,6 +764,9 @@ export default function CreditAgreements() {
   const queryClient = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
   const [viewAgreement, setViewAgreement] = useState(null)
+  // Set when the swap was asked for from the row, so the agreement opens with
+  // that form already showing rather than scrolled past it.
+  const [openSwapFor, setOpenSwapFor] = useState(null)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
 
@@ -806,10 +826,21 @@ export default function CreditAgreements() {
       header: 'Actions',
       key: '_id',
       render: (id, row) => (
-        <button onClick={e => { e.stopPropagation(); setViewAgreement(row) }}
-          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg">
-          <FiEye size={14} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={e => { e.stopPropagation(); setViewAgreement(row) }}
+            title="Open this agreement"
+            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg">
+            <FiEye size={14} />
+          </button>
+          {row.status !== 'completed' && (
+            <button
+              onClick={e => { e.stopPropagation(); setViewAgreement(row); setOpenSwapFor(row._id) }}
+              title="Change the product on this agreement"
+              className="p-1.5 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg">
+              <FiRepeat size={14} />
+            </button>
+          )}
+        </div>
       ),
     },
   ]
@@ -869,8 +900,9 @@ export default function CreditAgreements() {
       <ViewAgreementModal
         isOpen={!!viewAgreement}
         agreement={viewAgreement}
-        onClose={() => setViewAgreement(null)}
+        onClose={() => { setViewAgreement(null); setOpenSwapFor(null) }}
         onAgreementChange={setViewAgreement}
+        startSwapping={openSwapFor === viewAgreement?._id}
       />
     </div>
   )
