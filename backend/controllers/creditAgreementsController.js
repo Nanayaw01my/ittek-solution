@@ -197,20 +197,43 @@ const generatePDF = async (req, res) => {
 
 const PLAN_STEP = { daily: 1, weekly: 7, monthly: 30 };
 
+const atMidnight = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+
+/**
+ * How many payments fit between the first and the last, at this frequency.
+ *
+ * Both ends count: a weekly plan from the 16th to the 23rd is two payments,
+ * not one. The shop picks the two dates and the number follows from them,
+ * rather than the shop having to work the number out itself.
+ */
+const paymentsBetween = (plan, first, last) => {
+  const a = atMidnight(first);
+  const b = atMidnight(last);
+  if (b < a) return 0;
+  if (plan === 'monthly') {
+    const months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+    // A last date earlier in its month than the first has not come round yet.
+    return Math.max(1, months + (b.getDate() >= a.getDate() ? 1 : 0));
+  }
+  const days = Math.round((b - a) / 86400000);
+  return Math.floor(days / (PLAN_STEP[plan] || 7)) + 1;
+};
+
 /**
  * The dates and amounts the new balance is to be paid in.
  *
  * The last instalment carries the rounding, so the parts add up to the
  * balance exactly rather than leaving a few pesewas owing for ever.
  */
-const buildPlan = (balance, plan, count, from) => {
-  const step = PLAN_STEP[plan] || 7;
+const buildPlan = (balance, plan, count, firstOn) => {
   const each = Number((balance / count).toFixed(2));
   const rows = [];
   for (let n = 1; n <= count; n++) {
     const due = n === count ? Number((balance - each * (count - 1)).toFixed(2)) : each;
-    const when = new Date(from);
-    when.setDate(when.getDate() + n * step);
+    // n = 1 falls on the first payment date itself, not a period after it.
+    const when = atMidnight(firstOn);
+    if (plan === 'monthly') when.setMonth(when.getMonth() + (n - 1));
+    else when.setDate(when.getDate() + (n - 1) * (PLAN_STEP[plan] || 7));
     rows.push({ n, amount: due, due_on: when });
   }
   return rows;
@@ -259,7 +282,7 @@ const exchangeProduct = async (req, res) => {
     const {
       returned_description, returned_serial, returned_condition, returned_value,
       replacement_type, replacement_description, replacement_serial, replacement_value,
-      reason, payment_plan, instalments,
+      reason, payment_plan, instalments, first_payment_on, last_payment_on,
     } = req.body;
 
     const backDesc = String(returned_description || agreement.product_description || agreement.product_type || '').trim();
@@ -309,9 +332,48 @@ const exchangeProduct = async (req, res) => {
     const plan = ['daily', 'weekly', 'monthly'].includes(payment_plan)
       ? payment_plan
       : (agreement.payment_plan || 'weekly');
-    const count = Math.min(60, Math.max(1, Math.round(Number(instalments)) || agreement.instalment_count || 3));
-    const from = new Date();
-    const schedule = balanceAfter > 0 ? buildPlan(balanceAfter, plan, count, from) : [];
+
+    // The shop says when the customer starts and when he finishes; how many
+    // payments that is follows from the two dates. Falling back to a count
+    // keeps older callers working.
+    let firstOn = first_payment_on ? new Date(first_payment_on) : null;
+    let lastOn = last_payment_on ? new Date(last_payment_on) : null;
+    if (firstOn && Number.isNaN(firstOn.getTime())) {
+      return res.status(400).json({ success: false, message: 'That first payment date did not make sense.' });
+    }
+    if (lastOn && Number.isNaN(lastOn.getTime())) {
+      return res.status(400).json({ success: false, message: 'That last payment date did not make sense.' });
+    }
+    if (firstOn && lastOn && atMidnight(lastOn) < atMidnight(firstOn)) {
+      return res.status(400).json({
+        success: false,
+        message: 'The last payment cannot fall before the first one.',
+      });
+    }
+
+    let count;
+    if (firstOn && lastOn) {
+      count = paymentsBetween(plan, firstOn, lastOn);
+    } else {
+      count = Math.max(1, Math.round(Number(instalments)) || agreement.instalment_count || 3);
+      if (!firstOn) {
+        // Nothing said, so the first falls one period from today, as before.
+        firstOn = atMidnight(new Date());
+        if (plan === 'monthly') firstOn.setMonth(firstOn.getMonth() + 1);
+        else firstOn.setDate(firstOn.getDate() + (PLAN_STEP[plan] || 7));
+      }
+    }
+
+    if (count > 365) {
+      return res.status(400).json({
+        success: false,
+        message: `Those dates come to ${count} payments. Check the dates or the frequency.`,
+      });
+    }
+
+    const schedule = balanceAfter > 0 ? buildPlan(balanceAfter, plan, count, firstOn) : [];
+    const from = firstOn;
+    if (!lastOn && schedule.length) lastOn = schedule[schedule.length - 1].due_on;
 
     const entry = {
       reference: await nextExchangeRef(),
@@ -336,6 +398,8 @@ const exchangeProduct = async (req, res) => {
       instalments: count,
       instalment_amount: schedule.length ? schedule[0].amount : 0,
       schedule_from: from,
+      first_payment_on: balanceAfter > 0 ? from : undefined,
+      last_payment_on: balanceAfter > 0 ? lastOn : undefined,
       done_by: req.user._id,
     };
 
@@ -408,7 +472,7 @@ const exchangeNotePDF = async (req, res) => {
         exchange.balance_after,
         exchange.plan || agreement.payment_plan || 'weekly',
         exchange.instalments,
-        exchange.schedule_from || exchange.exchanged_on || new Date()
+        exchange.first_payment_on || exchange.schedule_from || exchange.exchanged_on || new Date()
       )
       : [];
 

@@ -3612,33 +3612,28 @@ const generateExchangeNote = async (agreement = {}, exchange = {}, options = {})
         y += 26;
 
         // ── How the new debt is to be paid ──────────────────────────────────
-        const schedule = Array.isArray(exchange.schedule) ? exchange.schedule : [];
-        if (schedule.length) {
+        //
+        // The amount, how often, and the two dates the shop agreed with the
+        // customer: when he starts and when he finishes. Not every due date
+        // in between — that was a wall of dates nobody read, and one missed
+        // by a day becomes an argument.
+        const count = exchange.instalments
+          || (Array.isArray(exchange.schedule) ? exchange.schedule.length : 0);
+        if (count) {
           const planWord = { daily: 'day', weekly: 'week', monthly: 'month' }[exchange.plan] || 'week';
           y = sectionTitle('HOW THE NEW DEBT IS PAID', y);
-          doc.fontSize(7.5).font('Helvetica').fillColor('#222222').text(
-            `${gh(exchange.instalment_amount)} every ${planWord}, `
-            + `${schedule.length} time${schedule.length === 1 ? '' : 's'}, starting ${dateStr(schedule[0].due_on)}.`,
-            ML, y, { width: W, lineBreak: false }
+          doc.rect(ML, y, W, 34).lineWidth(0.5).strokeColor('#dddddd').stroke();
+          doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#111111').text(
+            `${gh(exchange.instalment_amount)} every ${planWord}, ${count} time${count === 1 ? '' : 's'}.`,
+            ML + 8, y + 6, { width: W - 16, lineBreak: false }
+          );
+          doc.fontSize(8).font('Helvetica').fillColor('#333333').text(
+            `Starts ${dateStr(exchange.first_payment_on)}`
+            + `     Ends ${dateStr(exchange.last_payment_on)}`,
+            ML + 8, y + 20, { width: W - 16, lineBreak: false }
           );
           reset();
-          y += 12;
-
-          // Laid out across the page so a longer plan does not run the note
-          // onto a second sheet.
-          const perRow = 3;
-          const cellW = (W - (perRow - 1) * 6) / perRow;
-          schedule.forEach((inst, i) => {
-            const cx = ML + (i % perRow) * (cellW + 6);
-            const cy = y + Math.floor(i / perRow) * 20;
-            doc.rect(cx, cy, cellW, 18).lineWidth(0.4).strokeColor('#dddddd').stroke();
-            doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY)
-              .text(`${inst.n}. ${dateStr(inst.due_on)}`, cx + 4, cy + 2.5, { width: cellW - 8, lineBreak: false });
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#111111')
-              .text(gh(inst.amount), cx + 4, cy + 9, { width: cellW - 8, lineBreak: false });
-            reset();
-          });
-          y += Math.ceil(schedule.length / perRow) * 20 + 2;
+          y += 38;
         }
 
         doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY)
@@ -3656,7 +3651,7 @@ const generateExchangeNote = async (agreement = {}, exchange = {}, options = {})
             + 'Company. All other terms of the same agreement stand.'
           : 'I confirm that I have returned the item shown on the left in the condition stated, that I have '
             + 'received the item shown on the right, and that I accept the balance above as what I still owe '
-            + 'under the same agreement.';
+            + 'under the same agreement, payable as set out above.';
         doc.fontSize(7).font('Helvetica');
         const consentH = doc.heightOfString(consent, { width: W, lineGap: 0.5 });
         doc.fillColor('#222222').text(consent, ML, y, { width: W, lineGap: 0.5, height: consentH });

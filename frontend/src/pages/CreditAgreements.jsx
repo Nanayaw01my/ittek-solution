@@ -297,6 +297,18 @@ const EVERY = {
   monthly: { label: 'month', add: (d, n) => new Date(d.getFullYear(), d.getMonth() + n, d.getDate()) },
 }
 
+const PAYMENTS_BETWEEN = (plan, first, last) => {
+  const a = new Date(first); a.setHours(0, 0, 0, 0)
+  const b = new Date(last); b.setHours(0, 0, 0, 0)
+  if (b < a) return 0
+  if (plan === 'monthly') {
+    const months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth())
+    return Math.max(1, months + (b.getDate() >= a.getDate() ? 1 : 0))
+  }
+  const step = plan === 'daily' ? 1 : 7
+  return Math.floor(Math.round((b - a) / 86400000) / step) + 1
+}
+
 const buildSchedule = (agreement) => {
   const plan = EVERY[agreement.payment_plan] ? agreement.payment_plan : 'weekly'
   const every = EVERY[plan]
@@ -329,7 +341,7 @@ const buildSchedule = (agreement) => {
     const paid = Math.min(pot, due)
     pot = Math.max(0, pot - due)
 
-    const dueDate = every.add(start, n)
+    const dueDate = reset ? every.add(start, n - 1) : every.add(start, n)
     const settled = paid >= due - 0.005
     const overdue = !settled && dueDate < today
 
@@ -351,7 +363,7 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
   const [swap, setSwap] = useState({
     returned_description: '', returned_serial: '', returned_condition: '', returned_value: '',
     replacement_description: '', replacement_serial: '', replacement_value: '', reason: '',
-    payment_plan: 'weekly', instalments: 3,
+    payment_plan: 'weekly', first_payment_on: '', last_payment_on: '',
   })
 
   const beginSwap = () => {
@@ -365,7 +377,8 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
       // Starts from what this agreement already runs on; the point is that
       // it can be changed, not that it must be.
       payment_plan: agreement?.payment_plan || 'weekly',
-      instalments: agreement?.instalment_count || 3,
+      first_payment_on: '',
+      last_payment_on: '',
     }))
     setSwapping(true)
   }
@@ -418,7 +431,7 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
       setSwap({
         returned_description: '', returned_serial: '', returned_condition: '', returned_value: '',
         replacement_description: '', replacement_serial: '', replacement_value: '', reason: '',
-        payment_plan: 'weekly', instalments: 3,
+        payment_plan: 'weekly', first_payment_on: '', last_payment_on: '',
       })
       // Straight to the paper — that is the point of doing this at the counter.
       if (made?._id) openNote(made._id, made.reference)
@@ -689,7 +702,9 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
 
                 {/* The new balance is a new arrangement, so how it is paid is
                     agreed again here rather than inherited silently. */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* The shop sets when he starts and when he finishes; how
+                    many payments that is follows from the two dates. */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
                       Pays every
@@ -704,10 +719,19 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
-                      Number of payments
+                      Starts paying
                     </label>
-                    <input type="number" min="1" max="60" value={swap.instalments}
-                      onChange={e => setSwap({ ...swap, instalments: e.target.value })}
+                    <input type="date" value={swap.first_payment_on}
+                      onChange={e => setSwap({ ...swap, first_payment_on: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+                      Finishes paying
+                    </label>
+                    <input type="date" value={swap.last_payment_on}
+                      min={swap.first_payment_on || undefined}
+                      onChange={e => setSwap({ ...swap, last_payment_on: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm" />
                   </div>
                 </div>
@@ -722,8 +746,10 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
                   const after = Math.max(0, (agreement.total_amount || 0) - back + out)
                   const owed = Math.max(0, after - paid)
                   const credit = Math.max(0, paid - after)
-                  const count = Math.max(1, Math.round(Number(swap.instalments)) || 1)
-                  const each = owed > 0 ? owed / count : 0
+                  const count = swap.first_payment_on && swap.last_payment_on
+                    ? PAYMENTS_BETWEEN(swap.payment_plan, swap.first_payment_on, swap.last_payment_on)
+                    : 0
+                  const each = owed > 0 && count > 0 ? owed / count : 0
                   const word = { daily: 'day', weekly: 'week', monthly: 'month' }[swap.payment_plan] || 'week'
                   // The same two figures the sheet shows, so nobody is
                   // surprised by the paper after agreeing to the swap.
@@ -745,7 +771,9 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
                       </div>
                       {owed > 0 && (
                         <p className="text-xs text-gray-600 text-center">
-                          {formatCurrency(each)} every {word}, {count} time{count === 1 ? '' : 's'}
+                          {count > 0
+                            ? <>{formatCurrency(each)} every {word}, {count} time{count === 1 ? '' : 's'}</>
+                            : <span className="text-amber-700">Pick when he starts and finishes paying</span>}
                         </p>
                       )}
                     </div>
@@ -762,14 +790,21 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
                       if (!swap.returned_description.trim()) { toast.error('What is coming back?'); return }
                       if (!swap.replacement_description.trim()) { toast.error('What are they taking?'); return }
                       if (!(parseFloat(swap.replacement_value) > 0)) { toast.error('What does the new item cost?'); return }
-                      const count = Math.round(Number(swap.instalments))
-                      if (!(count >= 1 && count <= 60)) {
-                        toast.error('How many payments? Between 1 and 60.')
+                      if (!swap.first_payment_on || !swap.last_payment_on) {
+                        toast.error('When does he start paying, and when does he finish?')
+                        return
+                      }
+                      const count = PAYMENTS_BETWEEN(swap.payment_plan, swap.first_payment_on, swap.last_payment_on)
+                      if (count < 1) {
+                        toast.error('He cannot finish paying before he starts.')
+                        return
+                      }
+                      if (count > 365) {
+                        toast.error(`Those dates come to ${count} payments. Check the dates or the frequency.`)
                         return
                       }
                       swapMutation.mutate({
                         ...swap,
-                        instalments: count,
                         returned_value: swap.returned_value === '' ? undefined : parseFloat(swap.returned_value),
                         replacement_value: parseFloat(swap.replacement_value),
                       })

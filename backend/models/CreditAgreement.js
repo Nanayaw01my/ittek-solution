@@ -47,6 +47,9 @@ const ProductExchangeSchema = new mongoose.Schema(
     instalments: { type: Number, min: 1 },
     instalment_amount: { type: Number, min: 0 },
     schedule_from: { type: Date },
+    /** When the customer starts paying the new debt, and when he finishes. */
+    first_payment_on: { type: Date },
+    last_payment_on: { type: Date },
 
     /** The money, as it stood before and after — frozen, not recomputed. */
     total_before: { type: Number, required: true },
