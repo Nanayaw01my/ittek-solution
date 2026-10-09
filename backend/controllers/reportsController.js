@@ -142,7 +142,9 @@ const getDashboardStats = async (req, res) => {
         { $match: { 'payments.paid_at': { $gte: startOfMonth } } },
         { $group: { _id: null, total: { $sum: '$payments.amount' } } },
       ]),
-      Sale.countDocuments({ sale_date: { $gte: startOfToday } }),
+      // Counted the same way the money is, or the card can read "5 sales"
+      // beside a total that excluded every one of them.
+      Sale.countDocuments({ sale_date: { $gte: startOfToday }, layaway_ref: { $in: [null, undefined] } }),
       // Money paid in against a field dispatch sheet. Already inside
       // todaySales — this only separates out how much of the day came from
       // agents on the field rather than over the counter.
@@ -164,8 +166,25 @@ const getDashboardStats = async (req, res) => {
     // plus Pay & Pick Later instalments on the day they were handed over.
     const todayLayaway = todayLayawayAgg[0]?.total || 0;
     const monthlyLayaway = monthlyLayawayAgg[0]?.total || 0;
-    const todaySales = Math.max(0, (todaySalesAgg[0]?.total || 0) + todayLayaway - todayRefunds);
-    const monthlySales = Math.max(0, (monthlySalesAgg[0]?.total || 0) + monthlyLayaway - monthlyRefunds);
+    /**
+     * Money taken today, and refunds given today, kept apart.
+     *
+     * These used to be one figure: sales minus refunds, clamped at zero. A
+     * refund is dated the day it is paid out, not the day of the sale it
+     * reverses, so refunding a large sale from last week wiped out today's
+     * takings — and the clamp turned the negative into a clean GHC 0.00, so
+     * the card read "no sales" on a day with plenty. Cash Up keeps the two
+     * apart and was right; the dashboard was the one lying.
+     *
+     * The card now shows what was taken. The refund is shown beside it, where
+     * it can be read, and netting is left to the profit figures where it
+     * belongs.
+     */
+    const todaySalesGross = (todaySalesAgg[0]?.total || 0) + todayLayaway;
+    const monthlySalesGross = (monthlySalesAgg[0]?.total || 0) + monthlyLayaway;
+    const todaySales = todaySalesGross;
+    // Profit is genuinely net of refunds, and may legitimately be negative.
+    const monthlySales = monthlySalesGross - monthlyRefunds;
     const monthlyCOGS = monthlyCOGSAgg[0]?.total || 0;
     const todayExpenses = todayExpensesAgg[0]?.total || 0;
     const monthlyExpenses = monthlyExpensesAgg[0]?.total || 0;
@@ -177,6 +196,11 @@ const getDashboardStats = async (req, res) => {
       data: {
         todaySales,
         monthlySales,
+        // Shown beside the takings rather than quietly deducted from them.
+        todayRefunds,
+        monthlyRefunds,
+        todaySalesNet: Number((todaySalesGross - todayRefunds).toFixed(2)),
+        monthlySalesGross,
         // How many sales were counted, and the window they were counted in.
         // A zero on a money card is ambiguous — a quiet morning and a failed
         // request look identical — so the screen is given enough to say which
@@ -206,8 +230,8 @@ const getDashboardStats = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('Dashboard stats error:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error.' });
+    console.error('Dashboard stats error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not work out the figures: ${err.message}` });
   }
 };
 

@@ -238,7 +238,12 @@ export default function Dashboard() {
           loading={statsLoading}
           hint={statsError ? null
             : `${stats.todaySalesCount ?? 0} sale${stats.todaySalesCount === 1 ? '' : 's'}`
-              + `${stats.todayLayawayCollections > 0 ? ' + plan instalments' : ' today'}`}
+              + `${stats.todayLayawayCollections > 0 ? ' + plan instalments' : ' today'}`
+              // A refund paid out today is dated today even when it reverses
+              // a sale from weeks ago. It is said here rather than subtracted
+              // out of sight, which is what made this card read zero on a
+              // day with real takings.
+              + `${stats.todayRefunds > 0 ? ` · less ${formatCurrency(stats.todayRefunds)} refunded` : ''}`}
         />
         <StatCard
           icon={FiTrendingUp}
