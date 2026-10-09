@@ -106,6 +106,7 @@ const getDashboardStats = async (req, res) => {
       todayRefundsAgg, monthlyRefundsAgg,
       todayLayawayAgg, monthlyLayawayAgg,
       todaySalesCountAgg,
+      todayLayawaySalesCount,
       todayFieldSalesAgg,
       todayServiceAgg,
     ] = await Promise.all([
@@ -145,6 +146,10 @@ const getDashboardStats = async (req, res) => {
       // Counted the same way the money is, or the card can read "5 sales"
       // beside a total that excluded every one of them.
       Sale.countDocuments({ sale_date: { $gte: startOfToday }, layaway_ref: { $in: [null, undefined] } }),
+      // The ones deliberately left out: goods leaving on a Pay & Pick Later
+      // plan, whose money was counted when the instalments came in. Reported
+      // so a zero on the card can say which kind of zero it is.
+      Sale.countDocuments({ sale_date: { $gte: startOfToday }, layaway_ref: { $nin: [null, undefined] } }),
       // Money paid in against a field dispatch sheet. Already inside
       // todaySales — this only separates out how much of the day came from
       // agents on the field rather than over the counter.
@@ -206,6 +211,7 @@ const getDashboardStats = async (req, res) => {
         // request look identical — so the screen is given enough to say which
         // it is, and the day boundary the server actually used.
         todaySalesCount: todaySalesCountAgg,
+        todayLayawaySalesCount,
         dayStart: startOfToday.toISOString(),
         serverTime: now.toISOString(),
         totalProducts,

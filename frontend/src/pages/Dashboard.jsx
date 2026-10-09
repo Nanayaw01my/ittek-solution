@@ -236,14 +236,25 @@ export default function Dashboard() {
           label="Today's Sales"
           color="orange"
           loading={statsLoading}
-          hint={statsError ? null
-            : `${stats.todaySalesCount ?? 0} sale${stats.todaySalesCount === 1 ? '' : 's'}`
-              + `${stats.todayLayawayCollections > 0 ? ' + plan instalments' : ' today'}`
-              // A refund paid out today is dated today even when it reverses
-              // a sale from weeks ago. It is said here rather than subtracted
-              // out of sight, which is what made this card read zero on a
-              // day with real takings.
-              + `${stats.todayRefunds > 0 ? ` · less ${formatCurrency(stats.todayRefunds)} refunded` : ''}`}
+          hint={statsError ? null : (() => {
+            /**
+             * A zero here has to say which kind of zero it is.
+             *
+             * Nothing sold, everything refunded, and a day of Pay & Pick
+             * Later collections all used to print the same GHC 0.00, and the
+             * only way to find out which was to open Cash Up and compare.
+             */
+            const counted = stats.todaySalesCount ?? 0
+            const plans = stats.todayLayawaySalesCount ?? 0
+            const refunded = stats.todayRefunds || 0
+            const parts = []
+            if (counted > 0) parts.push(`${counted} sale${counted === 1 ? '' : 's'} today`)
+            if (plans > 0) parts.push(`${plans} plan collection${plans === 1 ? '' : 's'} (counted when paid)`)
+            if (stats.todayLayawayCollections > 0) parts.push('includes plan instalments')
+            if (refunded > 0) parts.push(`less ${formatCurrency(refunded)} refunded`)
+            if (!parts.length) return 'nothing sold yet today'
+            return parts.join(' · ')
+          })()}
         />
         <StatCard
           icon={FiTrendingUp}
