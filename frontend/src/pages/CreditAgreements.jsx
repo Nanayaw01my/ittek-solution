@@ -300,13 +300,24 @@ const EVERY = {
 const buildSchedule = (agreement) => {
   const plan = EVERY[agreement.payment_plan] ? agreement.payment_plan : 'weekly'
   const every = EVERY[plan]
-  const count = 3
-  const balance = Math.max(0, (agreement.total_amount || 0) - (agreement.down_payment || 0))
-  const each = Number((balance / count).toFixed(2))
-  const start = new Date(agreement.start_date || agreement.createdAt || Date.now())
+  const count = Math.max(1, Number(agreement.instalment_count) || 3)
 
-  // What has been paid, spread over the instalments in order.
-  let pot = (agreement.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+  // After a swap the plan runs on the balance agreed at that moment, from
+  // that day. Before one, it is the original: the whole financed amount from
+  // the start date. Nothing about an untouched agreement changes.
+  const reset = agreement.schedule_from ? new Date(agreement.schedule_from) : null
+  const balance = reset
+    ? Math.max(0, Number(agreement.schedule_base) || 0)
+    : Math.max(0, (agreement.total_amount || 0) - (agreement.down_payment || 0))
+  const each = Number((balance / count).toFixed(2))
+  const start = reset || new Date(agreement.start_date || agreement.createdAt || Date.now())
+
+  // What has been paid, spread over the instalments in order. Payments made
+  // before a swap are already inside the balance it was agreed on, so
+  // counting them here too would credit the customer twice.
+  let pot = (agreement.payments || [])
+    .filter(p => !reset || new Date(p.payment_date || p.date || 0) >= reset)
+    .reduce((sum, p) => sum + (p.amount || 0), 0)
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -340,6 +351,7 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
   const [swap, setSwap] = useState({
     returned_description: '', returned_serial: '', returned_condition: '', returned_value: '',
     replacement_description: '', replacement_serial: '', replacement_value: '', reason: '',
+    payment_plan: 'weekly', instalments: 3,
   })
 
   const beginSwap = () => {
@@ -350,6 +362,10 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
       returned_description: agreement?.product_description || agreement?.product_type || '',
       returned_serial: agreement?.serial_number || '',
       returned_value: String(agreement?.total_amount || ''),
+      // Starts from what this agreement already runs on; the point is that
+      // it can be changed, not that it must be.
+      payment_plan: agreement?.payment_plan || 'weekly',
+      instalments: agreement?.instalment_count || 3,
     }))
     setSwapping(true)
   }
@@ -402,6 +418,7 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
       setSwap({
         returned_description: '', returned_serial: '', returned_condition: '', returned_value: '',
         replacement_description: '', replacement_serial: '', replacement_value: '', reason: '',
+        payment_plan: 'weekly', instalments: 3,
       })
       // Straight to the paper — that is the point of doing this at the counter.
       if (made?._id) openNote(made._id, made.reference)
@@ -670,23 +687,67 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
                   placeholder="Why is it being changed?"
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm" />
 
+                {/* The new balance is a new arrangement, so how it is paid is
+                    agreed again here rather than inherited silently. */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+                      Pays every
+                    </label>
+                    <select value={swap.payment_plan}
+                      onChange={e => setSwap({ ...swap, payment_plan: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white">
+                      <option value="daily">Day</option>
+                      <option value="weekly">Week</option>
+                      <option value="monthly">Month</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+                      Number of payments
+                    </label>
+                    <input type="number" min="1" max="60" value={swap.instalments}
+                      onChange={e => setSwap({ ...swap, instalments: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm" />
+                  </div>
+                </div>
+
                 {/* The new balance, before anybody commits to it. */}
                 {(() => {
                   const back = parseFloat(swap.returned_value) || 0
                   const out = parseFloat(swap.replacement_value) || 0
                   if (!out) return null
                   const paid = (agreement.down_payment || 0) + amountPaid
+                  const before = Math.max(0, (agreement.total_amount || 0) - paid)
                   const after = Math.max(0, (agreement.total_amount || 0) - back + out)
                   const owed = Math.max(0, after - paid)
                   const credit = Math.max(0, paid - after)
+                  const count = Math.max(1, Math.round(Number(swap.instalments)) || 1)
+                  const each = owed > 0 ? owed / count : 0
+                  const word = { daily: 'day', weekly: 'week', monthly: 'month' }[swap.payment_plan] || 'week'
+                  // The same two figures the sheet shows, so nobody is
+                  // surprised by the paper after agreeing to the swap.
                   return (
-                    <div className={`rounded-xl px-4 py-3 flex justify-between items-center ${credit > 0 ? 'bg-green-600' : 'bg-orange-500'}`}>
-                      <span className="text-xs font-bold text-white uppercase tracking-wide">
-                        {credit > 0 ? 'We would owe them' : 'They would owe'}
-                      </span>
-                      <span className="text-lg font-black text-white">
-                        {formatCurrency(credit > 0 ? credit : owed)}
-                      </span>
+                    <div className="space-y-1.5">
+                      <div className="rounded-xl px-4 py-2.5 flex justify-between items-center bg-gray-600">
+                        <span className="text-[11px] font-bold text-white uppercase tracking-wide">
+                          Owed on the old item
+                        </span>
+                        <span className="text-base font-black text-white">{formatCurrency(before)}</span>
+                      </div>
+                      <div className={`rounded-xl px-4 py-2.5 flex justify-between items-center ${credit > 0 ? 'bg-green-600' : 'bg-orange-500'}`}>
+                        <span className="text-[11px] font-bold text-white uppercase tracking-wide">
+                          {credit > 0 ? 'We would owe them' : 'Owed on the new item'}
+                        </span>
+                        <span className="text-lg font-black text-white">
+                          {formatCurrency(credit > 0 ? credit : owed)}
+                        </span>
+                      </div>
+                      {owed > 0 && (
+                        <p className="text-xs text-gray-600 text-center">
+                          {formatCurrency(each)} every {word}, {count} time{count === 1 ? '' : 's'}
+                        </p>
+                      )}
                     </div>
                   )
                 })()}
@@ -701,8 +762,14 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
                       if (!swap.returned_description.trim()) { toast.error('What is coming back?'); return }
                       if (!swap.replacement_description.trim()) { toast.error('What are they taking?'); return }
                       if (!(parseFloat(swap.replacement_value) > 0)) { toast.error('What does the new item cost?'); return }
+                      const count = Math.round(Number(swap.instalments))
+                      if (!(count >= 1 && count <= 60)) {
+                        toast.error('How many payments? Between 1 and 60.')
+                        return
+                      }
                       swapMutation.mutate({
                         ...swap,
+                        instalments: count,
                         returned_value: swap.returned_value === '' ? undefined : parseFloat(swap.returned_value),
                         replacement_value: parseFloat(swap.replacement_value),
                       })

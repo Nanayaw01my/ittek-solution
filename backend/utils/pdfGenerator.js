@@ -3562,44 +3562,87 @@ const generateExchangeNote = async (agreement = {}, exchange = {}, options = {})
           y += 14;
         }
 
-        // ── The money ───────────────────────────────────────────────────────
-        y = sectionTitle('WHAT THIS CHANGES', y);
-
+        // ── The money, as two separate debts ────────────────────────────────
+        //
+        // The old debt and the new one are kept apart on purpose. A single
+        // blended figure gives the customer no way to check the shop's
+        // arithmetic, and the question at the counter is always the same:
+        // what did I owe before, and what do I owe now?
+        const owing = Number(exchange.credit_due) > 0;
         const diff = Number(exchange.difference) || 0;
-        const rows = [
-          ['Agreement total before', gh(exchange.total_before)],
-          [diff >= 0 ? 'Added by the exchange' : 'Taken off by the exchange', (diff >= 0 ? '+' : '-') + gh(Math.abs(diff))],
-          ['Agreement total now', gh(exchange.total_after)],
-          ['Paid by customer to date', gh(exchange.paid_to_date)],
-        ];
 
-        const rowH = 12;
-        rows.forEach(([label, value], i) => {
-          const ry = y + i * rowH;
-          if (i % 2 === 0) { doc.rect(ML, ry, W, rowH).fillColor('#fafafa').fill(); reset(); }
+        const moneyRow = (label, value, ry, { bold = false, shade = false, negative = false } = {}) => {
+          if (shade) { doc.rect(ML, ry, W, 12).fillColor('#fafafa').fill(); reset(); }
           doc.fontSize(8).font('Helvetica').fillColor('#333333')
             .text(label, ML + 6, ry + 3.5, { width: W - 120, lineBreak: false });
-          doc.fontSize(8).font(i === 2 ? 'Helvetica-Bold' : 'Helvetica').fillColor('#111111')
+          doc.fontSize(8).font(bold ? 'Helvetica-Bold' : 'Helvetica').fillColor(negative ? '#1b7f4b' : '#111111')
             .text(value, ML + W - 106, ry + 3.5, { width: 100, align: 'right', lineBreak: false });
           reset();
-        });
-        y += rows.length * rowH + 4;
+        };
 
-        // The one number the customer came to find out.
-        const owing = Number(exchange.credit_due) > 0;
-        const bandLabel = owing ? 'WE OWE THE CUSTOMER' : 'BALANCE STILL TO PAY';
-        const bandValue = owing ? exchange.credit_due : exchange.balance_after;
-        doc.rect(ML, y, W, 24).fillColor(owing ? '#1b7f4b' : ORANGE).fill();
-        doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff')
-          .text(bandLabel, ML + 8, y + 7.5, { width: W / 2, lineBreak: false });
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#ffffff')
-          .text(gh(bandValue), ML + W / 2 - 8, y + 6, { width: W / 2, align: 'right', lineBreak: false });
-        reset();
-        y += 28;
+        const band = (label, value, colour, ry) => {
+          doc.rect(ML, ry, W, 22).fillColor(colour).fill();
+          doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#ffffff')
+            .text(label, ML + 8, ry + 6.5, { width: W / 2, lineBreak: false });
+          doc.fontSize(11.5).font('Helvetica-Bold').fillColor('#ffffff')
+            .text(gh(value), ML + W / 2 - 8, ry + 5.5, { width: W / 2, align: 'right', lineBreak: false });
+          reset();
+        };
+
+        // The old debt, settled and closed off.
+        y = sectionTitle('THE OLD DEBT', y);
+        moneyRow('Price of the old item', gh(exchange.total_before), y, { shade: true });
+        moneyRow('Paid by customer so far', gh(exchange.paid_to_date), y + 12);
+        y += 24;
+        band('OWED ON THE OLD ITEM', exchange.balance_before, '#555555', y);
+        y += 26;
+
+        // The new debt, built openly from the old one.
+        y = sectionTitle('THE NEW DEBT', y);
+        moneyRow('Brought forward from the old item', gh(exchange.balance_before), y, { shade: true });
+        moneyRow('Price of the new item', gh(exchange.replacement_value), y + 12);
+        moneyRow('Less credit for the item returned', '-' + gh(exchange.returned_value), y + 24,
+          { negative: true });
+        moneyRow(diff >= 0 ? 'Difference added' : 'Difference taken off',
+          (diff >= 0 ? '+' : '-') + gh(Math.abs(diff)), y + 36, { bold: true, shade: true });
+        y += 50;
+        band(owing ? 'WE OWE THE CUSTOMER' : 'OWED ON THE NEW ITEM',
+          owing ? exchange.credit_due : exchange.balance_after,
+          owing ? '#1b7f4b' : ORANGE, y);
+        y += 26;
+
+        // ── How the new debt is to be paid ──────────────────────────────────
+        const schedule = Array.isArray(exchange.schedule) ? exchange.schedule : [];
+        if (schedule.length) {
+          const planWord = { daily: 'day', weekly: 'week', monthly: 'month' }[exchange.plan] || 'week';
+          y = sectionTitle('HOW THE NEW DEBT IS PAID', y);
+          doc.fontSize(7.5).font('Helvetica').fillColor('#222222').text(
+            `${gh(exchange.instalment_amount)} every ${planWord}, `
+            + `${schedule.length} time${schedule.length === 1 ? '' : 's'}, starting ${dateStr(schedule[0].due_on)}.`,
+            ML, y, { width: W, lineBreak: false }
+          );
+          reset();
+          y += 12;
+
+          // Laid out across the page so a longer plan does not run the note
+          // onto a second sheet.
+          const perRow = 3;
+          const cellW = (W - (perRow - 1) * 6) / perRow;
+          schedule.forEach((inst, i) => {
+            const cx = ML + (i % perRow) * (cellW + 6);
+            const cy = y + Math.floor(i / perRow) * 20;
+            doc.rect(cx, cy, cellW, 18).lineWidth(0.4).strokeColor('#dddddd').stroke();
+            doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY)
+              .text(`${inst.n}. ${dateStr(inst.due_on)}`, cx + 4, cy + 2.5, { width: cellW - 8, lineBreak: false });
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#111111')
+              .text(gh(inst.amount), cx + 4, cy + 9, { width: cellW - 8, lineBreak: false });
+            reset();
+          });
+          y += Math.ceil(schedule.length / perRow) * 20 + 2;
+        }
 
         doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY)
-          .text(`Balance before this exchange: ${gh(exchange.balance_before)}.`
-            + ' All other terms of the credit sale agreement, including the guarantor, stay as signed.',
+          .text('All other terms of the credit sale agreement, including the guarantor, stay as signed.',
           ML, y, { width: W, lineBreak: false, ellipsis: true });
         reset();
         y += 10;
@@ -3634,11 +3677,23 @@ const generateExchangeNote = async (agreement = {}, exchange = {}, options = {})
         return y + 42;
       };
 
-      // Two copies, with a cut line between them. The sheet is A4, so there
-      // is room for both only if each stays inside its half — the labels used
-      // to flow off the bottom and take four extra pages with them.
+      // Two copies on the one sheet where they fit, split by a cut line —
+      // one for the customer, one for the file. A long instalment plan makes
+      // the note too tall for that, and a cramped note that runs off the
+      // bottom is worse than a second sheet, so it then gets a page each.
       const TOP = 30;
+      const PAGE_BOTTOM = 842 - 36;
       const bottomOfFirst = drawNote(TOP, 'CUSTOMER COPY');
+      const noteHeight = bottomOfFirst - TOP;
+      const bothFit = TOP + noteHeight * 2 + 18 <= PAGE_BOTTOM;
+
+      if (!bothFit) {
+        doc.addPage();
+        attachWatermark(doc, logoBuf);
+        drawNote(TOP, 'OFFICE COPY');
+        doc.end();
+        return;
+      }
 
       const CUT = bottomOfFirst + 6;
       doc.moveTo(ML - 10, CUT).lineTo(ML + W + 10, CUT).lineWidth(0.5).dash(3, { space: 3 })

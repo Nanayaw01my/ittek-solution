@@ -42,6 +42,12 @@ const ProductExchangeSchema = new mongoose.Schema(
 
     reason: { type: String, trim: true },
 
+    /** The plan agreed for the new balance, at the moment of the swap. */
+    plan: { type: String, enum: ['daily', 'weekly', 'monthly'] },
+    instalments: { type: Number, min: 1 },
+    instalment_amount: { type: Number, min: 0 },
+    schedule_from: { type: Date },
+
     /** The money, as it stood before and after — frozen, not recomputed. */
     total_before: { type: Number, required: true },
     total_after: { type: Number, required: true },
@@ -78,6 +84,21 @@ const CreditAgreementSchema = new mongoose.Schema(
     remaining: { type: Number },
     payment_plan: { type: String, enum: ['daily', 'weekly', 'monthly'], default: 'weekly' },
     weekly_installment: { type: Number },
+    /** How many instalments the balance is split into. Three, historically. */
+    instalment_count: { type: Number, default: 3, min: 1 },
+    /**
+     * When the current plan starts, and the amount it spreads.
+     *
+     * Only set once a swap has rewritten the plan. Before that the schedule
+     * is the original one — the whole financed amount from the start date —
+     * and these stay empty so nothing about existing agreements changes.
+     *
+     * Payments made before `schedule_from` are already accounted for in
+     * `schedule_base`, so they must not be counted against the new
+     * instalments as well.
+     */
+    schedule_from: { type: Date },
+    schedule_base: { type: Number, min: 0 },
     interest_rate: { type: Number, default: 0 },
 
     // Dates
@@ -103,9 +124,17 @@ const CreditAgreementSchema = new mongoose.Schema(
 );
 
 CreditAgreementSchema.pre('save', function (next) {
-  if (this.isNew || this.isModified('total_amount') || this.isModified('down_payment')) {
+  if (this.isNew || this.isModified('total_amount') || this.isModified('down_payment')
+      || this.isModified('instalment_count') || this.isModified('schedule_base')) {
     this.remaining = Math.max(0, this.total_amount - this.down_payment);
-    this.weekly_installment = this.remaining > 0 ? +(this.remaining / 3).toFixed(2) : 0;
+    const count = Math.max(1, Number(this.instalment_count) || 3);
+    // After a swap the instalments are worked out on the balance the plan was
+    // agreed over, not on the whole financed amount — the customer is not
+    // asked to pay again for what they already paid.
+    const spread = this.schedule_base !== undefined && this.schedule_base !== null
+      ? Number(this.schedule_base)
+      : this.remaining;
+    this.weekly_installment = spread > 0 ? +(spread / count).toFixed(2) : 0;
   }
 
   if (this.isNew && this.start_date && !this.end_date) {

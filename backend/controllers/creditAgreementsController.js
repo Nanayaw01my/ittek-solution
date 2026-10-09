@@ -195,6 +195,27 @@ const generatePDF = async (req, res) => {
   }
 };
 
+const PLAN_STEP = { daily: 1, weekly: 7, monthly: 30 };
+
+/**
+ * The dates and amounts the new balance is to be paid in.
+ *
+ * The last instalment carries the rounding, so the parts add up to the
+ * balance exactly rather than leaving a few pesewas owing for ever.
+ */
+const buildPlan = (balance, plan, count, from) => {
+  const step = PLAN_STEP[plan] || 7;
+  const each = Number((balance / count).toFixed(2));
+  const rows = [];
+  for (let n = 1; n <= count; n++) {
+    const due = n === count ? Number((balance - each * (count - 1)).toFixed(2)) : each;
+    const when = new Date(from);
+    when.setDate(when.getDate() + n * step);
+    rows.push({ n, amount: due, due_on: when });
+  }
+  return rows;
+};
+
 /** EXC-YYYYMMDD-0001, from the highest issued today. */
 const nextExchangeRef = async () => {
   const now = new Date();
@@ -238,7 +259,7 @@ const exchangeProduct = async (req, res) => {
     const {
       returned_description, returned_serial, returned_condition, returned_value,
       replacement_type, replacement_description, replacement_serial, replacement_value,
-      reason,
+      reason, payment_plan, instalments,
     } = req.body;
 
     const backDesc = String(returned_description || agreement.product_description || agreement.product_type || '').trim();
@@ -283,6 +304,15 @@ const exchangeProduct = async (req, res) => {
     const creditDue = Math.max(0, Number((paid - totalAfter).toFixed(2)));
     const balanceAfter = Math.max(0, Number((totalAfter - paid).toFixed(2)));
 
+    // How the new balance is to be paid. Chosen at the counter, because the
+    // old plan was agreed for a different item at a different price.
+    const plan = ['daily', 'weekly', 'monthly'].includes(payment_plan)
+      ? payment_plan
+      : (agreement.payment_plan || 'weekly');
+    const count = Math.min(60, Math.max(1, Math.round(Number(instalments)) || agreement.instalment_count || 3));
+    const from = new Date();
+    const schedule = balanceAfter > 0 ? buildPlan(balanceAfter, plan, count, from) : [];
+
     const entry = {
       reference: await nextExchangeRef(),
       exchanged_on: new Date(),
@@ -302,6 +332,10 @@ const exchangeProduct = async (req, res) => {
       balance_before: balanceBefore,
       balance_after: balanceAfter,
       credit_due: creditDue,
+      plan,
+      instalments: count,
+      instalment_amount: schedule.length ? schedule[0].amount : 0,
+      schedule_from: from,
       done_by: req.user._id,
     };
 
@@ -312,12 +346,21 @@ const exchangeProduct = async (req, res) => {
     agreement.serial_number = entry.replacement_serial;
     agreement.total_amount = totalAfter;
 
+    // The plan now runs on the new balance, from today. The payments already
+    // made are inside schedule_base, so they are not asked for twice.
+    agreement.payment_plan = plan;
+    agreement.instalment_count = count;
+    agreement.schedule_from = from;
+    agreement.schedule_base = balanceAfter;
+
     // Paid off by the swap. Nothing more is owed, so the account closes.
     if (balanceAfter <= 0) agreement.status = 'completed';
 
     await agreement.save();
 
     const saved = agreement.exchanges[agreement.exchanges.length - 1];
+    const savedObj = typeof saved.toObject === 'function' ? saved.toObject() : { ...saved };
+    savedObj.schedule = schedule;
 
     await Notification.create({
       user_id: null,
@@ -333,7 +376,7 @@ const exchangeProduct = async (req, res) => {
       message: creditDue > 0
         ? `Swapped. The customer has overpaid by GH₵${creditDue.toFixed(2)} — that is owed back to them.`
         : `Swapped. They now owe GH₵${balanceAfter.toFixed(2)}.`,
-      data: { agreement, exchange: saved },
+      data: { agreement, exchange: savedObj },
     });
   } catch (err) {
     console.error('Credit exchange error:', err.stack || err.message);
@@ -358,8 +401,19 @@ const exchangeNotePDF = async (req, res) => {
     );
     if (!exchange) return res.status(404).json({ success: false, message: 'That exchange is not on this agreement.' });
 
+    // Rebuilt from what was agreed, not stored as rows, so a reprint months
+    // later shows the same dates as the copy the customer signed.
+    const schedule = exchange.balance_after > 0 && exchange.instalments
+      ? buildPlan(
+        exchange.balance_after,
+        exchange.plan || agreement.payment_plan || 'weekly',
+        exchange.instalments,
+        exchange.schedule_from || exchange.exchanged_on || new Date()
+      )
+      : [];
+
     const settings = await Settings.findOne().lean();
-    const pdf = await generateExchangeNote(agreement, exchange, {
+    const pdf = await generateExchangeNote(agreement, { ...exchange, schedule }, {
       logoUrl: settings?.logo_url,
       company: {
         name: settings?.company_name,
