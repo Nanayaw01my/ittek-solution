@@ -750,7 +750,7 @@ export default function CreditAgreements() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['credit-agreements', search, page],
     queryFn: () => getCreditAgreements({ search: search || undefined, page, limit: 15 }).then(r => r.data),
   })
@@ -765,7 +765,14 @@ export default function CreditAgreements() {
     onError: err => toast.error(err.response?.data?.message || 'Failed to create'),
   })
 
-  const agreements = data?.agreements || (Array.isArray(data) ? data : [])
+  const agreements = Array.isArray(data?.agreements)
+    ? data.agreements
+    : (Array.isArray(data) ? data : [])
+  // A server older than this app has no handler for an unknown /api path, so
+  // it answers with the app's own HTML and a 200. That is not an empty list,
+  // and must not be shown as one.
+  const badAnswer = !isLoading && !error && data !== undefined
+    && !Array.isArray(data) && !Array.isArray(data?.agreements)
 
   const columns = [
     {
@@ -826,11 +833,30 @@ export default function CreditAgreements() {
           className="w-full max-w-sm px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
       </div>
 
+      {/* An empty table on its own cannot tell you whether there are no
+          agreements or whether the list never arrived. */}
+      {!isLoading && (error || badAnswer) && (
+        <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-800">
+          <p className="font-semibold">The credit agreements did not load.</p>
+          <p className="mt-0.5 text-xs">
+            {error?.response?.data?.message
+              || error?.message
+              || 'The server sent back something that is not a list of agreements. It may be running an older version than this app.'}
+          </p>
+          <button
+            onClick={() => refetch()}
+            className="mt-2 px-3 py-1.5 rounded-lg bg-white border border-red-200 text-xs font-semibold hover:bg-red-50"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
       <Table
         columns={columns}
         data={agreements}
         loading={isLoading}
-        emptyMessage="No credit agreements found"
+        emptyMessage={search ? `Nothing matches “${search}”` : 'No credit agreements have been created yet'}
         pagination={data?.pagination}
         onPageChange={setPage}
         onRowClick={setViewAgreement}

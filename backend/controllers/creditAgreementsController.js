@@ -9,11 +9,19 @@ const { generateCreditAgreement, generateExchangeNote } = require('../utils/pdfG
  */
 const getCreditAgreements = async (req, res) => {
   try {
-    const { status, page = 1, limit = 50, customer } = req.query;
+    const { status, page = 1, limit = 50, customer, search } = req.query;
     const filter = {};
 
-    if (status) filter.status = status;
-    if (customer) filter.customer_name = { $regex: customer, $options: 'i' };
+    if (status && status !== 'all') filter.status = status;
+    // The screen sends `search`; only `customer` was ever read, so the search
+    // box did nothing at all. Both are accepted, and a phone number finds the
+    // agreement too — that is what the shop has when a customer rings.
+    const term = String(search || customer || '').trim();
+    if (term) {
+      const safe = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rx = new RegExp(safe, 'i');
+      filter.$or = [{ customer_name: rx }, { customer_phone: rx }, { serial_number: rx }];
+    }
 
     const skip = (Number(page) - 1) * Number(limit);
     const [agreements, total] = await Promise.all([
@@ -25,14 +33,23 @@ const getCreditAgreements = async (req, res) => {
       CreditAgreement.countDocuments(filter),
     ]);
 
+    const pagination = {
+      total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / Number(limit)),
+    };
+
     return res.status(200).json({
       success: true,
-      data: agreements,
-      pagination: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / Number(limit)) },
+      // Inside `data`, because the browser's axios layer unwraps that and
+      // throws away everything beside it — the page count never arrived.
+      data: { agreements, pagination },
+      pagination,
     });
   } catch (err) {
-    console.error('Get credit agreements error:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error.' });
+    console.error('Get credit agreements error:', err.stack || err.message);
+    return res.status(500).json({
+      success: false,
+      message: `Could not load the credit agreements: ${err.message}`,
+    });
   }
 };
 
