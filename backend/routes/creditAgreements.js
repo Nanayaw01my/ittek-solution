@@ -7,6 +7,7 @@ const { auditLog } = require('../middleware/auditLogger');
 const {
   getCreditAgreements, createCreditAgreement, getCreditAgreement,
   updateCreditAgreement, recordPayment, generatePDF,
+  exchangeProduct, exchangeNotePDF,
 } = require('../controllers/creditAgreementsController');
 
 // Manager (2) and above
@@ -42,5 +43,21 @@ router.post(
   auditLog('CREDIT_AGREEMENT_PAYMENT', (req) => ({ agreement_id: req.params.id, amount: req.body.amount })),
   recordPayment
 );
+
+// Swapping the goods changes what is owed on a signed agreement, so it is
+// written down under the name of whoever did it.
+router.post(
+  '/:id/exchange',
+  auditLog('CREDIT_AGREEMENT_EXCHANGE', (req) => ({
+    agreement_id: req.params.id,
+    returned: req.body.returned_description,
+    replacement: req.body.replacement_description,
+    returned_value: req.body.returned_value,
+    replacement_value: req.body.replacement_value,
+  })),
+  exchangeProduct
+);
+
+router.get('/:id/exchange/:exchangeId/pdf', exchangeNotePDF);
 
 module.exports = router;

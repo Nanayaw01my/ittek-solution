@@ -10,6 +10,53 @@ const CreditPaymentSchema = new mongoose.Schema(
   { _id: true }
 );
 
+/**
+ * A product swapped out after the agreement was signed.
+ *
+ * The customer brings back what they were given and takes something else.
+ * The agreement does not restart — the same customer, the same guarantor and
+ * everything already paid all stand — but the goods behind it change, and so
+ * does the amount owed if the two items are not worth the same.
+ *
+ * Each swap is kept rather than overwriting the product, because the paper
+ * the customer signed names the old item and its serial number. When a
+ * dispute comes months later, the chain from what was signed for to what the
+ * customer actually holds has to be readable.
+ */
+const ProductExchangeSchema = new mongoose.Schema(
+  {
+    reference: { type: String, trim: true },
+    exchanged_on: { type: Date, default: Date.now },
+
+    /** What came back. */
+    returned_description: { type: String, required: true, trim: true },
+    returned_serial: { type: String, trim: true },
+    returned_value: { type: Number, required: true, min: 0 },
+    returned_condition: { type: String, trim: true },
+
+    /** What went out in its place. */
+    replacement_type: { type: String, trim: true },
+    replacement_description: { type: String, required: true, trim: true },
+    replacement_serial: { type: String, trim: true },
+    replacement_value: { type: Number, required: true, min: 0 },
+
+    reason: { type: String, trim: true },
+
+    /** The money, as it stood before and after — frozen, not recomputed. */
+    total_before: { type: Number, required: true },
+    total_after: { type: Number, required: true },
+    difference: { type: Number, required: true },
+    paid_to_date: { type: Number, default: 0 },
+    balance_before: { type: Number, default: 0 },
+    balance_after: { type: Number, default: 0 },
+    /** Owed back to the customer, when the new item is worth less than paid. */
+    credit_due: { type: Number, default: 0 },
+
+    done_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  },
+  { _id: true }
+);
+
 const CreditAgreementSchema = new mongoose.Schema(
   {
     // Customer
@@ -49,6 +96,7 @@ const CreditAgreementSchema = new mongoose.Schema(
 
     status: { type: String, enum: ['active', 'completed', 'defaulted'], default: 'active' },
     payments: [CreditPaymentSchema],
+    exchanges: [ProductExchangeSchema],
     created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
@@ -70,6 +118,23 @@ CreditAgreementSchema.pre('save', function (next) {
 
   next();
 });
+
+/** What the customer has actually handed over so far. */
+CreditAgreementSchema.methods.paidToDate = function paidToDate() {
+  const instalments = (this.payments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  return Number(((Number(this.down_payment) || 0) + instalments).toFixed(2));
+};
+
+/**
+ * What is still owed.
+ *
+ * `remaining` on this schema is the amount financed at the start and does not
+ * move as payments come in, so it is not the answer to "what does this
+ * customer still owe?" — that has to count the payments.
+ */
+CreditAgreementSchema.methods.outstanding = function outstanding() {
+  return Math.max(0, Number(((Number(this.total_amount) || 0) - this.paidToDate()).toFixed(2)));
+};
 
 CreditAgreementSchema.index({ status: 1 });
 CreditAgreementSchema.index({ customer_name: 1 });

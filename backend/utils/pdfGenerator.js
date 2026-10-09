@@ -3422,8 +3422,244 @@ const generateBarcodeSheet = async (options = {}) => {
   });
 };
 
+
+/**
+ * Generate a Product Exchange Note for a credit agreement — A4, one page.
+ *
+ * The customer is handing back goods that are named, by serial number, on an
+ * agreement they and a guarantor signed. From the moment they walk out with
+ * something else, that signed paper describes an item they no longer hold.
+ * This is what closes that gap: it names both items, says what each was
+ * valued at, shows the balance before and after, and is signed by both sides.
+ *
+ * Deliberately one page and deliberately not a new agreement. Nothing about
+ * the customer, the guarantor or the payments has changed, and reprinting all
+ * of that would invite a second signature on terms nobody renegotiated.
+ *
+ * Two copies print on the one sheet, split by a cut line — one for the
+ * customer, one for the shop's file. A note only we hold settles nothing.
+ *
+ * @param {Object} agreement - the credit agreement (plain object)
+ * @param {Object} exchange - the exchange entry being printed
+ * @param {Object} options - { logoUrl, company }
+ * @returns {Promise<Buffer>}
+ */
+const generateExchangeNote = async (agreement = {}, exchange = {}, options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 36, bottom: 36, left: 50, right: 50 }, autoFirstPage: true });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 50;
+      const W = 495;
+      const ORANGE = '#e86b00';
+      const LGRAY = '#777777';
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+      const companyAddress = company.address || 'Bogoso, Western Region';
+      const companyPhone = company.phone || '+233 595413632';
+
+      const gh = (n) => 'GHC' + (Number(n) || 0).toFixed(2);
+      const dateStr = (d) => (d ? new Date(d).toLocaleDateString('en-GH') : '—');
+
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      const sectionTitle = (text, y) => {
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor(ORANGE).text(text, ML, y, { width: W });
+        doc.moveTo(ML, y + 11).lineTo(ML + W, y + 11).lineWidth(0.8).strokeColor(ORANGE).stroke();
+        reset();
+        return y + 15;
+      };
+
+      const field = (label, value, x, y, width) => {
+        doc.fontSize(6).font('Helvetica-Bold').fillColor(LGRAY).text(label, x, y, { width, lineBreak: false });
+        doc.fontSize(8).font('Helvetica').fillColor('#111111')
+          .text(String(value || '—'), x, y + 8, { width, lineBreak: false, ellipsis: true });
+        doc.moveTo(x, y + 18).lineTo(x + width, y + 18).lineWidth(0.3).strokeColor('#cccccc').stroke();
+        reset();
+      };
+
+      attachWatermark(doc, logoBuf);
+
+      /** One complete note. Drawn twice on the sheet. */
+      const drawNote = (top, copyLabel) => {
+        let y = top;
+
+        doc.fontSize(10.5).font('Helvetica-Bold').fillColor('#111111')
+          .text(companyName, ML, y, { width: W, align: 'center', lineBreak: false });
+        doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
+          .text(`${companyAddress}  |  Tel: ${companyPhone}`, ML, y + 13, { width: W, align: 'center', lineBreak: false });
+        doc.fontSize(9.5).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('PRODUCT EXCHANGE NOTE', ML, y + 25, { width: W, align: 'center', lineBreak: false });
+        doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY)
+          .text(copyLabel, ML, y + 37, { width: W, align: 'center', lineBreak: false });
+        reset();
+        y += 48;
+
+        doc.moveTo(ML, y).lineTo(ML + W, y).lineWidth(1.2).strokeColor(ORANGE).stroke();
+        reset();
+        y += 8;
+
+        // ── Who, and against which agreement ────────────────────────────────
+        const c3 = (W - 8) / 3;
+        field('Exchange No.', exchange.reference, ML, y, c3 - 4);
+        field('Date', dateStr(exchange.exchanged_on), ML + c3, y, c3 - 4);
+        field('Agreement Date', dateStr(agreement.start_date), ML + c3 * 2, y, c3 - 4);
+        y += 24;
+        field('Customer', agreement.customer_name, ML, y, c3 - 4);
+        field('Phone', agreement.customer_phone, ML + c3, y, c3 - 4);
+        field('ID Number', agreement.id_number, ML + c3 * 2, y, c3 - 4);
+        y += 28;
+
+        // ── The swap itself, side by side so it reads at a glance ───────────
+        y = sectionTitle('THE EXCHANGE', y);
+        const half = (W - 10) / 2;
+        const boxH = 60;
+
+        const itemBox = (x, heading, desc, serial, value, extraLabel, extra) => {
+          doc.rect(x, y, half, boxH).lineWidth(0.8).strokeColor('#cccccc').stroke();
+          doc.rect(x, y, half, 13).fillColor('#f4f4f4').fill();
+          doc.fontSize(7).font('Helvetica-Bold').fillColor('#333333')
+            .text(heading, x + 5, y + 4, { width: half - 10, lineBreak: false });
+          reset();
+          doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#111111')
+            .text(String(desc || '—'), x + 5, y + 16, { width: half - 10, height: 20, ellipsis: true });
+          doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY)
+            .text(`Serial: ${serial || '—'}`, x + 5, y + 34, { width: half - 10, lineBreak: false });
+          if (extraLabel) {
+            doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY)
+              .text(`${extraLabel}: ${extra || '—'}`, x + 5, y + 42, { width: half - 10, lineBreak: false });
+          }
+          doc.fontSize(10).font('Helvetica-Bold').fillColor(ORANGE)
+            .text(gh(value), x + 5, y + boxH - 16, { width: half - 10, align: 'right', lineBreak: false });
+          reset();
+        };
+
+        itemBox(ML, 'RETURNED BY CUSTOMER', exchange.returned_description,
+          exchange.returned_serial, exchange.returned_value, 'Condition', exchange.returned_condition);
+        itemBox(ML + half + 10, 'GIVEN TO CUSTOMER', exchange.replacement_description,
+          exchange.replacement_serial, exchange.replacement_value, 'Type', exchange.replacement_type);
+
+        // An arrow between the two, so nobody has to work out which way round.
+        const midY = y + boxH / 2;
+        doc.fontSize(14).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('>', ML + half, midY - 9, { width: 10, align: 'center', lineBreak: false });
+        reset();
+        y += boxH + 10;
+
+        if (exchange.reason) {
+          doc.fontSize(6.5).font('Helvetica-Bold').fillColor(LGRAY)
+            .text('Reason', ML, y, { lineBreak: false });
+          doc.fontSize(7.5).font('Helvetica').fillColor('#222222')
+            .text(String(exchange.reason), ML + 38, y, { width: W - 38, height: 18, ellipsis: true });
+          reset();
+          y += 14;
+        }
+
+        // ── The money ───────────────────────────────────────────────────────
+        y = sectionTitle('WHAT THIS CHANGES', y);
+
+        const diff = Number(exchange.difference) || 0;
+        const rows = [
+          ['Agreement total before', gh(exchange.total_before)],
+          [diff >= 0 ? 'Added by the exchange' : 'Taken off by the exchange', (diff >= 0 ? '+' : '-') + gh(Math.abs(diff))],
+          ['Agreement total now', gh(exchange.total_after)],
+          ['Paid by customer to date', gh(exchange.paid_to_date)],
+        ];
+
+        const rowH = 12;
+        rows.forEach(([label, value], i) => {
+          const ry = y + i * rowH;
+          if (i % 2 === 0) { doc.rect(ML, ry, W, rowH).fillColor('#fafafa').fill(); reset(); }
+          doc.fontSize(8).font('Helvetica').fillColor('#333333')
+            .text(label, ML + 6, ry + 3.5, { width: W - 120, lineBreak: false });
+          doc.fontSize(8).font(i === 2 ? 'Helvetica-Bold' : 'Helvetica').fillColor('#111111')
+            .text(value, ML + W - 106, ry + 3.5, { width: 100, align: 'right', lineBreak: false });
+          reset();
+        });
+        y += rows.length * rowH + 4;
+
+        // The one number the customer came to find out.
+        const owing = Number(exchange.credit_due) > 0;
+        const bandLabel = owing ? 'WE OWE THE CUSTOMER' : 'BALANCE STILL TO PAY';
+        const bandValue = owing ? exchange.credit_due : exchange.balance_after;
+        doc.rect(ML, y, W, 24).fillColor(owing ? '#1b7f4b' : ORANGE).fill();
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff')
+          .text(bandLabel, ML + 8, y + 7.5, { width: W / 2, lineBreak: false });
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#ffffff')
+          .text(gh(bandValue), ML + W / 2 - 8, y + 6, { width: W / 2, align: 'right', lineBreak: false });
+        reset();
+        y += 28;
+
+        doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY)
+          .text(`Balance before this exchange: ${gh(exchange.balance_before)}.`
+            + ' All other terms of the credit sale agreement, including the guarantor, stay as signed.',
+          ML, y, { width: W, lineBreak: false, ellipsis: true });
+        reset();
+        y += 10;
+
+        // ── Signatures ──────────────────────────────────────────────────────
+        // A customer who is owed money must not be made to sign that they
+        // still owe some.
+        const consent = owing
+          ? 'I confirm that I have returned the item shown on the left in the condition stated, that I have '
+            + 'received the item shown on the right, and that the amount above is owed back to me by the '
+            + 'Company. All other terms of the same agreement stand.'
+          : 'I confirm that I have returned the item shown on the left in the condition stated, that I have '
+            + 'received the item shown on the right, and that I accept the balance above as what I still owe '
+            + 'under the same agreement.';
+        doc.fontSize(7).font('Helvetica');
+        const consentH = doc.heightOfString(consent, { width: W, lineGap: 0.5 });
+        doc.fillColor('#222222').text(consent, ML, y, { width: W, lineGap: 0.5, height: consentH });
+        reset();
+        y += consentH + 8;
+
+        const sigW = (W - 16) / 3;
+        ['CUSTOMER', 'RECEIVED BY (SHOP)', 'AUTHORISED BY'].forEach((label, i) => {
+          const sx = ML + i * (sigW + 8);
+          doc.moveTo(sx, y + 18).lineTo(sx + sigW, y + 18).lineWidth(0.5).strokeColor('#999999').stroke();
+          doc.fontSize(7).font('Helvetica-Bold').fillColor('#111')
+            .text(label, sx, y + 21, { width: sigW, align: 'center', lineBreak: false });
+          reset();
+        });
+        doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY)
+          .text(agreement.customer_name || '', ML, y + 30, { width: sigW, align: 'center', lineBreak: false });
+        reset();
+        return y + 42;
+      };
+
+      // Two copies, with a cut line between them. The sheet is A4, so there
+      // is room for both only if each stays inside its half — the labels used
+      // to flow off the bottom and take four extra pages with them.
+      const TOP = 30;
+      const bottomOfFirst = drawNote(TOP, 'CUSTOMER COPY');
+
+      const CUT = bottomOfFirst + 6;
+      doc.moveTo(ML - 10, CUT).lineTo(ML + W + 10, CUT).lineWidth(0.5).dash(3, { space: 3 })
+        .strokeColor('#bbbbbb').stroke();
+      doc.undash();
+      doc.fontSize(6).fillColor('#bbbbbb')
+        .text('cut here', ML + W - 40, CUT + 2, { width: 40, align: 'right', lineBreak: false });
+      reset();
+
+      drawNote(CUT + 12, 'OFFICE COPY');
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 module.exports = {
   generateBarcodeSheet,
+  generateExchangeNote,
   generateBadgeCards,
   generateReceipt, generateCreditAgreement, generateLayawayAgreement,
   generatePriceList, generateReport, generateBlankReceiptForm,

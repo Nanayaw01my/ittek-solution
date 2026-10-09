@@ -50,6 +50,7 @@ const EVENTS = {
   CREDIT_AGREEMENT_PAYMENT: ['took a credit payment', 'low'],
   CREATE_CREDIT_AGREEMENT: ['created a credit agreement', 'low'],
   UPDATE_CREDIT_AGREEMENT: ['changed a credit agreement', 'high'],
+  CREDIT_AGREEMENT_EXCHANGE: ['swapped the product on a credit agreement', 'high'],
 
   // ── Stock ───────────────────────────────────────────────────────────
   CREATE_PRODUCT: ['added a product', 'low'],

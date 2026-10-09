@@ -2,9 +2,10 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEye, FiDownload, FiFileText } from 'react-icons/fi'
+import { FiPlus, FiEye, FiDownload, FiFileText, FiRepeat } from 'react-icons/fi'
 import {
-  getCreditAgreements, createCreditAgreement, recordCreditPayment, generateCreditPDF
+  getCreditAgreements, createCreditAgreement, recordCreditPayment, generateCreditPDF,
+  exchangeCreditProduct, getExchangeNote
 } from '../api/creditAgreements'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
@@ -331,9 +332,55 @@ const buildSchedule = (agreement) => {
   return { plan, every, count, each, balance, rows, extra: pot }
 }
 
-function ViewAgreementModal({ agreement, isOpen, onClose }) {
+function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange }) {
   const queryClient = useQueryClient()
   const [payAmount, setPayAmount] = useState('')
+  const [swapping, setSwapping] = useState(false)
+  const [swap, setSwap] = useState({
+    returned_description: '', returned_serial: '', returned_condition: '', returned_value: '',
+    replacement_description: '', replacement_serial: '', replacement_value: '', reason: '',
+  })
+
+  /** Open the note for a swap in a new tab, ready to print. */
+  const openNote = async (exchangeId, reference) => {
+    try {
+      const res = await getExchangeNote(agreement._id, exchangeId)
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      const win = window.open(url, '_blank')
+      // A blocked pop-up must not look like a broken button.
+      if (!win) saveAs(new Blob([res.data], { type: 'application/pdf' }), `exchange-${reference || exchangeId}.pdf`)
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch {
+      toast.error('Could not open the exchange note')
+    }
+  }
+
+  const swapMutation = useMutation({
+    mutationFn: (data) => exchangeCreditProduct(agreement._id, data),
+    onSuccess: (res) => {
+      // The axios layer unwraps { success, data } and drops the message with
+      // it, so the figure the counter needs is worked out from the record.
+      const made = res.data?.exchange
+      toast.success(
+        made && made.credit_due > 0
+          ? `Swapped. We owe the customer ${formatCurrency(made.credit_due)}.`
+          : `Swapped. They now owe ${formatCurrency(made?.balance_after || 0)}.`
+      )
+      queryClient.invalidateQueries(['credit-agreements'])
+      // Without this the open modal keeps showing the agreement as it was
+      // before the swap — the old item, the old balance and no note to
+      // reprint, which is exactly when somebody needs the note.
+      if (res.data?.agreement) onAgreementChange?.(res.data.agreement)
+      setSwapping(false)
+      setSwap({
+        returned_description: '', returned_serial: '', returned_condition: '', returned_value: '',
+        replacement_description: '', replacement_serial: '', replacement_value: '', reason: '',
+      })
+      // Straight to the paper — that is the point of doing this at the counter.
+      if (made?._id) openNote(made._id, made.reference)
+    },
+    onError: err => toast.error(err.response?.data?.message || 'Could not record the swap'),
+  })
 
   const payMutation = useMutation({
     mutationFn: ({ id, data }) => recordCreditPayment(id, data),
@@ -534,6 +581,159 @@ function ViewAgreementModal({ agreement, isOpen, onClose }) {
           </div>
         )}
 
+        {/* Swap the goods. The agreement stands; only the item changes. */}
+        {agreement.status !== 'completed' && (
+          <div className="border border-blue-200 rounded-xl p-4">
+            {!swapping ? (
+              <button
+                onClick={() => {
+                  setSwap(prev => ({
+                    ...prev,
+                    // Prefilled with what the agreement says they have, since
+                    // that is what is coming back nine times out of ten.
+                    returned_description: agreement.product_description || agreement.product_type || '',
+                    returned_serial: agreement.serial_number || '',
+                    returned_value: String(agreement.total_amount || ''),
+                  }))
+                  setSwapping(true)
+                }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 text-blue-700 font-bold text-sm hover:bg-blue-50 rounded-xl"
+              >
+                <FiRepeat size={15} /> Change the product
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm font-bold text-gray-700">Change the product</p>
+                <p className="text-xs text-gray-500">
+                  The customer brings back what they have and takes something else. The agreement,
+                  the guarantor and everything already paid stay as they are — only the item and the
+                  balance change.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-2 p-3 rounded-xl bg-gray-50 border border-gray-200">
+                    <p className="text-[11px] font-black text-gray-500 uppercase tracking-wide">Coming back</p>
+                    <input value={swap.returned_description}
+                      onChange={e => setSwap({ ...swap, returned_description: e.target.value })}
+                      placeholder="What they are returning"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                    <input value={swap.returned_serial}
+                      onChange={e => setSwap({ ...swap, returned_serial: e.target.value })}
+                      placeholder="Serial number"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                    <input value={swap.returned_condition}
+                      onChange={e => setSwap({ ...swap, returned_condition: e.target.value })}
+                      placeholder="Condition it came back in"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                    <input type="number" min="0" step="0.01" value={swap.returned_value}
+                      onChange={e => setSwap({ ...swap, returned_value: e.target.value })}
+                      placeholder="Credit it at (GH₵)"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                  </div>
+
+                  <div className="space-y-2 p-3 rounded-xl bg-orange-50 border border-orange-200">
+                    <p className="text-[11px] font-black text-orange-700 uppercase tracking-wide">Going out</p>
+                    <input value={swap.replacement_description}
+                      onChange={e => setSwap({ ...swap, replacement_description: e.target.value })}
+                      placeholder="What they are taking"
+                      className="w-full px-3 py-2 border border-orange-200 rounded-lg text-sm" />
+                    <input value={swap.replacement_serial}
+                      onChange={e => setSwap({ ...swap, replacement_serial: e.target.value })}
+                      placeholder="Serial number"
+                      className="w-full px-3 py-2 border border-orange-200 rounded-lg text-sm" />
+                    <input type="number" min="0.01" step="0.01" value={swap.replacement_value}
+                      onChange={e => setSwap({ ...swap, replacement_value: e.target.value })}
+                      placeholder="Price of the new item (GH₵)"
+                      className="w-full px-3 py-2 border border-orange-200 rounded-lg text-sm" />
+                  </div>
+                </div>
+
+                <input value={swap.reason}
+                  onChange={e => setSwap({ ...swap, reason: e.target.value })}
+                  placeholder="Why is it being changed?"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm" />
+
+                {/* The new balance, before anybody commits to it. */}
+                {(() => {
+                  const back = parseFloat(swap.returned_value) || 0
+                  const out = parseFloat(swap.replacement_value) || 0
+                  if (!out) return null
+                  const paid = (agreement.down_payment || 0) + amountPaid
+                  const after = Math.max(0, (agreement.total_amount || 0) - back + out)
+                  const owed = Math.max(0, after - paid)
+                  const credit = Math.max(0, paid - after)
+                  return (
+                    <div className={`rounded-xl px-4 py-3 flex justify-between items-center ${credit > 0 ? 'bg-green-600' : 'bg-orange-500'}`}>
+                      <span className="text-xs font-bold text-white uppercase tracking-wide">
+                        {credit > 0 ? 'We would owe them' : 'They would owe'}
+                      </span>
+                      <span className="text-lg font-black text-white">
+                        {formatCurrency(credit > 0 ? credit : owed)}
+                      </span>
+                    </div>
+                  )
+                })()}
+
+                <div className="flex gap-2">
+                  <button onClick={() => setSwapping(false)}
+                    className="flex-1 py-2.5 border border-gray-200 rounded-xl font-bold text-sm text-gray-600 hover:bg-gray-50">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!swap.returned_description.trim()) { toast.error('What is coming back?'); return }
+                      if (!swap.replacement_description.trim()) { toast.error('What are they taking?'); return }
+                      if (!(parseFloat(swap.replacement_value) > 0)) { toast.error('What does the new item cost?'); return }
+                      swapMutation.mutate({
+                        ...swap,
+                        returned_value: swap.returned_value === '' ? undefined : parseFloat(swap.returned_value),
+                        replacement_value: parseFloat(swap.replacement_value),
+                      })
+                    }}
+                    disabled={swapMutation.isPending}
+                    className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl font-bold text-sm"
+                  >
+                    {swapMutation.isPending ? 'Saving…' : 'Swap and print the note'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Past swaps, each with its paper. The agreement names the latest
+            item; the chain back to what was signed for lives here. */}
+        {(agreement.exchanges || []).length > 0 && (
+          <div>
+            <p className="text-sm font-bold text-gray-700 mb-2">Product changes</p>
+            <div className="space-y-2">
+              {(agreement.exchanges || []).map((e) => (
+                <div key={e._id} className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-800 truncate">
+                        <span className="text-gray-500">{e.returned_description}</span>
+                        {' → '}
+                        <span className="font-semibold">{e.replacement_description}</span>
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        {e.reference} · {formatDate(e.exchanged_on)} ·{' '}
+                        {e.credit_due > 0
+                          ? `we owed ${formatCurrency(e.credit_due)}`
+                          : `balance ${formatCurrency(e.balance_before)} → ${formatCurrency(e.balance_after)}`}
+                      </p>
+                    </div>
+                    <button onClick={() => openNote(e._id, e.reference)}
+                      className="flex-shrink-0 px-2.5 py-1.5 rounded-lg bg-white border border-blue-200 text-blue-700 text-[11px] font-bold hover:bg-blue-50">
+                      Note
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <button onClick={handlePDF}
           className="w-full flex items-center justify-center gap-2 py-3 border-2 border-orange-500 text-orange-600 rounded-xl font-bold text-sm hover:bg-orange-50 transition-colors">
           <FiDownload size={16} /> Download Agreement PDF
@@ -644,6 +844,7 @@ export default function CreditAgreements() {
         isOpen={!!viewAgreement}
         agreement={viewAgreement}
         onClose={() => setViewAgreement(null)}
+        onAgreementChange={setViewAgreement}
       />
     </div>
   )
