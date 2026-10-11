@@ -4,6 +4,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "test": "node --test tests/*.test.js",
     "dev": "nodemon server.js",
     "seed": "node scripts/seed.js",
     "vapid": "web-push generate-vapid-keys"

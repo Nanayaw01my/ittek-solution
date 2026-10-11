@@ -185,6 +185,42 @@ const approveStockRequest = async (req, res) => {
     }
 
     /**
+     * The owner may approve less than was asked for — or none of a line.
+     *
+     * Quantities arrive aligned to the request's own lines, since those have
+     * no ids of their own. Anything not spoken for keeps the quantity that
+     * was requested, so approving without touching the numbers behaves
+     * exactly as it always did.
+     */
+    const asked = Array.isArray(req.body?.quantities) ? req.body.quantities : null;
+    const changes = [];
+    request.items.forEach((line, i) => {
+      let qty = line.quantity_requested;
+      if (asked && asked[i] !== undefined && asked[i] !== null && asked[i] !== '') {
+        const n = Number(asked[i]);
+        if (Number.isFinite(n) && n >= 0) qty = Math.floor(n);
+      }
+      line.quantity_approved = qty;
+      line.total = Number((qty * (line.estimated_cost || 0)).toFixed(2));
+      if (qty !== line.quantity_requested) {
+        changes.push(`${line.product_name}: ${line.quantity_requested} → ${qty}`);
+      }
+    });
+
+    if (request.items.every((l) => (l.quantity_approved || 0) === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'That approves nothing. Reject the request instead, so the reason is recorded.',
+      });
+    }
+
+    // The money follows what was approved, not what was asked for.
+    request.total_amount = Number(
+      request.items.reduce((sum, l) => sum + (l.total || 0), 0).toFixed(2)
+    );
+
+
+    /**
      * Approving a new item is how it gets onto the shelf.
      *
      * Only an owner may create a product, and the owner is the one standing
@@ -199,6 +235,8 @@ const approveStockRequest = async (req, res) => {
     const created = [];
     for (const line of request.items) {
       if (!line.is_new_product || line.product_id) continue;
+      // Approved at nothing means the owner said no to that line.
+      if ((line.quantity_approved ?? line.quantity_requested) <= 0) continue;
 
       // Somebody may well have added it by hand in the meantime, and a second
       // copy of the same item is worse than no new item at all.
@@ -231,18 +269,24 @@ const approveStockRequest = async (req, res) => {
       user_id: request.created_by,
       type: 'info',
       title: 'Stock Request Approved',
-      message: created.length
-        ? `Your stock request has been approved by ${req.user.username}. `
-          + `${created.join(', ')} ${created.length === 1 ? 'is' : 'are'} now in the products list, at zero stock until the goods come in.`
-        : `Your stock request has been approved by ${req.user.username}.`,
+      message: [
+        `Your stock request has been approved by ${req.user.username}.`,
+        changes.length ? `Quantities changed — ${changes.join(', ')}.` : '',
+        created.length
+          ? `${created.join(', ')} ${created.length === 1 ? 'is' : 'are'} now in the products list, `
+            + 'at zero stock until the goods come in.'
+          : '',
+      ].filter(Boolean).join(' '),
       link: `/stock-requests/${request._id}`,
     });
 
     return res.status(200).json({
       success: true,
-      message: created.length
-        ? `Approved. Added to products: ${created.join(', ')}.`
-        : 'Stock request approved.',
+      message: [
+        'Approved.',
+        changes.length ? `Changed: ${changes.join(', ')}.` : '',
+        created.length ? `Added to products: ${created.join(', ')}.` : '',
+      ].filter(Boolean).join(' '),
       data: request,
     });
   } catch (err) {

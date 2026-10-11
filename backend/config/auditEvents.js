@@ -65,6 +65,7 @@ const EVENTS = {
   MERGE_DUPLICATE_PRODUCTS: ['merged duplicate products', 'high'],
   AUTO_MERGE_DUPLICATE_PRODUCTS: ['auto-merged duplicate products', 'high'],
   GENERATE_ALL_BARCODES: ['barcoded the whole catalogue', 'high'],
+  PRICE_PURCHASE: ['priced a delivery', 'high'],
   CREATE_PURCHASE: ['recorded a purchase', 'low'],
   CREATE_PAYABLE: ['wrote down something the shop owes', 'high'],
   PAY_PAYABLE: ['paid a supplier', 'high'],

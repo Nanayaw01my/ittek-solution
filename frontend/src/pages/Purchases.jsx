@@ -3,8 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { FiPlus, FiTrash2, FiEye, FiCrosshair } from 'react-icons/fi'
-import { getPurchases, createPurchase } from '../api/purchases'
+import { getPurchases, createPurchase, pricePurchase } from '../api/purchases'
 import { getProducts, getSuppliers, getProductByBarcode } from '../api/products'
+import useAuthStore from '../store/authStore'
+import { isOwner } from '../config/pageAccess'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import useBarcodeScanner from '../hooks/useBarcodeScanner'
 import PageHeader from '../components/PageHeader'
@@ -12,6 +14,16 @@ import Modal from '../components/Modal'
 import Table from '../components/Table'
 
 function PurchaseForm({ onSubmit, loading }) {
+  /**
+   * Somebody counting boxes off a lorry is not pricing them.
+   *
+   * Below owner level the money is not shown and not asked for: the manager
+   * says what arrived, and the office says what it was worth. The cost is
+   * the figure every profit number is worked out from, so it is not left
+   * where a delivery note can move it by accident.
+   */
+  const { user } = useAuthStore()
+  const canPrice = isOwner(user?.role)
   const { data: productsData } = useQuery({ queryKey: ['products-brief'], queryFn: () => getProducts({ limit: 300 }).then(r => r.data) })
   const { data: suppliersData } = useQuery({ queryKey: ['suppliers'], queryFn: () => getSuppliers().then(r => r.data) })
 
@@ -58,7 +70,7 @@ function PurchaseForm({ onSubmit, loading }) {
         const line = {
           product: p._id,
           quantity: 1,
-          unitCost: p.cost_price != null ? String(p.cost_price) : '',
+          unitCost: canPrice && p.cost_price != null ? String(p.cost_price) : '',
         }
         if (blank >= 0) {
           setValue(`items.${blank}.product`, line.product)
@@ -85,17 +97,21 @@ function PurchaseForm({ onSubmit, loading }) {
   // The scanner is caught wherever the cursor happens to be, so nobody has
   // to click the box first.
   useBarcodeScanner((code) => scanIn(code))
-  const total = items.reduce((s, i) => s + (parseFloat(i.unitCost || 0) * parseFloat(i.quantity || 0)), 0)
+  const total = canPrice
+    ? items.reduce((s, i) => s + (parseFloat(i.unitCost || 0) * parseFloat(i.quantity || 0)), 0)
+    : 0
 
   const handleSubmitTransform = (d) => {
     onSubmit({
       supplier_id: d.supplier,
       notes: d.notes,
-      items: d.items.map(item => ({
-        product_id: item.product,
-        quantity: parseInt(item.quantity),
-        unit_cost: parseFloat(item.unitCost || 0),
-      })),
+      items: d.items.map(item => (canPrice
+        ? {
+          product_id: item.product,
+          quantity: parseInt(item.quantity),
+          unit_cost: parseFloat(item.unitCost || 0),
+        }
+        : { product_id: item.product, quantity: parseInt(item.quantity) })),
     })
   }
 
@@ -151,8 +167,11 @@ function PurchaseForm({ onSubmit, loading }) {
             </p>
           )}
           <p className="mt-1 text-[11px] text-gray-500">
-            Scan the same thing twice and it counts two. The cost comes in at what it
-            last cost — change it if the supplier's price has moved.
+            {canPrice
+              ? <>Scan the same thing twice and it counts two. The cost comes in at what it
+                  last cost — change it if the supplier's price has moved.</>
+              : <>Scan the same thing twice and it counts two. Just say what came in —
+                  the office enters what it cost.</>}
           </p>
         </div>
 
@@ -166,17 +185,19 @@ function PurchaseForm({ onSubmit, loading }) {
                   {products.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
                 </select>
               </div>
-              <div className="col-span-2">
+              <div className={canPrice ? 'col-span-2' : 'col-span-6'}>
                 <input type="number" min="1" {...register(`items.${i}.quantity`, { required: true, min: 1 })}
                   className="w-full px-2 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                   placeholder="Qty" />
               </div>
-              <div className="col-span-4">
-                <input type="number" step="0.01" min="0"
-                  {...register(`items.${i}.unitCost`, { required: true, min: 0.01 })}
-                  className="w-full px-2 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  placeholder="Unit cost (GH₵)" />
-              </div>
+              {canPrice && (
+                <div className="col-span-4">
+                  <input type="number" step="0.01" min="0"
+                    {...register(`items.${i}.unitCost`, { required: true, min: 0.01 })}
+                    className="w-full px-2 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="Unit cost (GH₵)" />
+                </div>
+              )}
               <div className="col-span-1 text-center">
                 {fields.length > 1 && (
                   <button type="button" onClick={() => remove(i)} className="text-red-400 hover:text-red-600 p-1">
@@ -225,7 +246,9 @@ export default function Purchases() {
   const createMutation = useMutation({
     mutationFn: createPurchase,
     onSuccess: () => {
-      toast.success('Purchase recorded! Stock updated.')
+      toast.success(canSeeCost
+        ? 'Purchase recorded! Stock updated.'
+        : 'Stock received. The office will enter what it cost.')
       queryClient.invalidateQueries(['purchases'])
       queryClient.invalidateQueries(['products'])
       setShowModal(false)
@@ -234,18 +257,54 @@ export default function Purchases() {
   })
 
   const purchases = data?.purchases || (Array.isArray(data) ? data : [])
+  // Money is the office's business. A manager sees what arrived.
+  const { user: me } = useAuthStore()
+  const canSeeCost = isOwner(me?.role)
+  const [costDraft, setCostDraft] = useState([])
+
+  const priceMutation = useMutation({
+    mutationFn: ({ id, costs }) => pricePurchase(id, costs),
+    onSuccess: () => {
+      toast.success('Priced.')
+      queryClient.invalidateQueries(['purchases'])
+      queryClient.invalidateQueries(['products'])
+      setViewPurchase(null)
+      setCostDraft([])
+    },
+    onError: err => toast.error(err.response?.data?.message || 'Could not price it'),
+  })
 
   const columns = [
     { header: 'Date', key: 'createdAt', render: v => formatDate(v) },
     { header: 'Supplier', key: 'supplier_id', render: v => v?.name || '—' },
     { header: 'Items', key: 'items', render: v => `${v?.length || 0} item(s)` },
-    { header: 'Total Cost', key: 'total_amount', render: v => <span className="font-bold text-orange-600">{formatCurrency(v || 0)}</span> },
+    ...(canSeeCost ? [{
+      header: 'Total Cost',
+      key: 'total_amount',
+      render: (v, row) => (
+        <div>
+          <span className={`font-bold ${row.awaiting_costing ? 'text-gray-400' : 'text-orange-600'}`}>
+            {formatCurrency(v || 0)}
+          </span>
+          {/* Carried at the last known cost, not a figure anybody confirmed
+              for this delivery. Saying so is the difference between a book
+              that is right and one that merely looks right. */}
+          {row.awaiting_costing && (
+            <span className="block text-[10px] font-bold text-amber-600">NOT PRICED YET</span>
+          )}
+        </div>
+      ),
+    }] : [{
+      header: 'Stock',
+      key: 'items',
+      render: v => `${(v || []).reduce((n, i) => n + (i.quantity || 0), 0)} unit(s)`,
+    }]),
     { header: 'Recorded By', key: 'created_by', render: v => v?.username || '—' },
     {
       header: 'Actions',
       key: '_id',
       render: (id, row) => (
-        <button onClick={e => { e.stopPropagation(); setViewPurchase(row) }}
+        <button onClick={e => { e.stopPropagation(); setCostDraft([]); setViewPurchase(row) }}
           className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg">
           <FiEye size={14} />
         </button>
@@ -298,18 +357,68 @@ export default function Purchases() {
                       <p className="font-semibold">{item.product_id?.name || item.product_name || '—'}</p>
                       <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold">{formatCurrency(item.unit_cost || 0)}/unit</p>
-                      <p className="font-black text-orange-600">{formatCurrency((item.quantity || 0) * (item.unit_cost || 0))}</p>
-                    </div>
+                    {canSeeCost && (
+                      <div className="text-right">
+                        {/* While a delivery is unpriced these are last
+                            month's figures, so they are not dressed up as
+                            this delivery's. */}
+                        <p className={`font-semibold ${viewPurchase.awaiting_costing ? 'text-gray-400 italic' : ''}`}>
+                          {formatCurrency(item.unit_cost || 0)}/unit
+                        </p>
+                        <p className={`font-black ${viewPurchase.awaiting_costing ? 'text-gray-400' : 'text-orange-600'}`}>
+                          {formatCurrency((item.quantity || 0) * (item.unit_cost || 0))}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex justify-between">
-              <span className="font-bold text-orange-800">Total Cost:</span>
-              <span className="text-xl font-black text-orange-600">{formatCurrency(viewPurchase.total_amount || 0)}</span>
-            </div>
+            {canSeeCost && (
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex justify-between">
+                <span className="font-bold text-orange-800">
+                  {viewPurchase.awaiting_costing ? 'At last known cost:' : 'Total Cost:'}
+                </span>
+                <span className={`text-xl font-black ${viewPurchase.awaiting_costing ? 'text-gray-400' : 'text-orange-600'}`}>
+                  {formatCurrency(viewPurchase.total_amount || 0)}
+                </span>
+              </div>
+            )}
+
+            {/* The other half of letting a manager receive goods: somebody
+                who may see money has to be able to put the real figure on
+                them, or the books carry an assumption for ever. */}
+            {canSeeCost && viewPurchase.awaiting_costing && (
+              <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 space-y-3">
+                <p className="text-sm font-bold text-amber-900">
+                  {viewPurchase.created_by?.username || 'A manager'} received this. What did it cost?
+                </p>
+                {viewPurchase.items?.map((item, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="flex-1 text-sm truncate">
+                      {item.product_id?.name || item.product_name} × {item.quantity}
+                    </span>
+                    <input
+                      type="number" min="0.01" step="0.01"
+                      value={costDraft[i] ?? ''}
+                      onChange={e => setCostDraft(d => { const n = [...d]; n[i] = e.target.value; return n })}
+                      placeholder="Cost per unit"
+                      className="w-36 px-2 py-1.5 border border-amber-300 rounded-lg text-sm text-right"
+                    />
+                  </div>
+                ))}
+                <button
+                  onClick={() => priceMutation.mutate({
+                    id: viewPurchase._id,
+                    costs: (viewPurchase.items || []).map((_, i) => Number(costDraft[i])),
+                  })}
+                  disabled={priceMutation.isPending}
+                  className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white rounded-xl font-bold text-sm"
+                >
+                  {priceMutation.isPending ? 'Saving…' : 'Save what it cost'}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </Modal>

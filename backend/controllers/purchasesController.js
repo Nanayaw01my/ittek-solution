@@ -1,6 +1,8 @@
 const { validationResult } = require('express-validator');
 const Purchase = require('../models/Purchase');
 const Product = require('../models/Product');
+const { notifyUser, notifyOwners } = require('../utils/notify');
+const { ROLE_LEVELS } = require('../middleware/rbac');
 
 /**
  * GET /api/purchases
@@ -50,6 +52,17 @@ const createPurchase = async (req, res) => {
 
     const { supplier_id, purchase_date, notes, items } = req.body;
 
+    /**
+     * A manager receives goods; an owner prices them.
+     *
+     * Somebody counting boxes off a lorry should not have to know what the
+     * shop paid, and should not be able to rewrite the figure every profit
+     * number in the system is worked out from. Below owner level the costs
+     * are neither asked for nor accepted: the delivery is recorded at what
+     * the product last cost, marked as unconfirmed, and an owner prices it.
+     */
+    const canPrice = (ROLE_LEVELS[req.user.role] || 0) >= 3;
+
     if (!items || items.length === 0) {
       return res.status(400).json({ success: false, message: 'Purchase must have at least one item.' });
     }
@@ -76,12 +89,20 @@ const createPurchase = async (req, res) => {
       // from, and this is the one place it gets rewritten. A blank left
       // unchecked would set it to zero and quietly report the whole selling
       // price as profit on every future sale of that product.
-      const unitCost = Number(item.unit_cost);
-      if (!Number.isFinite(unitCost) || unitCost <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Enter what one ${product.name} cost you.`,
-        });
+      let unitCost;
+      let costAssumed = false;
+      if (canPrice) {
+        unitCost = Number(item.unit_cost);
+        if (!Number.isFinite(unitCost) || unitCost <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: `Enter what one ${product.name} cost you.`,
+          });
+        }
+      } else {
+        // Whatever the shop paid last time, carried for the record only.
+        unitCost = Number(product.cost_price) || 0;
+        costAssumed = true;
       }
 
       // A variant product keeps its counts on the variants, so adding to the
@@ -100,6 +121,7 @@ const createPurchase = async (req, res) => {
         quantity,
         unit_cost: unitCost,
         total: itemTotal,
+        cost_assumed: costAssumed,
       });
       total_amount += itemTotal;
     }
@@ -114,24 +136,44 @@ const createPurchase = async (req, res) => {
       notes,
       created_by: req.user._id,
       items: purchaseItems,
+      awaiting_costing: !canPrice,
     });
 
-    // Update stock quantities and cost prices
+    // The stock goes on either way — the goods are physically there. The
+    // cost price only moves when an owner actually typed one.
     for (const item of purchaseItems) {
-      await Product.findByIdAndUpdate(item.product_id, {
-        $inc: { quantity: item.quantity },
-        $set: { cost_price: item.unit_cost },
-      });
+      const update = { $inc: { quantity: item.quantity } };
+      if (!item.cost_assumed) update.$set = { cost_price: item.unit_cost };
+      await Product.findByIdAndUpdate(item.product_id, update);
+    }
+
+    if (!canPrice) {
+      // Unpriced stock quietly carries an old cost into every future profit
+      // figure, so somebody who can price it is told it is waiting.
+      await notifyOwners({
+        type: 'important',
+        title: 'Delivery needs pricing',
+        message: `${req.user.username} received ${purchaseItems.length} item(s). `
+          + 'What they cost has not been entered.',
+        link: '/purchases',
+        exclude_user_id: req.user._id,
+      }).catch(() => {});
     }
 
     const populated = await Purchase.findById(purchase._id)
       .populate('supplier_id', 'name')
       .populate('created_by', 'username');
 
-    return res.status(201).json({ success: true, message: 'Purchase recorded.', data: populated });
+    return res.status(201).json({
+      success: true,
+      message: canPrice
+        ? 'Purchase recorded.'
+        : 'Stock received. The office will enter what it cost.',
+      data: populated,
+    });
   } catch (err) {
-    console.error('Create purchase error:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error.' });
+    console.error('Create purchase error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not record it: ${err.message}` });
   }
 };
 
@@ -175,4 +217,76 @@ const deletePurchase = async (req, res) => {
   }
 };
 
-module.exports = { getPurchases, createPurchase, getPurchase, deletePurchase };
+/**
+ * PUT /api/purchases/:id/costs
+ *
+ * An owner puts the real cost on a delivery a manager received.
+ *
+ * Only now does the product's cost price move, which is the whole point of
+ * keeping the two jobs apart: the shop floor says what arrived, the office
+ * says what it was worth.
+ */
+const pricePurchase = async (req, res) => {
+  try {
+    const purchase = await Purchase.findById(req.params.id);
+    if (!purchase) return res.status(404).json({ success: false, message: 'Delivery not found.' });
+
+    const costs = Array.isArray(req.body?.costs) ? req.body.costs : null;
+    if (!costs) {
+      return res.status(400).json({ success: false, message: 'What did these cost?' });
+    }
+
+    // Checked in full before anything is written: half-priced goods are
+    // worse than unpriced ones, because nothing flags them afterwards.
+    const priced = [];
+    for (let i = 0; i < purchase.items.length; i += 1) {
+      const line = purchase.items[i];
+      const value = Number(costs[i]);
+      if (!Number.isFinite(value) || value <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Enter what one ${line.product_name} cost you.`,
+        });
+      }
+      priced.push(Number(value.toFixed(2)));
+    }
+
+    let total = 0;
+    purchase.items.forEach((line, i) => {
+      line.unit_cost = priced[i];
+      line.total = Number((line.quantity * priced[i]).toFixed(2));
+      line.cost_assumed = false;
+      total += line.total;
+    });
+    purchase.total_amount = Number(total.toFixed(2));
+    purchase.awaiting_costing = false;
+    purchase.costed_by = req.user._id;
+    purchase.costed_at = new Date();
+    await purchase.save();
+
+    // The stock itself was already added when the goods arrived; only what
+    // it is worth changes here.
+    for (const line of purchase.items) {
+      if (!line.product_id) continue;
+      await Product.findByIdAndUpdate(line.product_id, { $set: { cost_price: line.unit_cost } });
+    }
+
+    await notifyUser(purchase.created_by, {
+      type: 'info',
+      title: 'Delivery priced',
+      message: `The delivery you received has been priced at GH₵${purchase.total_amount.toFixed(2)}.`,
+      link: '/purchases',
+    }).catch(() => {});
+
+    return res.status(200).json({
+      success: true,
+      message: `Priced at GH₵${purchase.total_amount.toFixed(2)}.`,
+      data: purchase,
+    });
+  } catch (err) {
+    console.error('Price purchase error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not price it: ${err.message}` });
+  }
+};
+
+module.exports = { getPurchases, createPurchase, getPurchase, deletePurchase, pricePurchase };

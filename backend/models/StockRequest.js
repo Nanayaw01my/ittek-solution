@@ -8,6 +8,15 @@ const StockRequestItemSchema = new mongoose.Schema(
     },
     product_name: { type: String, required: true },
     quantity_requested: { type: Number, required: true, min: 1 },
+    /**
+     * What the owner actually agreed to buy.
+     *
+     * The manager asks for ten and the owner approves six: the ask is kept
+     * as it was asked, because a request quietly rewritten to match the
+     * answer is no longer a record of what the shop floor said it needed.
+     * Empty until the request is approved.
+     */
+    quantity_approved: { type: Number, min: 0 },
     estimated_cost: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
 

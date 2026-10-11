@@ -4,7 +4,7 @@ const { body } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
 const { requireLevel, requirePage } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
-const { getPurchases, createPurchase, getPurchase, deletePurchase } = require('../controllers/purchasesController');
+const { getPurchases, createPurchase, getPurchase, deletePurchase, pricePurchase } = require('../controllers/purchasesController');
 
 // Viewing is grantable; anything that writes needs the page in full.
 router.use(authenticate, requirePage('purchases'));
@@ -23,6 +23,15 @@ router.post(
 );
 
 router.get('/:id', getPurchase);
+
+// Putting a cost on stock a manager received. Owners only: this figure is
+// what every profit number in the system is worked out from.
+router.put(
+  '/:id/costs',
+  requireLevel(3),
+  auditLog('PRICE_PURCHASE', (req) => ({ purchase_id: req.params.id })),
+  pricePurchase
+);
 
 router.delete(
   '/:id',

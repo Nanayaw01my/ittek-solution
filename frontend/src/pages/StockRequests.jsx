@@ -213,12 +213,23 @@ export default function StockRequests() {
     }).then(r => r.data),
   })
 
+  // What the owner is actually approving, line by line. Starts at what was
+  // asked for, so approving unchanged is still one click.
+  const [approveQty, setApproveQty] = useState([])
+
+  const openApprove = (row) => {
+    setApproveQty((row.items || []).map(i => String(i.quantity_requested ?? '')))
+    setApproveTarget(row)
+  }
+
   const approveMutation = useMutation({
-    mutationFn: (id) => approveStockRequest(id, {}),
+    mutationFn: ({ id, quantities }) => approveStockRequest(id, { quantities }),
     onSuccess: () => {
       toast.success('Request approved!')
       queryClient.invalidateQueries(['stock-requests'])
+      queryClient.invalidateQueries(['products'])
       setApproveTarget(null)
+      setApproveQty([])
     },
     onError: err => toast.error(err.response?.data?.message || 'Approval failed'),
   })
@@ -281,7 +292,7 @@ export default function StockRequests() {
           {canApprove && row.status === 'pending' && (
             <>
             <button
-              onClick={e => { e.stopPropagation(); setApproveTarget(row) }}
+              onClick={e => { e.stopPropagation(); openApprove(row) }}
               className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"
               title="Approve"
             >
@@ -379,7 +390,18 @@ export default function StockRequests() {
                       </span>
                     )}
                   </span>
-                  <span className="col-span-2 text-center">{i.quantity_requested}</span>
+                  <span className="col-span-2 text-center">
+                    {/* Approved at something other than what was asked: both
+                        numbers are shown, because the request is the record
+                        of what the shop floor said it needed. */}
+                    {i.quantity_approved !== undefined && i.quantity_approved !== null
+                      && i.quantity_approved !== i.quantity_requested
+                      ? <>
+                          <span className="line-through text-gray-400">{i.quantity_requested}</span>
+                          <span className="ml-1 font-bold text-gray-800">{i.quantity_approved}</span>
+                        </>
+                      : i.quantity_requested}
+                  </span>
                   <span className="col-span-2 text-right text-gray-600">
                     {i.estimated_cost ? formatCurrency(i.estimated_cost) : '—'}
                   </span>
@@ -432,7 +454,7 @@ export default function StockRequests() {
                   Reject
                 </button>
                 <button
-                  onClick={() => { const r = viewing; setViewing(null); setApproveTarget(r) }}
+                  onClick={() => { const r = viewing; setViewing(null); openApprove(r) }}
                   className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm"
                 >
                   Approve
@@ -450,15 +472,82 @@ export default function StockRequests() {
         </Modal>
       )}
 
-      <ConfirmDialog
+      {/* Approving is also deciding how many. The shop floor asks for ten
+          and the office may buy six; the ask stays on the record as asked. */}
+      <Modal
         isOpen={!!approveTarget}
-        onClose={() => setApproveTarget(null)}
-        onConfirm={() => approveMutation.mutate(approveTarget._id)}
+        onClose={() => { setApproveTarget(null); setApproveQty([]) }}
         title="Approve Stock Request"
-        message="Are you sure you want to approve this stock request?"
-        confirmText="Approve"
-        loading={approveMutation.isPending}
-      />
+        size="lg"
+      >
+        {approveTarget && (
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-gray-600">
+              Change any quantity you are not buying in full. Set a line to 0 to leave it out.
+            </p>
+
+            <div className="border border-gray-100 rounded-xl overflow-hidden">
+              <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-gray-50 text-[11px] font-bold text-gray-500">
+                <span className="col-span-6">PRODUCT</span>
+                <span className="col-span-2 text-center">ASKED</span>
+                <span className="col-span-4 text-right">APPROVE</span>
+              </div>
+              {(approveTarget.items || []).map((item, idx) => (
+                <div key={idx} className="grid grid-cols-12 gap-2 px-3 py-2 border-t items-center text-sm">
+                  <span className="col-span-6 min-w-0">
+                    <span className="block truncate">{item.product_name}</span>
+                    {item.is_new_product && (
+                      <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-bold">
+                        NEW
+                      </span>
+                    )}
+                  </span>
+                  <span className="col-span-2 text-center text-gray-500">{item.quantity_requested}</span>
+                  <span className="col-span-4">
+                    <input
+                      type="number" min="0" step="1"
+                      value={approveQty[idx] ?? ''}
+                      onChange={e => setApproveQty(q => {
+                        const next = [...q]; next[idx] = e.target.value; return next
+                      })}
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* What it comes to at the quantities actually being approved. */}
+            <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex justify-between items-center">
+              <span className="text-sm font-semibold text-orange-800">Approving</span>
+              <span className="text-xl font-black text-orange-900">
+                {formatCurrency((approveTarget.items || []).reduce(
+                  (sum, item, idx) => sum + (Number(approveQty[idx]) || 0) * (item.estimated_cost || 0), 0
+                ))}
+              </span>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setApproveTarget(null); setApproveQty([]) }}
+                className="flex-1 py-2.5 border border-gray-200 rounded-xl font-bold text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => approveMutation.mutate({
+                  id: approveTarget._id,
+                  quantities: approveQty.map(v => (v === '' ? null : Number(v))),
+                })}
+                disabled={approveMutation.isPending}
+                className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-xl font-bold text-sm"
+              >
+                {approveMutation.isPending ? 'Approving…' : 'Approve'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
       <ConfirmDialog
         isOpen={!!rejectTarget}
         onClose={() => setRejectTarget(null)}
