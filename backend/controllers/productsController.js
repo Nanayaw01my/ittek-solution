@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const { validationResult } = require('express-validator');
 const Product = require('../models/Product');
 
@@ -331,23 +332,68 @@ const generateAllBarcodes = async (req, res) => {
  */
 const getBarcodeSheet = async (req, res) => {
   try {
-    const products = await Product.find({ is_active: { $ne: false } })
+    /**
+     * The whole shelf, or one product's labels.
+     *
+     * Relabelling a single line of goods is the common job — a delivery
+     * arrives and wants forty stickers — and printing the entire catalogue
+     * to get them wastes most of a ream. `ids` narrows it; `copies` says how
+     * many labels of each.
+     */
+    const wanted = String(req.query.ids || req.query.id || '')
+      .split(',').map((x) => x.trim()).filter(Boolean);
+
+    const valid = wanted.filter((x) => mongoose.Types.ObjectId.isValid(x));
+    if (wanted.length && !valid.length) {
+      return res.status(400).json({ success: false, message: 'Those products could not be read.' });
+    }
+
+    // One label is the default; the cap is there because a typo in a box
+    // meant for "40" should not try to draw forty thousand.
+    const copies = Math.min(500, Math.max(1, Math.round(Number(req.query.copies)) || 1));
+
+    const filter = valid.length
+      ? { _id: { $in: valid } }
+      : { is_active: { $ne: false } };
+
+    const products = await Product.find(filter)
       .select('name barcode')
       .sort({ name: 1 })
       .lean();
+
+    if (valid.length && products.length === 0) {
+      return res.status(404).json({ success: false, message: 'That product was not found.' });
+    }
 
     const items = [];
     const missing = [];
     for (const p of products) {
       const code = (p.barcode || '').trim();
       if (!code) { missing.push(p.name); continue; }
-      items.push({ name: p.name, barcode: code, bits: eanModules(code) });
+      const label = { name: p.name, barcode: code, bits: eanModules(code) };
+      for (let n = 0; n < copies; n += 1) items.push(label);
     }
+
+    if (items.length === 0 && missing.length === 1) {
+      // One product asked for, and it has no barcode: say so plainly rather
+      // than handing back a sheet with nothing on it.
+      return res.status(400).json({
+        success: false,
+        message: `${missing[0]} has no barcode yet. Give it one first.`,
+      });
+    }
+
+    const subtitle = valid.length
+      ? `${products.length === 1 ? products[0].name : `${products.length} products`}`
+        + ` · ${items.length} label${items.length === 1 ? '' : 's'}`
+      : `Product barcodes · ${products.length - missing.length} product`
+        + `${products.length - missing.length === 1 ? '' : 's'}`;
 
     const settings = await Settings.findOne().lean();
     const pdf = await generateBarcodeSheet({
       items,
       missing,
+      subtitle,
       logoUrl: settings?.logo_url || null,
       company: {
         name: settings?.company_name,
@@ -357,13 +403,16 @@ const getBarcodeSheet = async (req, res) => {
     });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'inline; filename="product-barcodes.pdf"');
+    const file = valid.length === 1 && products[0]
+      ? `${String(products[0].name).replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-barcodes.pdf`
+      : 'product-barcodes.pdf';
+    res.setHeader('Content-Disposition', `inline; filename="${file}"`);
     res.setHeader('X-Barcode-Count', String(items.length));
     res.setHeader('X-Missing-Count', String(missing.length));
     return res.send(pdf);
   } catch (err) {
     console.error('Barcode sheet error:', err.stack || err.message);
-    return res.status(500).json({ success: false, message: 'Could not build the sheet.' });
+    return res.status(500).json({ success: false, message: `Could not build the sheet: ${err.message}` });
   }
 };
 

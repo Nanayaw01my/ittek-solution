@@ -17,6 +17,13 @@ export const generateAllBarcodes = (data = {}) => api.post('/products/generate-b
 /** Every product and its barcode, drawn on a sheet to cut up and stick on. */
 export const getBarcodeSheet = () => api.get('/products/barcode-sheet', { responseType: 'blob' })
 
+/** Labels for one product (or a few), as many copies of each as asked for. */
+export const getProductLabels = (ids, copies = 1) =>
+  api.get('/products/barcode-sheet', {
+    params: { ids: Array.isArray(ids) ? ids.join(',') : ids, copies },
+    responseType: 'blob',
+  })
+
 /** A whole scanning session at once: mode 'add' (a delivery) or 'set' (a count). */
 export const commitStockCount = (data) => api.post('/products/stock-count', data)
 export const getLowStockProducts = () => api.get('/products/low-stock')

@@ -3354,9 +3354,14 @@ const generateBarcodeSheet = async (options = {}) => {
         }
         doc.fillColor('#000000').font('Helvetica-Bold').fontSize(12)
           .text(companyName, logoBuf ? ML + 48 : ML, hy + 2);
+        // Said by the caller when the sheet is not simply "everything": a
+        // run of forty labels for one product is forty labels, not forty
+        // products, and a header that says otherwise is just wrong.
+        const subtitle = options.subtitle
+          || `Product barcodes · ${items.length} product${items.length === 1 ? '' : 's'}`;
         doc.font('Helvetica').fontSize(8).fillColor(LGRAY)
-          .text(`Product barcodes · ${items.length} product${items.length === 1 ? '' : 's'}`
-            + ` · ${new Date().toLocaleDateString('en-GB')}`, logoBuf ? ML + 48 : ML, hy + 18);
+          .text(`${subtitle} · ${new Date().toLocaleDateString('en-GB')}`,
+            logoBuf ? ML + 48 : ML, hy + 18);
         reset();
         return 78;
       };

@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiUpload, FiRefreshCw, FiCopy, FiZap, FiCrosshair, FiX, FiCheck, FiPrinter } from 'react-icons/fi'
 import { openPdfInNewTab } from '../utils/openPdf'
 import useBarcodeScanner from '../hooks/useBarcodeScanner'
-import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary, generateBarcode, getProductByBarcode, commitStockCount, getBarcodeSheet, generateAllBarcodes } from '../api/products'
+import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, getSuppliers, getProductSummary, generateBarcode, getProductByBarcode, commitStockCount, getBarcodeSheet, generateAllBarcodes, getProductLabels } from '../api/products'
 import { formatCurrency, getRoleLevel } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -604,6 +604,41 @@ export default function Products() {
   const [editProduct, setEditProduct] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [stockTarget, setStockTarget] = useState(null)
+  /**
+   * Labels for one product.
+   *
+   * Relabelling a single line of goods is the everyday job — a delivery
+   * arrives and wants a sticker on each one — and the only way to do it was
+   * to print the whole catalogue and find the right page.
+   */
+  const [labelTarget, setLabelTarget] = useState(null)
+  const [labelCopies, setLabelCopies] = useState('1')
+  const [labelBusy, setLabelBusy] = useState(false)
+
+  const openLabels = (row) => {
+    setLabelCopies('1')
+    setLabelTarget(row)
+  }
+
+  const printLabels = async () => {
+    const copies = Math.max(1, Math.round(Number(labelCopies)) || 1)
+    setLabelBusy(true)
+    try {
+      // Opened straight from the click so the browser does not treat the new
+      // tab as an unsolicited popup.
+      await openPdfInNewTab(
+        () => getProductLabels(labelTarget._id, copies),
+        `${labelTarget.name}-barcodes.pdf`
+      )
+      setLabelTarget(null)
+    } catch (err) {
+      // The server's reason, which for a product with no barcode is the one
+      // thing worth saying.
+      toast.error(err.message || 'Could not print the labels')
+    } finally {
+      setLabelBusy(false)
+    }
+  }
   const [showImport, setShowImport] = useState(false)
   const [showDuplicates, setShowDuplicates] = useState(false)
   const [showCount, setShowCount] = useState(false)
@@ -790,12 +825,22 @@ export default function Products() {
       header: 'Stock',
       key: '_id',
       render: (id, row) => (
-        <button
-          onClick={e => { e.stopPropagation(); setStockTarget(row) }}
-          className="px-3 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-        >
-          Adjust
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={e => { e.stopPropagation(); setStockTarget(row) }}
+            className="px-3 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+          >
+            Adjust
+          </button>
+          {/* Sticking labels on the shelf is the same job as counting it. */}
+          <button
+            onClick={e => { e.stopPropagation(); openLabels(row) }}
+            title="Print barcode labels for this product"
+            className="p-1.5 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+          >
+            <FiPrinter size={14} />
+          </button>
+        </div>
       ),
     }] : [
     { header: 'Cost Price', key: 'cost_price', render: v => formatCurrency(v) },
@@ -817,6 +862,13 @@ export default function Products() {
       key: '_id',
       render: (id, row) => (
         <div className="flex gap-2">
+          <button
+            onClick={e => { e.stopPropagation(); openLabels(row) }}
+            title="Print barcode labels for this product"
+            className="p-1.5 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+          >
+            <FiPrinter size={14} />
+          </button>
           <button
             onClick={e => { e.stopPropagation(); setEditProduct(row); setShowModal(true) }}
             className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -1107,6 +1159,64 @@ export default function Products() {
       {/* Delete Confirm */}
       {showCount && <StockCountModal onClose={() => setShowCount(false)} />}
       {showAutoBarcode && <AutoBarcodeModal onClose={() => setShowAutoBarcode(false)} />}
+
+      {/* How many stickers, for this one product. */}
+      <Modal
+        isOpen={!!labelTarget}
+        onClose={() => setLabelTarget(null)}
+        title="Print barcode labels"
+        size="sm"
+      >
+        {labelTarget && (
+          <div className="p-5 space-y-4">
+            <div>
+              <p className="font-bold text-gray-900">{labelTarget.name}</p>
+              <p className="text-xs font-mono text-gray-400 mt-0.5">
+                {labelTarget.barcode || 'no barcode yet'}
+              </p>
+            </div>
+
+            {!labelTarget.barcode ? (
+              <p className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                This product has no barcode yet, so there is nothing to print.
+                Give it one from the product itself, then come back.
+              </p>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    How many labels?
+                  </label>
+                  <input
+                    type="number" min="1" max="500"
+                    value={labelCopies}
+                    onChange={e => setLabelCopies(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  {/* Usually one per item on the shelf, so that is one tap. */}
+                  {labelTarget.quantity > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setLabelCopies(String(Math.min(500, labelTarget.quantity)))}
+                      className="mt-2 text-xs font-semibold text-orange-600 hover:text-orange-700"
+                    >
+                      One for each of the {labelTarget.quantity} in stock
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  onClick={printLabels}
+                  disabled={labelBusy}
+                  className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors"
+                >
+                  {labelBusy ? 'Building…' : 'Print'}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </Modal>
 
       <ConfirmDialog
         isOpen={!!deleteTarget}
