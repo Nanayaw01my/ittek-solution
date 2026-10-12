@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
-  FiPlus, FiSearch, FiUsers, FiPhone, FiEdit2, FiSlash, FiGift, FiDownloadCloud,
+  FiPlus, FiSearch, FiUsers, FiPhone, FiEdit2, FiSlash, FiGift, FiDownloadCloud, FiSend,
 } from 'react-icons/fi'
 import {
   getContacts, getContactsSummary, createContact, updateContact, backfillContacts,
@@ -17,6 +17,7 @@ import Modal from '../components/Modal'
 import Table from '../components/Table'
 import StatCard from '../components/StatCard'
 import RefreshButton from '../components/RefreshButton'
+import MessageCustomersModal from '../components/MessageCustomersModal'
 
 /**
  * The shop's customers, and how to reach them.
@@ -112,6 +113,7 @@ export default function ContactBook() {
   const [page, setPage] = useState(1)
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [messaging, setMessaging] = useState(false)
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['contacts', q, sort, page],
@@ -244,9 +246,17 @@ export default function ContactBook() {
             )}
             <button
               onClick={() => setShowAdd(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm"
+              className="flex items-center gap-2 px-4 py-2 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-xl font-semibold text-sm"
             >
               <FiPlus size={16} /> Add customer
+            </button>
+            {/* The reason the book exists: saying something to all of them
+                at once, without writing it out forty times. */}
+            <button
+              onClick={() => setMessaging(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm"
+            >
+              <FiSend size={16} /> Message customers
             </button>
           </div>
         }
@@ -307,9 +317,17 @@ export default function ContactBook() {
       />
 
       <p className="mt-3 text-xs text-gray-400">
-        Numbers typed at the till are saved here on their own. To send these
-        customers a message, go to Reminders.
+        Numbers typed at the till are saved here on their own. Anyone who asked
+        not to be messaged is left out of a send.
       </p>
+
+      {messaging && (
+        <MessageCustomersModal
+          title="Message your customers"
+          onClose={() => setMessaging(false)}
+          onSent={() => queryClient.invalidateQueries({ queryKey: ['contacts'] })}
+        />
+      )}
 
       <Modal isOpen={showAdd} onClose={() => setShowAdd(false)} title="Add customer" size="md">
         <ContactForm loading={addMutation.isPending} onSubmit={d => addMutation.mutate(d)} />
