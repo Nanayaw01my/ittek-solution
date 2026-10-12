@@ -39,6 +39,21 @@ export const normaliseGhanaPhone = (raw) => {
 export const isValidGhanaPhone = (raw) => normaliseGhanaPhone(raw) !== null
 
 /**
+ * The number as a person in Ghana would write it: 024 123 4567.
+ *
+ * Storage keeps 233XXXXXXXXX so the same subscriber is one row however it
+ * was typed, but nobody reads a twelve-digit run off a screen and dials it
+ * correctly. Anything that is not a Ghana number is handed back untouched —
+ * better the raw string than a mangled one.
+ */
+export const displayGhanaPhone = (raw) => {
+  const msisdn = normaliseGhanaPhone(raw)
+  if (!msisdn) return raw || ''
+  const n = msisdn.slice(3)
+  return `0${n.slice(0, 2)} ${n.slice(2, 5)} ${n.slice(5)}`
+}
+
+/**
  * Rough "is this a phone/tablet" check.
  * Only used to pick which WhatsApp surface to open — never for anything
  * where being wrong would break the flow.

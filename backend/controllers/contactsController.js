@@ -226,4 +226,83 @@ const backfillContacts = async (req, res) => {
   }
 };
 
-module.exports = { getContacts, getContactsSummary, updateContact, backfillContacts };
+/**
+ * POST /api/contacts
+ *
+ * Somebody added to the book by hand.
+ *
+ * The book fills itself from the till, which covers everyone who has bought
+ * something. It does not cover the people the shop wants to keep in touch
+ * with anyway — the customer who rang and did not buy yet, the landlord of
+ * the site being quoted, the old customer whose number arrived on paper.
+ * Those had nowhere to go.
+ *
+ * Keyed on the normalised number like everything else here, so a person
+ * entered by hand and the same person arriving later from a sale are one row
+ * and not two.
+ */
+const createContact = async (req, res) => {
+  try {
+    const { name, phone, notes, birthday } = req.body;
+
+    const number = normaliseGhanaPhone(phone);
+    if (!number) {
+      return res.status(400).json({
+        success: false,
+        message: 'That does not look like a Ghana phone number.',
+      });
+    }
+
+    const clean = String(name || '').trim();
+
+    let when;
+    if (birthday) {
+      when = new Date(birthday);
+      if (Number.isNaN(when.getTime())) {
+        return res.status(400).json({ success: false, message: 'That date did not make sense.' });
+      }
+    }
+
+    // Already known: keep the row, fill in what is new rather than refusing
+    // over a duplicate the person cannot see.
+    const existing = await Contact.findOne({ phone: number });
+    if (existing) {
+      const was = existing.name;
+      if (clean) existing.name = clean;
+      if (notes !== undefined) existing.notes = String(notes || '').trim();
+      if (when) existing.birthday = when;
+      await existing.save();
+      return res.status(200).json({
+        success: true,
+        message: clean && clean !== was
+          ? `Already in the book — saved as ${clean}.`
+          : 'Already in the book.',
+        data: existing,
+        created: false,
+      });
+    }
+
+    const contact = await Contact.create({
+      phone: number,
+      name: clean,
+      notes: notes ? String(notes).trim() : undefined,
+      birthday: when,
+      // Entered by hand, so nothing has been bought and nothing was spent.
+      // Left at zero rather than invented, or the spending figures lie.
+      visits: 0,
+      total_spent: 0,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `${clean || number} added to the book.`,
+      data: contact,
+      created: true,
+    });
+  } catch (err) {
+    console.error('Create contact error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not save them: ${err.message}` });
+  }
+};
+
+module.exports = { getContacts, getContactsSummary, createContact, updateContact, backfillContacts };

@@ -43,6 +43,7 @@ import Quotations from './pages/Quotations'
 import Reorder from './pages/Reorder'
 import ReceiptApprovals from './pages/ReceiptApprovals'
 import Reminders from './pages/Reminders'
+import ContactBook from './pages/ContactBook'
 import Installations from './pages/Installations'
 import SystemHealth from './pages/SystemHealth'
 import Payables from './pages/Payables'
@@ -188,6 +189,8 @@ export default function App() {
         <Route path="receipt-approvals" element={<ProtectedRoute minLevel={2}><ReceiptApprovals /></ProtectedRoute>} />
         {/* Chasing what is owed shows what everybody owes — manager and above. */}
         <Route path="reminders" element={<ProtectedRoute minLevel={2}><Reminders /></ProtectedRoute>} />
+        {/* The book the reminders draw on, and the only place to add to it. */}
+        <Route path="contacts" element={<ProtectedRoute minLevel={2}><ContactBook /></ProtectedRoute>} />
         {/* A fitter needs their own jobs, so this is open to everybody signed
             in — the server shows them only what they are on. */}
         <Route path="installations" element={<ProtectedRoute minLevel={1}><Installations /></ProtectedRoute>} />
