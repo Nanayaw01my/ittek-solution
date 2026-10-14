@@ -232,13 +232,30 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
           icon={FiShoppingCart}
-          value={formatCurrency(stats.todaySales || 0)}
+          /**
+           * What the day actually came to: what was taken, less what was
+           * handed back.
+           *
+           * A refund is money that left the shop today, so the shop expects
+           * to see it gone from today's figure rather than noted beside it.
+           * `todaySalesNet` is never clamped, so a day that gives back more
+           * than it takes shows as the minus it is — the old clamp to zero
+           * was what made a busy day read as a dead one.
+           */
+          value={formatCurrency(
+            // A server older than this app sends no net figure. Working it
+            // out here keeps the headline and the line under it telling the
+            // same story rather than contradicting each other.
+            stats.todaySalesNet !== undefined
+              ? stats.todaySalesNet
+              : (stats.todaySales || 0) - (stats.todayRefunds || 0)
+          )}
           label="Today's Sales"
           color="orange"
           loading={statsLoading}
           hint={statsError ? null : (() => {
             /**
-             * A zero here has to say which kind of zero it is.
+             * And a zero here has to say which kind of zero it is.
              *
              * Nothing sold, everything refunded, and a day of Pay & Pick
              * Later collections all used to print the same GHC 0.00, and the
@@ -247,11 +264,14 @@ export default function Dashboard() {
             const counted = stats.todaySalesCount ?? 0
             const plans = stats.todayLayawaySalesCount ?? 0
             const refunded = stats.todayRefunds || 0
+            const taken = stats.todaySales || 0
             const parts = []
             if (counted > 0) parts.push(`${counted} sale${counted === 1 ? '' : 's'} today`)
             if (plans > 0) parts.push(`${plans} plan collection${plans === 1 ? '' : 's'} (counted when paid)`)
             if (stats.todayLayawayCollections > 0) parts.push('includes plan instalments')
-            if (refunded > 0) parts.push(`less ${formatCurrency(refunded)} refunded`)
+            // Both halves of the sum, so the figure above can be checked
+            // against the drawer without opening another screen.
+            if (refunded > 0) parts.push(`${formatCurrency(taken)} taken, less ${formatCurrency(refunded)} refunded`)
             if (!parts.length) return 'nothing sold yet today'
             return parts.join(' · ')
           })()}
