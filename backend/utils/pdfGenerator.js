@@ -3712,7 +3712,391 @@ const generateExchangeNote = async (agreement = {}, exchange = {}, options = {})
   });
 };
 
+
+/**
+ * Generate the Starlink packages flyer — A4 portrait, two pages.
+ *
+ * An advertisement rather than a document: the thing a customer is handed,
+ * sent on WhatsApp or sees on a wall. So it is built on the house furniture
+ * everything else here uses — the company logo, the watermark behind the
+ * page, the orange rule — rather than a separate look nobody would recognise
+ * as the shop's.
+ *
+ * Page one carries the three packages and the contact strip, so it stands on
+ * its own when only one picture is being sent. Page two carries the other
+ * services, why the shop, and the call to action.
+ *
+ * Every per-period figure arrives already worked out from the balance (see
+ * config/starlinkFlyer.js). Nothing is calculated twice.
+ *
+ * @param {Object} options - { logoUrl, company, packages, services, whyUs, contact }
+ * @returns {Promise<Buffer>}
+ */
+const generateStarlinkFlyer = async (options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: 'A4',
+        // Every position on this flyer is set by hand, and the footer band is
+        // deliberately full-bleed to the foot of the page. A bottom margin
+        // would make PDFKit treat that band as an overflow and add pages.
+        margins: { top: 36, bottom: 0, left: 36, right: 36 },
+        info: {
+          Title: 'Starlink Packages & Pricing',
+          Author: (options.company && options.company.name) || 'DAN & DOR SOLAR COMPANY LIMITED',
+          Subject: 'Starlink packages, prices and installment plans',
+        },
+      });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 36;
+      const W = 523;
+      const ORANGE = '#e86b00';
+      const NAVY = '#0f2342';
+      const LGRAY = '#6b7280';
+      const packages = options.packages || [];
+      const services = options.services || [];
+      const whyUs = options.whyUs || [];
+      const contact = options.contact || {};
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN AND DOR SOLAR COMPANY LIMITED';
+      const companyAddress = company.address || 'Bogoso, Ghana';
+
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      /**
+       * Money. Whole cedis print clean; anything with pesewas prints both
+       * of them — GHC 337.50, never GHC 337.5, which reads like a typo on a
+       * price list.
+       */
+      const gh = (n) => {
+        const v = Number(n || 0);
+        const pesewas = Math.round(v * 100) % 100 !== 0;
+        return 'GHC ' + v.toLocaleString('en-GB', {
+          minimumFractionDigits: pesewas ? 2 : 0,
+          maximumFractionDigits: 2,
+        });
+      };
+
+      attachWatermark(doc, logoBuf);
+
+      // ── Masthead ──────────────────────────────────────────────────────────
+      const masthead = () => {
+        doc.rect(0, 0, 595, 96).fillColor(NAVY).fill();
+        reset();
+
+        if (logoBuf) {
+          try { doc.image(logoBuf, ML, 20, { fit: [56, 56] }); } catch { /* keep the gap */ }
+        }
+        const tx = logoBuf ? ML + 66 : ML;
+        doc.fontSize(13).font('Helvetica-Bold').fillColor('#ffffff')
+          .text(companyName, tx, 26, { width: W - (tx - ML), lineBreak: false });
+        doc.fontSize(8.5).font('Helvetica').fillColor('#c7d2e4')
+          .text(`${companyAddress}  |  ${(contact.phones || []).join('  ·  ')}`,
+            tx, 44, { width: W - (tx - ML), lineBreak: false });
+        doc.fontSize(8).font('Helvetica-Bold').fillColor(ORANGE)
+          .text((contact.slogan || '').toUpperCase(), tx, 60, { width: W - (tx - ML), lineBreak: false });
+        reset();
+
+        // The orange seam the rest of the shop's paper uses.
+        doc.rect(0, 96, 595, 4).fillColor(ORANGE).fill();
+        reset();
+      };
+
+      /** A heading with the house rule under it. */
+      const sectionTitle = (text, y, colour = NAVY) => {
+        doc.fontSize(11).font('Helvetica-Bold').fillColor(colour)
+          .text(text, ML, y, { width: W, lineBreak: false });
+        doc.moveTo(ML, y + 15).lineTo(ML + W, y + 15).lineWidth(1.2).strokeColor(ORANGE).stroke();
+        reset();
+        return y + 23;
+      };
+
+      // ── Page 1: the offer ─────────────────────────────────────────────────
+      masthead();
+      let y = 116;
+
+      doc.fontSize(23).font('Helvetica-Bold').fillColor(NAVY)
+        .text('STARLINK PACKAGES & PRICING', ML, y, { width: W, align: 'center', lineBreak: false });
+      y += 28;
+      doc.fontSize(12.5).font('Helvetica-BoldOblique').fillColor(ORANGE)
+        .text('Stay Connected Anywhere, Anytime!', ML, y, { width: W, align: 'center', lineBreak: false });
+      y += 19;
+      doc.fontSize(9).font('Helvetica').fillColor('#333333')
+        .text('Get fast, reliable internet for your home, office, school, hotel or commercial hotspot business.',
+          ML, y, { width: W, align: 'center' });
+      y = doc.y + 12;
+
+      /**
+       * One package, as a card.
+       *
+       * The cash price and the installment price sit in separate boxes with
+       * their own headings, because a customer reading two numbers off one
+       * card and taking the smaller one as the installment price is the
+       * misunderstanding this whole sheet exists to prevent.
+       */
+      const packageCard = (pkg, top) => {
+        const H = pkg.featured ? 164 : 150;
+        const headH = 30;
+
+        doc.roundedRect(ML, top, W, H, 6)
+          .lineWidth(pkg.featured ? 1.6 : 0.9)
+          .strokeColor(pkg.featured ? ORANGE : '#d7dce5').stroke();
+        reset();
+
+        // Header band.
+        doc.save();
+        doc.roundedRect(ML, top, W, H, 6).clip();
+        doc.rect(ML, top, W, headH).fillColor(pkg.featured ? ORANGE : NAVY).fill();
+        doc.restore();
+        reset();
+
+        doc.fontSize(11.5).font('Helvetica-Bold').fillColor('#ffffff')
+          .text(pkg.name, ML + 12, top + 7, { width: W - 150, lineBreak: false });
+        doc.fontSize(8).font('Helvetica-Oblique').fillColor(pkg.featured ? '#ffe9d4' : '#bcd0ea')
+          .text(pkg.strap || '', ML + 12, top + 19, { width: W - 150, lineBreak: false });
+        if (pkg.featured) {
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff')
+            .text('MOST POPULAR', ML + W - 100, top + 11, { width: 88, align: 'right', lineBreak: false });
+        }
+        reset();
+
+        let cy = top + headH + 9;
+        const colW = (W - 26) / 2;
+        const leftX = ML + 10;
+        const rightX = ML + 16 + colW;
+
+        // ── Left: ready cash ────────────────────────────────────────────────
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(LGRAY)
+          .text('READY CASH PRICE', leftX, cy, { width: colW, lineBreak: false });
+        doc.fontSize(19).font('Helvetica-Bold').fillColor(NAVY)
+          .text(gh(pkg.cash), leftX, cy + 11, { width: colW, lineBreak: false });
+        let ly = cy + 34;
+        if (pkg.cash_parts) {
+          // The Mini is quoted in two parts, so both are shown rather than
+          // only the sum a customer cannot check.
+          pkg.cash_parts.forEach((part) => {
+            doc.fontSize(7.5).font('Helvetica').fillColor('#444444')
+              .text(part.label, leftX, ly, { width: colW - 70, lineBreak: false });
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#444444')
+              .text(gh(part.amount), leftX + colW - 72, ly, { width: 70, align: 'right', lineBreak: false });
+            ly += 10;
+          });
+          ly += 2;
+        }
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(LGRAY)
+          .text('IDEAL FOR', leftX, ly, { width: colW, lineBreak: false });
+        ly += 10;
+        doc.fontSize(7.5).font('Helvetica').fillColor('#333333')
+          .text((pkg.who || []).join(' · '), leftX, ly, { width: colW - 6 });
+        reset();
+
+        // ── Right: the installment plan ─────────────────────────────────────
+        const boxTop = cy - 4;
+        const boxH = top + H - boxTop - 9;
+        doc.roundedRect(rightX - 6, boxTop, colW + 6, boxH, 4)
+          .fillColor('#fdf4ec').fill();
+        reset();
+
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('INSTALLMENT PLAN', rightX, boxTop + 6, { width: colW, lineBreak: false });
+
+        let ry = boxTop + 17;
+        const line = (label, value, bold) => {
+          doc.fontSize(8).font('Helvetica').fillColor('#444444')
+            .text(label, rightX, ry, { width: colW - 80, lineBreak: false });
+          doc.fontSize(8).font(bold ? 'Helvetica-Bold' : 'Helvetica').fillColor(bold ? NAVY : '#444444')
+            .text(value, rightX + colW - 84, ry, { width: 78, align: 'right', lineBreak: false });
+          ry += 11;
+        };
+        line('Total installment price', gh(pkg.installment_total));
+        line('Down payment', gh(pkg.down_payment));
+        line('Remaining balance', gh(pkg.remaining), true);
+
+        ry += 3;
+        doc.moveTo(rightX, ry).lineTo(rightX + colW - 6, ry)
+          .lineWidth(0.5).strokeColor('#e3c9b1').stroke();
+        reset();
+        ry += 5;
+
+        doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
+          .text('PAY THE BALANCE EITHER WAY', rightX, ry, { width: colW, lineBreak: false });
+        ry += 10;
+
+        // The amounts the customer is really choosing between, given the
+        // weight on the card that matches that.
+        (pkg.options || []).forEach((o) => {
+          doc.roundedRect(rightX, ry, colW - 6, 20, 3).fillColor('#ffffff').fill();
+          doc.roundedRect(rightX, ry, colW - 6, 20, 3).lineWidth(0.6).strokeColor('#edd6c0').stroke();
+          reset();
+          doc.fontSize(8).font('Helvetica-Bold').fillColor(NAVY)
+            .text(o.label, rightX + 6, ry + 6, { width: 60, lineBreak: false });
+          doc.fontSize(10.5).font('Helvetica-Bold').fillColor(ORANGE)
+            .text(`${o.approx ? '~' : ''}${gh(o.amount)}`, rightX + 60, ry + 4.5,
+              { width: colW - 72, align: 'right', lineBreak: false });
+          doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY)
+            .text(o.unit, rightX + 60, ry + 13.5, { width: colW - 72, align: 'right', lineBreak: false });
+          reset();
+          ry += 23;
+        });
+
+        return top + H + 9;
+      };
+
+      packages.forEach((pkg) => { y = packageCard(pkg, y); });
+
+      // One line of plain English under the cards, because the commonest
+      // question about an installment table is whether both rows are owed.
+      doc.roundedRect(ML, y, W, 24, 4).fillColor('#f3f5f9').fill();
+      reset();
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(NAVY)
+        .text('Choose ONE payment schedule — monthly or weekly. You do not pay both. '
+          + 'The down payment is paid once, up front, and is not part of these amounts.',
+          ML + 10, y + 6, { width: W - 20, align: 'center' });
+      reset();
+      y += 34;
+
+      // Three reasons, filling what was otherwise a hand's width of white
+      // paper above the footer.
+      const trust = [
+        ['GENUINE', 'Starlink products'],
+        ['PROFESSIONAL', 'Installation by our team'],
+        ['FLEXIBLE', 'Pay weekly or monthly'],
+      ];
+      const tw = (W - 16) / 3;
+      trust.forEach(([big, small], i) => {
+        const tx = ML + i * (tw + 8);
+        doc.roundedRect(tx, y, tw, 46, 5).lineWidth(0.9).strokeColor(ORANGE).stroke();
+        reset();
+        doc.fontSize(10).font('Helvetica-Bold').fillColor(ORANGE)
+          .text(big, tx, y + 11, { width: tw, align: 'center', lineBreak: false });
+        doc.fontSize(8).font('Helvetica').fillColor(NAVY)
+          .text(small, tx, y + 26, { width: tw, align: 'center', lineBreak: false });
+        reset();
+      });
+      y += 56;
+
+      // ── Contact strip, so page one stands alone ───────────────────────────
+      doc.rect(0, 762, 595, 80).fillColor(NAVY).fill();
+      doc.rect(0, 758, 595, 4).fillColor(ORANGE).fill();
+      reset();
+      doc.fontSize(15).font('Helvetica-Bold').fillColor(ORANGE)
+        .text(contact.cta || 'GET CONNECTED TODAY!', ML, 774, { width: W, align: 'center', lineBreak: false });
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#ffffff')
+        .text(`Call / WhatsApp:  ${(contact.phones || []).join('   |   ')}`,
+          ML, 794, { width: W, align: 'center', lineBreak: false });
+      doc.fontSize(8.5).font('Helvetica').fillColor('#c7d2e4')
+        .text(`${companyName}  ·  ${companyAddress}`, ML, 812, { width: W, align: 'center', lineBreak: false });
+      reset();
+
+      // ── Page 2: everything else the shop does ─────────────────────────────
+      doc.addPage();
+      attachWatermark(doc, logoBuf);
+      masthead();
+      y = 118;
+
+      y = sectionTitle('OTHER SERVICES WE OFFER', y);
+
+      const cols = 2;
+      const cw = (W - 12) / cols;
+      const ROW = 34;
+      services.forEach((s, i) => {
+        const sx = ML + (i % cols) * (cw + 12);
+        const sy = y + Math.floor(i / cols) * ROW;
+        doc.roundedRect(sx, sy, cw, 28, 4).lineWidth(0.8).strokeColor('#e2e6ec').stroke();
+        // A filled square rather than a bullet character: it survives any
+        // font, on any printer.
+        doc.roundedRect(sx + 9, sy + 10, 8, 8, 1.5).fillColor(ORANGE).fill();
+        reset();
+        doc.fontSize(9).font('Helvetica').fillColor('#222222')
+          .text(s, sx + 24, sy + 10, { width: cw - 32, lineBreak: false, ellipsis: true });
+        reset();
+      });
+      y += Math.ceil(services.length / cols) * ROW + 12;
+
+      y = sectionTitle('WHY CHOOSE US?', y);
+      whyUs.forEach((s, i) => {
+        const sx = ML + (i % cols) * (cw + 12);
+        const sy = y + Math.floor(i / cols) * ROW;
+        doc.roundedRect(sx, sy, cw, 28, 4).fillColor('#fdf4ec').fill();
+        reset();
+        // A tick, drawn rather than typed, so no font has to carry the glyph.
+        doc.moveTo(sx + 10, sy + 14.5).lineTo(sx + 14, sy + 19).lineTo(sx + 21, sy + 9)
+          .lineWidth(2).strokeColor(ORANGE).stroke();
+        reset();
+        doc.fontSize(9).font('Helvetica-Bold').fillColor(NAVY)
+          .text(s, sx + 28, sy + 10, { width: cw - 36, lineBreak: false, ellipsis: true });
+        reset();
+      });
+      y += Math.ceil(whyUs.length / cols) * ROW + 12;
+
+      // ── How an installment actually works ─────────────────────────────────
+      //
+      // The rule the shop is most often asked to repeat at the counter, set
+      // out once so the flyer answers it without a phone call.
+      y = sectionTitle('HOW THE INSTALLMENT WORKS', y);
+      const steps = [
+        ['1', 'Pay the down payment', 'Once, up front. It is not divided over the weeks or months.'],
+        ['2', 'Choose monthly OR weekly', 'Whichever suits you. You do not pay both.'],
+        ['3', 'Clear the balance', 'The amounts shown are the balance split over the period you chose.'],
+      ];
+      const sw = (W - 16) / 3;
+      steps.forEach(([n, head, body], i) => {
+        const sx = ML + i * (sw + 8);
+        doc.roundedRect(sx, y, sw, 76, 5).lineWidth(0.8).strokeColor('#dfe4ec').stroke();
+        reset();
+        doc.circle(sx + 20, y + 20, 11).fillColor(NAVY).fill();
+        reset();
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#ffffff')
+          .text(n, sx + 9, y + 16, { width: 22, align: 'center', lineBreak: false });
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor(NAVY)
+          .text(head, sx + 38, y + 12, { width: sw - 46 });
+        doc.fontSize(7.5).font('Helvetica').fillColor('#555555')
+          .text(body, sx + 10, y + 42, { width: sw - 20 });
+        reset();
+      });
+      y += 88;
+
+      // ── The ask ───────────────────────────────────────────────────────────
+      doc.roundedRect(ML, y, W, 128, 8).fillColor(NAVY).fill();
+      reset();
+      doc.fontSize(24).font('Helvetica-Bold').fillColor(ORANGE)
+        .text(contact.cta || 'GET CONNECTED TODAY!', ML, y + 18, { width: W, align: 'center', lineBreak: false });
+      doc.fontSize(9.5).font('Helvetica').fillColor('#c7d2e4')
+        .text('Call or WhatsApp us for a quote, a site visit, or to start an installment plan.',
+          ML, y + 48, { width: W, align: 'center', lineBreak: false });
+      doc.fontSize(20).font('Helvetica-Bold').fillColor('#ffffff')
+        .text((contact.phones || []).join('      |      '), ML, y + 66, { width: W, align: 'center', lineBreak: false });
+      doc.fontSize(10).font('Helvetica-BoldOblique').fillColor(ORANGE)
+        .text(contact.slogan || '', ML, y + 98, { width: W, align: 'center', lineBreak: false });
+      reset();
+      y += 140;
+
+      doc.fontSize(8.5).font('Helvetica-Bold').fillColor(NAVY)
+        .text(companyName, ML, y, { width: W, align: 'center', lineBreak: false });
+      doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
+        .text(`${companyAddress}  ·  Call / WhatsApp: ${(contact.phones || []).join('  ·  ')}`,
+          ML, y + 12, { width: W, align: 'center', lineBreak: false });
+      doc.fontSize(7).font('Helvetica').fillColor('#9aa3b0')
+        .text('Prices are subject to change. Installment plans are subject to approval.',
+          ML, y + 24, { width: W, align: 'center', lineBreak: false });
+      reset();
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 module.exports = {
+  generateStarlinkFlyer,
   generateBarcodeSheet,
   generateExchangeNote,
   generateBadgeCards,

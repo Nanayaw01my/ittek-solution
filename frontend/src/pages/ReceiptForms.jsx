@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiPrinter, FiFileText, FiX, FiPlus, FiThermometer, FiBatteryCharging, FiZap, FiSun, FiAward, FiSmartphone, FiTag } from 'react-icons/fi'
-import { getInstallmentPlanSheet, getPriceSheet, getAcceptanceLetter, getCompletionLetter, getInternshipCertificate,
+import { FiPrinter, FiFileText, FiX, FiPlus, FiThermometer, FiBatteryCharging, FiZap, FiSun, FiAward, FiSmartphone, FiTag, FiWifi } from 'react-icons/fi'
+import { getStarlinkFlyer, getInstallmentPlanSheet, getPriceSheet, getAcceptanceLetter, getCompletionLetter, getInternshipCertificate,
   getPhonePlanSheet, getIphonePlanSheet, getIphoneNamesSheet } from '../api/forms'
 import { openPdfInNewTab } from '../utils/openPdf'
 import { formatCurrency, formatDate } from '../utils/helpers'
@@ -228,6 +228,38 @@ export default function ReceiptForms() {
       </p>
 
       {section === 'prices' && (<>
+      {/* An advertisement rather than a form: the thing a customer is handed
+          or sent, so it leads this section. */}
+      <div className="mt-4 bg-white rounded-xl border-2 border-orange-200 p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-bold text-gray-800 text-sm">Starlink Packages Flyer</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              The advertisement: all three Starlink packages with their cash prices and
+              installment terms, the other services the shop offers, and the contact
+              details. Two A4 pages — the first stands on its own for WhatsApp.
+            </p>
+          </div>
+          <button
+            onClick={async () => {
+              setPlanBusy('starlink')
+              try {
+                await openPdfInNewTab(getStarlinkFlyer, 'starlink-packages-flyer.pdf')
+              } catch (err) {
+                toast.error(err.message || 'Could not build the flyer.')
+              } finally {
+                setPlanBusy('')
+              }
+            }}
+            disabled={!!planBusy}
+            className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-colors flex-shrink-0"
+          >
+            <FiWifi size={16} />
+            {planBusy === 'starlink' ? 'Preparing…' : 'Print'}
+          </button>
+        </div>
+      </div>
+
       {/* Fixed offer sheets rather than forms: the installment packages, their
           terms and their cash prices, for handing to a customer. */}
       {[

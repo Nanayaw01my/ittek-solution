@@ -10,9 +10,10 @@ const Settings = require('../models/Settings');
 const {
   generateBlankReceiptForm, generateInstallmentPlanSheet, generateInstallmentTable,
   generateFixedPriceList, generateNameList, generateAcceptanceLetter,
-  generateCompletionLetter, generateInternshipCertificate,
+  generateCompletionLetter, generateInternshipCertificate, generateStarlinkFlyer,
 } = require('../utils/pdfGenerator');
 const { PLAN_SETS, PRICE_LISTS } = require('../config/installmentPlans');
+const STARLINK = require('../config/starlinkFlyer');
 const { IPHONE_PACKAGES, IPHONE_PRICES } = require('../config/iphonePlans');
 
 /**
@@ -363,6 +364,41 @@ const printPlanSheet = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Could not generate the sheet.' });
   }
 };
+
+/**
+ * GET /api/forms/starlink-flyer
+ *
+ * The Starlink advertisement: packages, prices, installment terms, the other
+ * services and the contact details. For printing, for a wall, and for sending
+ * on WhatsApp.
+ */
+const printStarlinkFlyer = async (req, res) => {
+  try {
+    const settings = (await Settings.findOne().lean()) || {};
+    const pdf = await generateStarlinkFlyer({
+      logoUrl: settings.logo_url,
+      // The shop's own details where they are set, and the flyer's own
+      // wording where they are not — an advert cannot go out blank.
+      company: {
+        name: settings.company_name || STARLINK.CONTACT.company,
+        address: settings.company_address || STARLINK.CONTACT.location,
+      },
+      packages: STARLINK.PACKAGES,
+      services: STARLINK.SERVICES,
+      whyUs: STARLINK.WHY_US,
+      contact: STARLINK.CONTACT,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="starlink-packages-flyer.pdf"');
+    return res.end(pdf);
+  } catch (err) {
+    console.error('Starlink flyer error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not build the flyer: ${err.message}` });
+  }
+};
+
+router.get('/starlink-flyer', printStarlinkFlyer);
 
 router.get('/installment-plan', printPlanSheet);
 // The original path, from before there was more than one kind of plan.
