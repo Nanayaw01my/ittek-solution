@@ -16,6 +16,7 @@ import { logout as apiLogout } from '../api/auth'
 import toast from 'react-hot-toast'
 import OfflineBanner from './OfflineBanner'
 import LocaleSwitcher from './LocaleSwitcher'
+import HelpAssistant from './HelpAssistant'
 import InstallAppButton from './InstallAppButton'
 
 /** The only screens a DSR out on the field ever sees. */
@@ -243,6 +244,10 @@ export default function Layout() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Ask the system how to do something. On every screen, because
+                  the question is always asked mid-task. */}
+              <HelpAssistant />
+
               {/* Search icon */}
               <NavLink
                 to="/search"
