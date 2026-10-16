@@ -101,6 +101,50 @@ const systemHealth = async (req, res) => {
     const backupAge = lastBackup?.createdAt
       ? Math.floor((Date.now() - new Date(lastBackup.createdAt).getTime()) / 86400000)
       : null;
+    /**
+     * What to actually do about it.
+     *
+     * The screen used to tell anybody with a failing backup to set
+     * BACKUP_EMAIL, whatever had gone wrong. On a mail server that timed out
+     * that is the wrong errand, and an hour spent on the wrong errand is an
+     * hour the shop still has no backup. The reason is in the message, so
+     * the remedy is worked out from it here — one place, rather than a
+     * screen guessing.
+     */
+    const remedyFor = (run) => {
+      if (!run) return 'Press “Run what is due” to take one now.';
+      const why = String(run.message || '').toLowerCase();
+      if (run.ok) return null;
+      if (why.includes('no address') || why.includes('nowhere to go')) {
+        return 'Set BACKUP_EMAIL or ADMIN_EMAIL on the server, or a company email in Settings, '
+          + 'then press “Run what is due”.';
+      }
+      if (why.includes('too large')) {
+        return 'The backup is too big to email. Download one by hand from Backup & Restore, '
+          + 'and clear records you no longer need.';
+      }
+      // A refused login is checked first. Every send failure says "could not
+      // email", so testing that first would report a wrong password as an
+      // unreachable server and send somebody to look at the wrong thing.
+      if (why.includes('invalid login') || why.includes('auth') || why.includes('credential')
+        || why.includes('535') || why.includes('password')) {
+        return 'The mail server refused the login. Check the email user and password on the '
+          + 'server — a Gmail account needs an app password, not the ordinary one.';
+      }
+      if (why.includes('timeout') || why.includes('econn') || why.includes('etimedout')
+        || why.includes('socket') || why.includes('getaddrinfo') || why.includes('ehostunreach')) {
+        return 'The backup was made but the mail server could not be reached. Check the email '
+          + 'settings on the server (host and port), and that the host allows outgoing mail, '
+          + 'then press “Run what is due”.';
+      }
+      if (why.includes('could not email') || why.includes('smtp')) {
+        return 'The backup was made but could not be emailed. Check the email settings on the '
+          + 'server, then press “Run what is due”.';
+      }
+      return 'Press “Run what is due” to try again, and take one by hand from Backup & Restore '
+        + 'in the meantime.';
+    };
+
     const backups = {
       // Two days without one means last night's failed and nobody noticed.
       state: !lastBackup || backupAge > 2 ? 'bad'
@@ -109,8 +153,10 @@ const systemHealth = async (req, res) => {
       last_at: lastBackup?.createdAt || null,
       last_ago: ago(lastBackup?.createdAt),
       ok: lastBackup?.ok ?? null,
+      attempts: lastBackup?.attempts ?? null,
       message: lastBackup?.message
         || (lastBackup ? null : 'No backup has ever been taken by the system.'),
+      remedy: remedyFor(lastBackup),
     };
 
     // Leaf paths only. Asking for sms_config and sms_config.api_key together

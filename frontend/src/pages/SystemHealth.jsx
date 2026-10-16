@@ -159,10 +159,11 @@ export default function SystemHealth() {
         <Check title="Backups" icon={FiSave} state={c.backups?.state}>
           <p>Last taken <span className="font-bold">{c.backups?.last_ago}</span>.</p>
           {c.backups?.message && <p>{c.backups.message}</p>}
-          {c.backups?.state !== 'ok' && (
-            <p className="font-semibold">
-              Set BACKUP_EMAIL or ADMIN_EMAIL on the server, then press “Run what is due”.
-            </p>
+          {/* The remedy comes from the server, which has read the reason.
+              A screen that guesses sends people on the wrong errand. */}
+          {c.backups?.remedy && <p className="font-semibold">{c.backups.remedy}</p>}
+          {c.backups?.attempts > 1 && (
+            <p className="text-[11px] opacity-75">Tried {c.backups.attempts} times today.</p>
           )}
         </Check>
 

@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const JobRun = require('../models/JobRun');
 
 /**
  * Send daily summary email at 11:00 PM.
@@ -173,7 +174,13 @@ const dayKey = (d = new Date()) => {
  */
 const DAILY_JOBS = [
   // First, before anything else can go wrong with the day.
-  { name: 'nightly_backup', hour: 2, run: () => require('./autoBackup').runNightlyBackup() },
+  {
+    name: 'nightly_backup',
+    hour: 2,
+    // A failed backup is a day without one. Worth another go.
+    retryOnFail: true,
+    run: () => require('./autoBackup').runNightlyBackup(),
+  },
   { name: 'low_stock', hour: 9, run: () => checkLowStock() },
   // Before the day starts, so nobody is waiting at home for a team that
   // never knew it was going.
@@ -201,6 +208,14 @@ const DAILY_JOBS = [
 ];
 
 /** Jobs added by other parts of the system — backups, reminders, warranties. */
+/**
+ * How long to leave a failed retryable job before trying it again, and how
+ * many goes it gets in a day. Far enough apart that a transient fault has a
+ * chance to clear; few enough that a broken one does not hammer anything.
+ */
+const RETRY_AFTER_MS = 30 * 60 * 1000;
+const MAX_ATTEMPTS = 4;
+
 const registerDailyJob = (job) => {
   if (!job?.name || typeof job.run !== 'function') return;
   const at = DAILY_JOBS.findIndex((j) => j.name === job.name);
@@ -220,7 +235,6 @@ const registerDailyJob = (job) => {
  * hundred broken attempts, and on the SMS jobs that costs money.
  */
 const runDueJobs = async ({ reason = 'timer' } = {}) => {
-  const JobRun = require('../models/JobRun');
   const now = new Date();
   const today = dayKey(now);
   const ran = [];
@@ -247,9 +261,37 @@ const runDueJobs = async ({ reason = 'timer' } = {}) => {
         caught_up: now.getUTCHours() > hour,
       });
     } catch (err) {
-      // 11000 means somebody else has it. Anything else is worth seeing.
-      if (err?.code !== 11000) console.error(`[Scheduler] ${job.name} claim failed:`, err.message);
-      continue;
+      // 11000 means the row exists: somebody else has it, or today's run is
+      // already done. Anything else is worth seeing.
+      if (err?.code !== 11000) {
+        console.error(`[Scheduler] ${job.name} claim failed:`, err.message);
+        continue;
+      }
+      if (!job.retryOnFail) continue;
+
+      /**
+       * Take over a failed attempt and try again.
+       *
+       * Done as one conditional update so two instances cannot both pick it
+       * up: whoever matches the row first moves it on, and the other finds
+       * nothing to match. Only a run that actually finished and actually
+       * failed is eligible, and only after a decent gap — retrying a
+       * timeout immediately just produces another timeout.
+       */
+      claim = await JobRun.findOneAndUpdate(
+        {
+          job: job.name,
+          run_for: today,
+          ok: false,
+          finished_at: { $lt: new Date(Date.now() - RETRY_AFTER_MS) },
+          attempts: { $lt: MAX_ATTEMPTS },
+        },
+        { $inc: { attempts: 1 }, $set: { started_at: new Date(), finished_at: null, caught_up: true } },
+        { new: true }
+      ).catch(() => null);
+
+      if (!claim) continue;
+      console.log(`[Scheduler] retrying ${job.name} (attempt ${claim.attempts})`);
     }
 
     try {

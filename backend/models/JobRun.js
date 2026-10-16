@@ -32,6 +32,16 @@ const JobRunSchema = new mongoose.Schema(
     message: { type: String, trim: true },
     /** True when it ran later than its hour, because the service was asleep. */
     caught_up: { type: Boolean, default: false },
+    /**
+     * How many times this day's run has been attempted.
+     *
+     * Most jobs get one go: retrying a failed text message every ten minutes
+     * turns one broken job into a hundred, and costs money. But a backup
+     * that failed on a connection timeout is a day with no backup, and a
+     * network hiccup at 2am should not cost the shop that. Jobs marked
+     * retryOnFail are allowed a few more attempts, spaced well apart.
+     */
+    attempts: { type: Number, default: 1 },
   },
   { timestamps: true }
 );

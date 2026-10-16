@@ -88,15 +88,37 @@ const runNightlyBackup = async () => {
     return `Backup ${human(packed.length)} — too large to email.`;
   }
 
-  await sendEmail({
-    to,
-    subject: `${shop} — backup ${backup.filename.replace(/^ittek-backup-/, '').replace(/\.json$/, '')}`,
-    html: `<p>Automatic backup of <strong>${shop}</strong>, taken ${when}.</p>
-           <p>${summary}. Attached, compressed, as <code>${name}</code> (${human(packed.length)}).</p>
-           <p style="color:#666;font-size:13px">Keep these. Restoring one is done from the Backup screen —
-           unzip it first, then upload the .json inside.</p>`,
-    attachments: [{ filename: name, content: packed }],
-  });
+  try {
+    await sendEmail({
+      to,
+      subject: `${shop} — backup ${backup.filename.replace(/^ittek-backup-/, '').replace(/\.json$/, '')}`,
+      html: `<p>Automatic backup of <strong>${shop}</strong>, taken ${when}.</p>
+             <p>${summary}. Attached, compressed, as <code>${name}</code> (${human(packed.length)}).</p>
+             <p style="color:#666;font-size:13px">Keep these. Restoring one is done from the Backup screen —
+             unzip it first, then upload the .json inside.</p>`,
+      attachments: [{ filename: name, content: packed }],
+    });
+  } catch (err) {
+    /**
+     * The backup was made and then could not be posted.
+     *
+     * This is the quietest way to end up with no backups at all: the job
+     * runs every night, fails every night, and the only sign is a screen
+     * nobody opens until the morning it matters. So it is said out loud,
+     * with the reason, and then rethrown so the run is recorded as failed
+     * and tried again later.
+     */
+    const why = String(err?.message || err);
+    await notifyOwners({
+      type: 'system',
+      title: 'Backup could not be sent',
+      message: `Tonight's backup was made (${summary}) but could not be emailed to ${to}. `
+        + `${why}. Until this is fixed nothing is being kept off the server.`,
+      link: '/system-health',
+      tag: 'backup-send-failed',
+    }).catch(() => {});
+    throw new Error(`Made the backup but could not email it to ${to}: ${why}`);
+  }
 
   return `Emailed ${human(packed.length)} to ${to} — ${summary}.`;
 };
