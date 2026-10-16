@@ -56,6 +56,7 @@ test('what the screen tells the shop to do about a failed backup', async (t) => 
     });
     assert.strictEqual(c.state, 'bad');
     assert.match(c.remedy, /mail server could not be reached/);
+    assert.match(c.remedy, /Settings → Email Config/);
     assert.doesNotMatch(c.remedy, /BACKUP_EMAIL/);
   });
 
@@ -64,7 +65,10 @@ test('what the screen tells the shop to do about a failed backup', async (t) => 
       ok: false, createdAt: hoursAgo(2), attempts: 1,
       message: 'No address to send a backup to.',
     });
-    assert.match(c.remedy, /BACKUP_EMAIL or ADMIN_EMAIL/);
+    // Points at the field the shop can actually fill in themselves, with
+    // the server variable as the alternative.
+    assert.match(c.remedy, /Settings → Company → Email/);
+    assert.match(c.remedy, /BACKUP_EMAIL/);
   });
 
   await t.test('a refused login points at the password, not the address', async () => {
@@ -73,6 +77,7 @@ test('what the screen tells the shop to do about a failed backup', async (t) => 
       message: 'Made the backup but could not email it: Invalid login: 535 auth failed',
     });
     assert.match(c.remedy, /app password/);
+    assert.match(c.remedy, /Settings → Email Config/);
   });
 
   await t.test('one too big to send says to fetch it by hand', async () => {

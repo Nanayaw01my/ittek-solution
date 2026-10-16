@@ -1,18 +1,68 @@
 const nodemailer = require('nodemailer');
 const EmailQueue = require('../models/EmailQueue');
+const Settings = require('../models/Settings');
+
+/**
+ * The mail account, from Settings first and the server's variables second.
+ *
+ * Settings has an Email Config tab that writes smtp_host, smtp_user and the
+ * rest into the database — and nothing read them. The transporter was built
+ * from environment variables alone, so everything typed into that tab was
+ * ignored, and the only way to set up mail was a Render deploy. That is also
+ * how a shop ends up with a backup that is made every night and posted
+ * nowhere.
+ *
+ * Settings wins where it is filled in, because the person who owns the
+ * mailbox should be able to paste the details in without a deploy. The
+ * environment stays as the fallback so existing deployments keep working.
+ */
+const mailAccount = async () => {
+  let saved = {};
+  try {
+    // Leaf paths only. Asking for email_config and email_config.smtp_pass
+    // together is a path collision, which mongo rejects outright.
+    const doc = await Settings.findOne()
+      .select('email_config.smtp_host email_config.smtp_port email_config.smtp_user '
+        + 'email_config.from_email +email_config.smtp_pass')
+      .lean();
+    saved = doc?.email_config || {};
+  } catch (err) {
+    // No database, or none saved. The environment may still carry it.
+    console.error('[Email] Could not read the saved mail settings:', err.message);
+  }
+
+  const host = saved.smtp_host || process.env.EMAIL_HOST || 'smtp.gmail.com';
+  const port = Number(saved.smtp_port) || parseInt(process.env.EMAIL_PORT, 10) || 587;
+  const user = saved.smtp_user || process.env.EMAIL_USER;
+  const pass = saved.smtp_pass || process.env.EMAIL_PASS;
+  const from = saved.from_email || process.env.EMAIL_FROM || `ITTEK Solution <${user}>`;
+
+  return { host, port, user, pass, from, source: saved.smtp_user ? 'settings' : 'server' };
+};
 
 /**
  * Create and return a configured nodemailer transporter.
  */
-const createTransporter = () => {
+const createTransporter = async () => {
+  const { host, port, user, pass } = await mailAccount();
+
+  if (!user || !pass) {
+    // Said plainly. Without this nodemailer attempts an unauthenticated
+    // connection and fails much later with something about a socket, which
+    // sends whoever reads it looking for a network fault that is not there.
+    throw new Error('No mail account is set. Fill in Settings → Email Config, or set '
+      + 'EMAIL_USER and EMAIL_PASS on the server.');
+  }
+
   return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
+    host,
+    port,
+    // 465 is implicit TLS; 587 upgrades with STARTTLS. Sending 465 as plain
+    // is a connection that hangs until it times out.
+    secure: port === 465,
+    auth: { user, pass },
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
     tls: {
       rejectUnauthorized: false,
     },
@@ -43,9 +93,10 @@ const queueEmail = async ({ to, toName = '', subject, html, priority = 'normal' 
  * @param {Object} options - { to, subject, html, attachments }
  */
 const sendEmail = async ({ to, subject, html, attachments }) => {
-  const transporter = createTransporter();
+  const account = await mailAccount();
+  const transporter = await createTransporter();
   const mailOptions = {
-    from: process.env.EMAIL_FROM || `ITTEK Solution <${process.env.EMAIL_USER}>`,
+    from: account.from,
     to,
     subject,
     html,
@@ -69,12 +120,13 @@ const processEmailQueue = async () => {
 
     if (pending.length === 0) return;
 
-    const transporter = createTransporter();
+    const account = await mailAccount();
+    const transporter = await createTransporter();
 
     for (const email of pending) {
       try {
         await transporter.sendMail({
-          from: process.env.EMAIL_FROM || `ITTEK Solution <${process.env.EMAIL_USER}>`,
+          from: account.from,
           to: email.to_email,
           subject: email.subject,
           html: email.body,
@@ -198,6 +250,7 @@ const lowStockAlert = (products) => {
 
 module.exports = {
   createTransporter,
+  mailAccount,
   sendEmail,
   queueEmail,
   processEmailQueue,

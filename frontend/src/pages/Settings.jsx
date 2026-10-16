@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { FiSettings, FiBell, FiMail, FiSave, FiTrash2, FiAlertTriangle, FiX, FiMessageSquare, FiSend, FiCheckCircle } from 'react-icons/fi'
-import { getSettings, updateSettings, testEmail, updateSmsConfig, testSms, getSmsBalance } from '../api/settings'
+import { getSettings, updateSettings, updateEmailConfig, testEmail, updateSmsConfig, testSms, getSmsBalance } from '../api/settings'
 import api from '../api/axios'
 import { clearAllOfflineData } from '../utils/offlineQueue'
 import useAuthStore from '../store/authStore'
@@ -512,24 +512,80 @@ function SmsConfigTab({ settings }) {
   )
 }
 
-function EmailConfigTab({ settings, onSave, loading }) {
-  const { register, handleSubmit, getValues } = useForm({ defaultValues: settings })
+function EmailConfigTab({ settings }) {
+  /**
+   * Filled in from what is saved.
+   *
+   * The form registers camelCase names while the record stores snake_case
+   * under email_config, so it opened blank however much was configured —
+   * which reads as "nothing is set up here" when something is. The password
+   * is deliberately not sent back by the server, so that box stays empty and
+   * leaving it alone keeps the stored one.
+   */
+  const queryClient = useQueryClient()
+  /**
+   * Saving went to PUT /settings with camelCase names — an endpoint that
+   * does not take them — so the mail account was never stored at all. It
+   * goes to its own endpoint, in the names that endpoint reads.
+   */
+  const save = useMutation({
+    mutationFn: updateEmailConfig,
+    onSuccess: () => {
+      toast.success('Mail account saved. Send a test to be sure of it.')
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not save it'),
+  })
+
+  const saved = settings?.email_config || {}
+  const { register, handleSubmit, getValues } = useForm({
+    defaultValues: {
+      smtpHost: saved.smtp_host || '',
+      smtpPort: saved.smtp_port || '',
+      smtpUser: saved.smtp_user || '',
+      smtpPassword: '',
+      smtpFrom: saved.from_email || '',
+      testEmail: '',
+    },
+  })
   const [testing, setTesting] = useState(false)
 
   const handleTest = async () => {
     setTesting(true)
     try {
-      await testEmail({ to: getValues('testEmail') || getValues('smtpFrom') })
-      toast.success('Test email sent!')
+      const res = await testEmail({ to: getValues('testEmail') || getValues('smtpFrom') })
+      // The axios layer keeps only `data` and drops the server's sentence, so
+      // the useful part — where it went and through which mail server — is
+      // put back together here. It is how you tell whether these settings
+      // were used or the old ones on the server.
+      const d = res.data || {}
+      toast.success(
+        d.to
+          ? `Sent to ${d.to} via ${d.host}:${d.port} (using the ${d.using === 'settings' ? 'settings here' : 'server settings'}). Check the inbox, and the spam folder.`
+          : 'Test email sent!',
+        { duration: 9000 }
+      )
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Test email failed')
+      // The mail server's own words, kept on screen long enough to read and
+      // act on — "failed" on its own sends nobody anywhere.
+      toast.error(err.response?.data?.message || 'Test email failed', { duration: 12000 })
     } finally {
       setTesting(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit(onSave)} className="space-y-4 max-w-lg">
+    <form
+      onSubmit={handleSubmit((d) => save.mutate({
+        smtp_host: d.smtpHost?.trim() || undefined,
+        smtp_port: d.smtpPort ? Number(d.smtpPort) : undefined,
+        smtp_user: d.smtpUser?.trim() || undefined,
+        // Left blank on purpose keeps whatever is already stored.
+        smtp_pass: d.smtpPassword || undefined,
+        from_email: d.smtpFrom?.trim() || undefined,
+      }))}
+      className="space-y-4 max-w-lg"
+    >
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1">SMTP Host</label>
@@ -574,9 +630,9 @@ function EmailConfigTab({ settings, onSave, loading }) {
           </button>
         </div>
       </div>
-      <button type="submit" disabled={loading}
+      <button type="submit" disabled={save.isPending}
         className="flex items-center gap-2 px-6 py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm">
-        <FiSave size={15} /> {loading ? 'Saving...' : 'Save Email Config'}
+        <FiSave size={15} /> {save.isPending ? 'Saving...' : 'Save Email Config'}
       </button>
     </form>
   )
@@ -636,7 +692,7 @@ export default function Settings() {
     <CompanyTab key="company" settings={settings} onSave={d => updateMutation.mutate(d)} loading={updateMutation.isPending} />,
     <NotificationsTab key="notif" settings={settings} onSave={d => updateMutation.mutate(d)} loading={updateMutation.isPending} />,
     <SmsConfigTab key="sms" settings={settings} />,
-    <EmailConfigTab key="email" settings={settings} onSave={d => updateMutation.mutate(d)} loading={updateMutation.isPending} />,
+    <EmailConfigTab key="email" settings={settings} />,
   ]
 
   return (

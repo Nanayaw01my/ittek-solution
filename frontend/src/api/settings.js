@@ -2,6 +2,8 @@ import api from './axios'
 
 export const getSettings = () => api.get('/settings')
 export const updateSettings = (data) => api.put('/settings', data)
+/** The mail account. The password is write-only — it never comes back. */
+export const updateEmailConfig = (data) => api.put('/settings/email', data)
 export const testEmail = (data) => api.post('/settings/test-email', data)
 
 /** Arkesel: the key, the sender ID, and the switch. The key never comes back. */

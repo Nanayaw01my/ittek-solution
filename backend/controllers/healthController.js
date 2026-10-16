@@ -112,12 +112,12 @@ const systemHealth = async (req, res) => {
      * screen guessing.
      */
     const remedyFor = (run) => {
-      if (!run) return 'Press “Run what is due” to take one now.';
+      if (!run) return 'Check Settings → Email Config, then press “Run what is due”.';
       const why = String(run.message || '').toLowerCase();
       if (run.ok) return null;
       if (why.includes('no address') || why.includes('nowhere to go')) {
-        return 'Set BACKUP_EMAIL or ADMIN_EMAIL on the server, or a company email in Settings, '
-          + 'then press “Run what is due”.';
+        return 'Put an address in Settings → Company → Email (or set BACKUP_EMAIL on the '
+          + 'server), then press “Run what is due”.';
       }
       if (why.includes('too large')) {
         return 'The backup is too big to email. Download one by hand from Backup & Restore, '
@@ -128,18 +128,19 @@ const systemHealth = async (req, res) => {
       // unreachable server and send somebody to look at the wrong thing.
       if (why.includes('invalid login') || why.includes('auth') || why.includes('credential')
         || why.includes('535') || why.includes('password')) {
-        return 'The mail server refused the login. Check the email user and password on the '
-          + 'server — a Gmail account needs an app password, not the ordinary one.';
+        return 'The mail server refused the login. Check the user and password in '
+          + 'Settings → Email Config — a Gmail account needs an app password, not the '
+          + 'ordinary one — then send a test from there.';
       }
       if (why.includes('timeout') || why.includes('econn') || why.includes('etimedout')
         || why.includes('socket') || why.includes('getaddrinfo') || why.includes('ehostunreach')) {
-        return 'The backup was made but the mail server could not be reached. Check the email '
-          + 'settings on the server (host and port), and that the host allows outgoing mail, '
-          + 'then press “Run what is due”.';
+        return 'The backup was made but the mail server could not be reached. Check the host '
+          + 'and port in Settings → Email Config and send a test from there — if port 587 '
+          + 'times out, try 465.';
       }
       if (why.includes('could not email') || why.includes('smtp')) {
-        return 'The backup was made but could not be emailed. Check the email settings on the '
-          + 'server, then press “Run what is due”.';
+        return 'The backup was made but could not be emailed. Check Settings → Email Config '
+          + 'and send a test from there.';
       }
       return 'Press “Run what is due” to try again, and take one by hand from Backup & Restore '
         + 'in the meantime.';

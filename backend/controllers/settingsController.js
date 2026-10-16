@@ -247,7 +247,10 @@ const updateEmailConfig = async (req, res) => {
   try {
     const { smtp_host, smtp_port, smtp_user, smtp_pass, from_email } = req.body;
 
-    let settings = await Settings.findOne();
+    // The password is select:false, so a plain findOne does not load it —
+    // and writing the object back without it silently wiped the password
+    // every time anybody saved this tab after changing only the host.
+    let settings = await Settings.findOne().select('+email_config.smtp_pass');
     if (!settings) settings = new Settings();
 
     settings.email_config = {
@@ -333,7 +336,60 @@ const clearAllData = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/settings/test-email
+ *
+ * Send one message and say exactly what happened.
+ *
+ * The Email Config tab has always had a "send a test" button and there was
+ * nothing behind it. Mail is the one setting that cannot be checked by
+ * reading it back — it is either accepted by the mail server or it is not —
+ * so the button is the whole point of the tab.
+ */
+const testEmail = async (req, res) => {
+  try {
+    const { sendEmail, mailAccount } = require('../utils/email');
+    const account = await mailAccount();
+
+    const to = String(req.body?.to || '').trim() || account.user;
+    if (!to) {
+      return res.status(400).json({
+        success: false,
+        message: 'Who should the test go to? Fill in the mail account first.',
+      });
+    }
+
+    const shop = (await Settings.findOne().select('company_name').lean())?.company_name
+      || 'ITTEK Solution';
+
+    await sendEmail({
+      to,
+      subject: `${shop} — test email`,
+      html: `<p>This is a test from <strong>${shop}</strong>.</p>
+             <p>If you are reading it, the mail account works and the nightly backup
+             can be sent.</p>
+             <p style="color:#666;font-size:13px">Sent ${new Date().toLocaleString('en-GB')}
+             via ${account.host}:${account.port} as ${account.user}.</p>`,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Sent to ${to} via ${account.host}:${account.port}. Check the inbox — `
+        + 'and the spam folder.',
+      data: { to, host: account.host, port: account.port, using: account.source },
+    });
+  } catch (err) {
+    // The mail server's own words. "Server error." would leave somebody
+    // guessing at exactly the moment they need to be told.
+    console.error('Test email error:', err.stack || err.message);
+    return res.status(400).json({
+      success: false,
+      message: `Could not send it: ${err.message}`,
+    });
+  }
+};
+
 module.exports = {
   getSettings, updateSettings, updateEmailConfig, uploadLogo, clearAllData,
-  updateSmsConfig, testSms, getSmsBalance, smsCredentials,
+  updateSmsConfig, testSms, getSmsBalance, smsCredentials, testEmail,
 };

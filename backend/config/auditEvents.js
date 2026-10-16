@@ -137,6 +137,7 @@ const EVENTS = {
 
   // ── The system itself ───────────────────────────────────────────────
   UPDATE_SETTINGS: ['changed the settings', 'high'],
+  TEST_EMAIL: ['sent a test email', 'low'],
   UPDATE_EMAIL_CONFIG: ['changed the email settings', 'high'],
   UPDATE_SMS_CONFIG: ['changed the SMS settings', 'high'],
   TEST_SMS: ['sent a test SMS', 'low'],

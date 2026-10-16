@@ -5,7 +5,7 @@ const path = require('path');
 const { authenticate } = require('../middleware/auth');
 const { requireLevel, requireRoles } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
-const { getSettings, updateSettings, updateEmailConfig, updateSmsConfig, testSms, getSmsBalance, uploadLogo, clearAllData } = require('../controllers/settingsController');
+const { getSettings, updateSettings, updateEmailConfig, updateSmsConfig, testSms, getSmsBalance, testEmail, uploadLogo, clearAllData } = require('../controllers/settingsController');
 
 // Logo upload — memory storage, then straight to Cloudinary.
 // Disk storage would be worse than useless here: Render's filesystem is
@@ -28,6 +28,8 @@ const adminOnly = [authenticate, requireLevel(3)];
 router.get('/', adminOnly, getSettings);
 router.put('/', adminOnly, auditLog('UPDATE_SETTINGS'), updateSettings);
 router.put('/email', authenticate, requireRoles('Super Admin'), auditLog('UPDATE_EMAIL_CONFIG'), updateEmailConfig);
+// Mail is the one setting that cannot be checked by reading it back.
+router.post('/test-email', authenticate, requireRoles('Super Admin'), auditLog('TEST_EMAIL'), testEmail);
 // Sending real messages costs real money, so the key, the test send and the
 // balance are all owner-level.
 router.put('/sms', adminOnly, auditLog('UPDATE_SMS_CONFIG'), updateSmsConfig);
