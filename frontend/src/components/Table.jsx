@@ -3,7 +3,7 @@ import { FiSearch, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
 
 export default function Table({
   columns,
-  data = [],
+  data: rows = [],
   loading = false,
   emptyMessage = 'No data found',
   searchable = false,
@@ -16,6 +16,23 @@ export default function Table({
   onRowClick,
   striped = true,
 }) {
+  /**
+   * Anything that is not a list is treated as an empty one.
+   *
+   * This is shared by most screens in the system, and it used to call .map
+   * on whatever it was handed. One page passing an object — an endpoint that
+   * changed shape, a server older than the app answering a path it does not
+   * know — took down the whole application with "p.map is not a function"
+   * and a Reload button that reloaded straight back into the same crash.
+   *
+   * A table that cannot read its rows should show no rows. It should not be
+   * able to stop somebody selling.
+   */
+  const data = Array.isArray(rows) ? rows : []
+  if (!Array.isArray(rows) && rows != null && import.meta.env.DEV) {
+    console.warn('Table was given something that is not a list:', rows)
+  }
+
   const [localSearch, setLocalSearch] = useState('')
 
   const handleSearch = (v) => {

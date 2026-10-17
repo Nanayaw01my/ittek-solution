@@ -171,7 +171,7 @@ function DetailModal({ layaway, onClose }) {
 
         <div>
           <p className="text-xs font-bold text-gray-500 uppercase mb-2">Items</p>
-          {layaway.items.map((item, i) => (
+          {(layaway.items || []).map((item, i) => (
             <div key={i} className="flex justify-between text-sm py-1 border-b border-gray-50 last:border-0">
               <span className="text-gray-700">
                 {item.product_name}{item.variant_name ? ` — ${item.variant_name}` : ''} × {item.quantity}

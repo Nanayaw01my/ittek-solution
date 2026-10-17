@@ -19,7 +19,8 @@ function CreateRequestModal({ isOpen, onClose }) {
     queryKey: ['products-for-request'],
     queryFn: () => getProducts({ limit: 200 }).then(r => r.data),
   })
-  const products = productsData?.products || productsData || []
+  const products = Array.isArray(productsData?.products) ? productsData.products
+    : (Array.isArray(productsData) ? productsData : [])
 
   const { register, handleSubmit, control, watch, formState: { errors } } = useForm({
     defaultValues: { items: [{ product: '', isNew: false, newName: '', sellingPrice: '', quantity: 1, estimatedCost: '' }], notes: '' }
@@ -244,7 +245,9 @@ export default function StockRequests() {
     onError: err => toast.error(err.response?.data?.message || 'Rejection failed'),
   })
 
-  const requests = data?.requests || data || []
+  const requests = Array.isArray(data?.requests) ? data.requests
+    : Array.isArray(data?.stockRequests) ? data.stockRequests
+    : (Array.isArray(data) ? data : [])
 
   // These read the record's own field names. They used to be camelCase —
   // totalAmount, requestedBy, productName — none of which exist on a stock

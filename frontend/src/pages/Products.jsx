@@ -783,7 +783,11 @@ export default function Products() {
     queryClient.invalidateQueries({ queryKey: ['suppliers'] })
   }
 
-  const products = data?.products || data || []
+  // `|| data` handed the raw response object to the table whenever the
+  // shape was not what this page expected, which crashed the whole app
+  // rather than showing an empty list.
+  const products = Array.isArray(data?.products) ? data.products
+    : (Array.isArray(data) ? data : [])
   const allCategories = categoriesData?.categories || categoriesData || []
   const categories = inventoryOnly
     ? allCategories.filter(c => assignedCategoryIds.includes(String(c._id)))
