@@ -11,6 +11,28 @@ const Product = require('../models/Product');
  * cost skews the profit figure, but it must never stop a paid-up customer
  * walking out with goods they own.
  */
+/**
+ * Which of these items the shelf cannot supply right now.
+ *
+ * Used when a cancelled plan is paid into again: cancelling put the goods
+ * back, and somebody else may have bought them since. Checked before any
+ * stock is moved, so a plan is never half re-reserved.
+ */
+const shortages = async (items) => {
+  const short = [];
+  for (const item of items || []) {
+    const product = await Product.findById(item.product_id).select('name quantity variants').lean();
+    if (!product) { short.push(item.product_name || 'An item'); continue; }
+    let have = product.quantity ?? 0;
+    if (item.variant_sku) {
+      const v = (product.variants || []).find((x) => x.sku === item.variant_sku);
+      have = v?.quantity ?? 0;
+    }
+    if (have < (item.quantity || 0)) short.push(product.name || item.product_name);
+  }
+  return short;
+};
+
 const costPriceOf = async (item) => {
   try {
     const product = await Product.findById(item.product_id).select('cost_price variants').lean();
@@ -198,8 +220,29 @@ const addPayment = async (req, res) => {
 
     const layaway = await Layaway.findById(req.params.id);
     if (!layaway) return res.status(404).json({ success: false, message: 'Layaway not found.' });
+
+    /**
+     * A customer paying into a plan that was cancelled.
+     *
+     * Refusing was tidy and useless: the customer is standing there with
+     * money for goods they still want. So the money is taken and the plan
+     * comes back to life — a cancelled plan quietly collecting payments is
+     * worse bookkeeping than refusing one.
+     *
+     * Cancelling put the goods back on the shelf, and somebody may have
+     * bought them since. They are taken off again where they are there to
+     * take; where they are not, the payment is still accepted and the shop
+     * is told to get them in. Turning a paying customer away is not the
+     * right answer to the shop's own stock problem.
+     */
+    let reinstated = false;
+    let shortOfStock = [];
     if (layaway.status === 'cancelled') {
-      return res.status(400).json({ success: false, message: 'This layaway was cancelled.' });
+      shortOfStock = await shortages(layaway.items);
+      if (shortOfStock.length === 0) await deductStock(layaway.items);
+      layaway.status = 'active';
+      layaway.cancelled_reason = undefined;
+      reinstated = true;
     }
     if (value > layaway.balance + 0.05) {
       return res.status(400).json({
@@ -222,10 +265,23 @@ const addPayment = async (req, res) => {
       });
     }
 
+    const notes = [];
+    if (reinstated) {
+      notes.push(shortOfStock.length
+        ? `The plan was cancelled and is open again. ${shortOfStock.join(', ')} `
+          + `${shortOfStock.length === 1 ? 'is' : 'are'} not on the shelf — get them in before collection.`
+        : 'The plan was cancelled and is open again, and the goods are reserved for them.');
+    }
+
     return res.status(200).json({
       success: true,
-      message: layaway.status === 'completed' ? 'Paid in full — goods ready for collection.' : 'Payment recorded.',
+      message: [
+        layaway.status === 'completed' ? 'Paid in full — goods ready for collection.' : 'Payment recorded.',
+        ...notes,
+      ].join(' '),
       data: layaway,
+      reinstated,
+      short_of_stock: shortOfStock,
     });
   } catch (err) {
     console.error('Layaway payment error:', err.message);

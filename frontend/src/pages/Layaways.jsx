@@ -240,16 +240,10 @@ function DetailModal({ layaway, onClose, onPay }) {
             >
               <FiPrinter size={15} /> {printing ? 'Preparing…' : 'Print Agreement'}
             </button>
-            {/* A plan that still owes but cannot be paid against says why.
-                Offering nothing and explaining nothing leaves somebody
-                staring at a balance with no way to collect it and no idea
-                whether that is the system or the plan. */}
-            {layaway.balance > 0 && layaway.status === 'cancelled' && (
-              <div className="flex-1 py-2.5 px-3 rounded-xl bg-gray-100 text-gray-600 text-xs font-semibold text-center">
-                This plan was cancelled, so no further payment can be taken.
-              </div>
-            )}
-            {layaway.balance > 0 && layaway.status !== 'cancelled' && (
+            {/* Any plan that still owes can be paid into, cancelled ones
+                included: a customer standing there with money is not an
+                error to refuse. Paying into a cancelled plan reopens it. */}
+            {layaway.balance > 0 && (
               <button
                 onClick={onPay}
                 className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-1"
@@ -450,7 +444,7 @@ export default function Layaways() {
                           been cancelled. Limiting this to "active" meant a
                           customer who had fallen behind could be seen but
                           not paid for. */}
-                      {l.balance > 0 && l.status !== 'cancelled' && (
+                      {l.balance > 0 && (
                         <button
                           onClick={() => setPayingFor(l)}
                           className="px-2.5 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-bold mr-1"
