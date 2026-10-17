@@ -240,6 +240,15 @@ function DetailModal({ layaway, onClose, onPay }) {
             >
               <FiPrinter size={15} /> {printing ? 'Preparing…' : 'Print Agreement'}
             </button>
+            {/* A plan that still owes but cannot be paid against says why.
+                Offering nothing and explaining nothing leaves somebody
+                staring at a balance with no way to collect it and no idea
+                whether that is the system or the plan. */}
+            {layaway.balance > 0 && layaway.status === 'cancelled' && (
+              <div className="flex-1 py-2.5 px-3 rounded-xl bg-gray-100 text-gray-600 text-xs font-semibold text-center">
+                This plan was cancelled, so no further payment can be taken.
+              </div>
+            )}
             {layaway.balance > 0 && layaway.status !== 'cancelled' && (
               <button
                 onClick={onPay}
