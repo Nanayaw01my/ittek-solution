@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -271,15 +271,33 @@ export default function Layaways() {
   const [payingFor, setPayingFor] = useState(null)
   const [viewing, setViewing] = useState(null)
   const [creating, setCreating] = useState(false)
+  const [page, setPage] = useState(1)
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['layaways', statusFilter, search],
-    queryFn: () => getLayaways({ status: statusFilter === 'all' ? undefined : statusFilter, search: search || undefined }),
+  // A changed filter or search is a different list; staying on page four of
+  // it shows nothing and looks like nobody is there.
+  useEffect(() => { setPage(1) }, [statusFilter, search])
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['layaways', statusFilter, search, page],
+    queryFn: () => getLayaways({
+      status: statusFilter === 'all' ? undefined : statusFilter,
+      search: search || undefined,
+      page,
+      limit: 25,
+    }),
     keepPreviousData: true,
   })
 
-  const layaways = data?.data?.data || data?.data || []
-  const summary = data?.data?.summary || {}
+  // The server now sends the list, the summary and the page count together
+  // inside `data`; the plain array is what older servers send.
+  const body = data?.data
+  const layaways = Array.isArray(body?.layaways) ? body.layaways
+    : (Array.isArray(body) ? body : [])
+  const summary = body?.summary || {}
+  const pages = body?.pagination?.pages || 1
+  const total = body?.pagination?.total ?? layaways.length
+  // An empty table cannot say whether nobody is there or nothing arrived.
+  const brokeDown = !isLoading && (!!error || (body !== undefined && !Array.isArray(body) && !Array.isArray(body?.layaways)))
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
@@ -333,12 +351,45 @@ export default function Layaways() {
         />
       </div>
 
+      {brokeDown && (
+        <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-800">
+          <p className="font-semibold">The layaway list did not load.</p>
+          <p className="mt-0.5 text-xs">
+            {error?.response?.data?.message || error?.message
+              || 'The server sent back something that is not a list of layaways.'}
+          </p>
+          <button
+            onClick={() => refetch()}
+            className="mt-2 px-3 py-1.5 rounded-lg bg-white border border-red-200 text-xs font-semibold hover:bg-red-50"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
       {isLoading ? (
         <LoadingSpinner />
       ) : layaways.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <FiPackage size={36} className="mx-auto mb-2" />
-          <p className="text-sm">No layaway plans here.</p>
+          {/* Which kind of empty this is. Looking under "active" for somebody
+              who has already finished paying is the commonest reason a
+              customer cannot be found. */}
+          <p className="text-sm">
+            {search
+              ? `Nobody matches “${search}”${statusFilter !== 'all' ? ` under ${statusFilter}` : ''}.`
+              : statusFilter === 'all'
+                ? 'No layaway plans yet.'
+                : `No ${statusFilter} layaway plans.`}
+          </p>
+          {statusFilter !== 'all' && (
+            <button
+              onClick={() => setStatusFilter('all')}
+              className="mt-2 text-xs font-bold text-orange-600 hover:underline"
+            >
+              Look in all of them
+            </button>
+          )}
         </div>
       ) : (
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden overflow-x-auto">
@@ -394,6 +445,36 @@ export default function Layaways() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Without this the screen only ever showed the newest page, and an
+          older plan simply could not be reached — which looks exactly like
+          the customer not being there at all. */}
+      {!isLoading && layaways.length > 0 && (
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <p className="text-gray-500">
+            {total} plan{total === 1 ? '' : 's'}
+            {pages > 1 ? ` · page ${page} of ${pages}` : ''}
+          </p>
+          {pages > 1 && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 font-semibold disabled:opacity-40 hover:bg-gray-50"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(pages, p + 1))}
+                disabled={page >= pages}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 font-semibold disabled:opacity-40 hover:bg-gray-50"
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
       )}
 

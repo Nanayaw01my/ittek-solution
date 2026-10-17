@@ -152,15 +152,23 @@ const getLayaways = async (req, res) => {
       ]))[0]?.total || 0,
     };
 
+    const pagination = {
+      total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / Number(limit)),
+    };
+
     return res.status(200).json({
       success: true,
-      data: layaways,
+      // Inside `data` as well, because the browser's axios layer keeps only
+      // that and throws away everything beside it — so the page count and
+      // the summary never arrived, and the screen could only ever show the
+      // newest fifty with no way to reach the rest.
+      data: { layaways, summary, pagination },
       summary,
-      pagination: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / Number(limit)) },
+      pagination,
     });
   } catch (err) {
-    console.error('Get layaways error:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error.' });
+    console.error('Get layaways error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not load the layaways: ${err.message}` });
   }
 };
 
