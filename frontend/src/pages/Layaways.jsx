@@ -102,7 +102,7 @@ function PaymentModal({ layaway, onClose }) {
   )
 }
 
-function DetailModal({ layaway, onClose }) {
+function DetailModal({ layaway, onClose, onPay }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [cancelReason, setCancelReason] = useState('')
@@ -240,6 +240,14 @@ function DetailModal({ layaway, onClose }) {
             >
               <FiPrinter size={15} /> {printing ? 'Preparing…' : 'Print Agreement'}
             </button>
+            {layaway.balance > 0 && layaway.status !== 'cancelled' && (
+              <button
+                onClick={onPay}
+                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-1"
+              >
+                <FiDollarSign size={15} /> Take a payment
+              </button>
+            )}
             {layaway.balance <= 0 && !layaway.collected && (
               <button
                 onClick={() => collectMutation.mutate()}
@@ -428,7 +436,12 @@ export default function Layaways() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
-                      {l.balance > 0 && l.status === 'active' && (
+                      {/* Matches what the server actually allows: money can
+                          be taken on any plan that still owes and has not
+                          been cancelled. Limiting this to "active" meant a
+                          customer who had fallen behind could be seen but
+                          not paid for. */}
+                      {l.balance > 0 && l.status !== 'cancelled' && (
                         <button
                           onClick={() => setPayingFor(l)}
                           className="px-2.5 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-bold mr-1"
@@ -481,7 +494,13 @@ export default function Layaways() {
       <LayawayWizard isOpen={creating} onClose={() => setCreating(false)} />
 
       {payingFor && <PaymentModal layaway={payingFor} onClose={() => setPayingFor(null)} />}
-      {viewing && <DetailModal layaway={viewing} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <DetailModal
+          layaway={viewing}
+          onClose={() => setViewing(null)}
+          onPay={() => { const l = viewing; setViewing(null); setPayingFor(l) }}
+        />
+      )}
     </div>
   )
 }
