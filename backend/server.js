@@ -196,6 +196,18 @@ app.use('/api', apiLimiter);
 app.use('/api/backup/restore', express.json({ limit: '200mb' }));
 app.use('/api/backup/restore', express.text({ limit: '200mb', type: '*/*' }));
 
+/**
+ * Taking a backup carries nothing, so nothing about the body should be able
+ * to refuse it.
+ *
+ * The general parser below is strict: it accepts an object or an array and
+ * rejects anything else, so a request whose body was the bare word `null`
+ * was answered 400 before it reached the backup code. That is a strange way
+ * to lose every backup anybody ever tried to take, and strict parsing buys
+ * this route nothing — it reads no body at all.
+ */
+app.use('/api/backup/create', express.json({ strict: false, limit: '1mb' }));
+
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 

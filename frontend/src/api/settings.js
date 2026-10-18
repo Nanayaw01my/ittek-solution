@@ -11,9 +11,19 @@ export const updateSmsConfig = (data) => api.put('/settings/sms', data)
 export const testSms = (to) => api.post('/settings/sms/test', { to })
 export const getSmsBalance = () => api.get('/settings/sms/balance')
 export const getAuditLogs = (params) => api.get('/audit-logs', { params })
-/** The whole database, as a file. Long-running on a big shop, so no timeout. */
+/**
+ * The whole database, as a file. Long-running on a big shop, so no timeout.
+ *
+ * Asked for with GET, carrying nothing. It used to POST a body of `null`,
+ * which axios faithfully sent as the four characters "null" under a JSON
+ * content type — and Express refuses that outright, because a bare value is
+ * not an object. So every single press of Download Backup was answered 400
+ * before it reached the backup code at all, on every device, and the screen
+ * had no way to say so. Nothing is being sent here, so there is nothing to
+ * refuse.
+ */
 export const createBackup = () =>
-  api.post('/backup/create', null, { responseType: 'blob', timeout: 0 })
+  api.get('/backup/create', { responseType: 'blob', timeout: 0 })
 
 /**
  * The backup file's own text, posted as JSON.
