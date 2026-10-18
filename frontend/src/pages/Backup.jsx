@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { FiDownload, FiUpload, FiDatabase, FiAlertTriangle, FiCloud, FiExternalLink } from 'react-icons/fi'
@@ -19,6 +19,16 @@ export default function Backup() {
   const fileRef = useRef(null)
 
   const [backingUp, setBackingUp] = useState(false)
+  /**
+   * The finished file, held so it can be tapped.
+   *
+   * A phone will not always save a file the page asks it to save on its own:
+   * iOS allows a download only while it is still handling the tap that asked
+   * for it, and fetching the backup takes longer than that, so the save is
+   * silently refused. Keeping the file here and offering a real link to tap
+   * works on every phone, and on a desktop it is simply a second chance.
+   */
+  const [ready, setReady] = useState(null)
   const [restoring, setRestoring] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [showConfirm, setShowConfirm] = useState(false)
@@ -51,21 +61,72 @@ export default function Backup() {
     queryFn: () => getBackupSummary().then(r => r.data),
   })
 
+  /**
+   * Why it failed, in the server's own words.
+   *
+   * The download asks for a file, so when the server refuses, its
+   * explanation arrives as a blob rather than as JSON — and reading it as
+   * JSON found nothing, so every failure for every reason said the same two
+   * words: "Backup failed". That is the one message that cannot be acted on.
+   */
+  const describe = async (err) => {
+    const body = err.response?.data
+    if (typeof Blob !== 'undefined' && body instanceof Blob) {
+      try {
+        const text = await body.text()
+        try { return JSON.parse(text).message } catch { return text.slice(0, 300) }
+      } catch { /* fall through to the generic reasons */ }
+    }
+    if (body?.message) return body.message
+    if (err.code === 'ECONNABORTED') {
+      return 'the server took too long to answer. It may have been asleep — try once more.'
+    }
+    if (err.response?.status) return `the server answered ${err.response.status}.`
+    return err.message || 'the server could not be reached.'
+  }
+
+  // The file is held in the browser's memory until it is let go of.
+  useEffect(() => () => { if (ready?.url) URL.revokeObjectURL(ready.url) }, [ready])
+
   const handleBackup = async () => {
     setBackingUp(true)
+    setReady(null)
+    let res
     try {
-      const res = await createBackup()
+      res = await createBackup()
+    } catch (err) {
+      // The server's own message often already begins "Backup failed:",
+      // and "Backup failed — Backup failed: ..." reads like a stutter.
+      const why = await describe(err)
+      toast.error(/^backup failed/i.test(why) ? why : `Backup failed — ${why}`,
+        { duration: 12000 })
+      setBackingUp(false)
+      return
+    }
+
+    try {
       const blob = new Blob([res.data], { type: 'application/json' })
-      saveAs(blob, `backup-dandorsolar-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`)
+      if (blob.size === 0) {
+        // An empty file that saves without complaint is the worst outcome
+        // here: it looks like a backup until the day it is needed.
+        toast.error('The server sent an empty file. Nothing was saved — tell the office.',
+          { duration: 12000 })
+        return
+      }
+
+      const filename = `backup-dandorsolar-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`
+      // Offered to tap first, then attempted automatically. If the phone
+      // refuses the automatic save, the link is already on screen.
+      setReady({ url: URL.createObjectURL(blob), filename, size: blob.size })
+      try { saveAs(blob, filename) } catch { /* the link below is the answer */ }
+
       // Say what came out, so an empty or half file is obvious immediately
       // rather than on the day it is needed.
       const cols = res.headers?.['x-backup-collections']
       const docs = res.headers?.['x-backup-documents']
       toast.success(docs
-        ? `Backup downloaded — ${Number(docs).toLocaleString()} records from ${cols} collections`
-        : 'Backup created and downloaded')
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Backup failed')
+        ? `Backup ready — ${Number(docs).toLocaleString()} records from ${cols} collections`
+        : 'Backup ready')
     } finally {
       setBackingUp(false)
     }
@@ -163,6 +224,25 @@ export default function Backup() {
             <FiDownload size={16} />
             {backingUp ? 'Creating Backup...' : 'Download Backup'}
           </button>
+
+          {/* The file is made and waiting. On a phone this link is usually
+              how it actually gets saved. */}
+          {ready && (
+            <div className="mt-4 bg-green-50 border border-green-200 rounded-xl p-3">
+              <p className="text-sm font-bold text-green-900">Your backup is ready</p>
+              <p className="text-xs text-green-800 mt-0.5">
+                {(ready.size / 1024 / 1024).toFixed(2)} MB. If it did not save by itself —
+                phones often will not — tap below.
+              </p>
+              <a
+                href={ready.url}
+                download={ready.filename}
+                className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-sm"
+              >
+                <FiDownload size={15} /> Save {ready.filename}
+              </a>
+            </div>
+          )}
         </div>
 
         {/* Restore */}
