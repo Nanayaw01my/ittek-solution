@@ -203,6 +203,21 @@ export default function StockRequests() {
   const [approveTarget, setApproveTarget] = useState(null)
   const [rejectTarget, setRejectTarget] = useState(null)
   const [viewing, setViewing] = useState(null)
+  /**
+   * The quantities being approved, edited in the window that shows the
+   * request.
+   *
+   * They were editable all along — on a second screen, reached by pressing
+   * Approve. Nothing on the first screen said so, and a column headed QTY
+   * with a plain number in it reads as settled, so the owner saw a request
+   * for one of each and a button that looked like it would approve exactly
+   * that. A step nobody knows is there is a step that does not exist.
+   */
+  const [viewQty, setViewQty] = useState([])
+  const openView = (row) => {
+    setViewQty((row.items || []).map(i => String(i.quantity_requested ?? '')))
+    setViewing(row)
+  }
   const [page, setPage] = useState(1)
 
   const { data, isLoading } = useQuery({
@@ -231,6 +246,11 @@ export default function StockRequests() {
       queryClient.invalidateQueries(['products'])
       setApproveTarget(null)
       setApproveQty([])
+      // Approving can now happen from the detail window too, so that one
+      // has to close as well — otherwise it sits there still showing the
+      // request as pending.
+      setViewing(null)
+      setViewQty([])
     },
     onError: err => toast.error(err.response?.data?.message || 'Approval failed'),
   })
@@ -286,7 +306,7 @@ export default function StockRequests() {
       render: (id, row) => (
         <div className="flex gap-2">
           <button
-            onClick={e => { e.stopPropagation(); setViewing(row) }}
+            onClick={e => { e.stopPropagation(); openView(row) }}
             className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg"
             title="View the request"
           >
@@ -358,7 +378,7 @@ export default function StockRequests() {
       {/* What was actually asked for. The list can only show a count and a
           total; deciding whether to approve needs the lines themselves. */}
       {viewing && (
-        <Modal isOpen onClose={() => setViewing(null)} title="Stock Request" size="md">
+        <Modal isOpen onClose={() => { setViewing(null); setViewQty([]) }} title="Stock Request" size="md">
           <div className="p-5 space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -372,10 +392,19 @@ export default function StockRequests() {
               <Badge status={viewing.status} />
             </div>
 
+            {canApprove && viewing.status === 'pending' && (
+              <p className="text-xs text-gray-600 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2">
+                You decide the quantity. Change any number below before approving —
+                set a line to <strong>0</strong> to leave it out altogether.
+              </p>
+            )}
+
             <div className="border border-gray-100 rounded-xl overflow-hidden">
               <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-gray-50 text-[11px] font-bold text-gray-500">
                 <span className="col-span-6">PRODUCT</span>
-                <span className="col-span-2 text-center">QTY</span>
+                <span className="col-span-2 text-center">
+                  {canApprove && viewing.status === 'pending' ? 'APPROVE' : 'QTY'}
+                </span>
                 <span className="col-span-2 text-right">EACH</span>
                 <span className="col-span-2 text-right">TOTAL</span>
               </div>
@@ -394,16 +423,40 @@ export default function StockRequests() {
                     )}
                   </span>
                   <span className="col-span-2 text-center">
-                    {/* Approved at something other than what was asked: both
-                        numbers are shown, because the request is the record
-                        of what the shop floor said it needed. */}
-                    {i.quantity_approved !== undefined && i.quantity_approved !== null
-                      && i.quantity_approved !== i.quantity_requested
-                      ? <>
-                          <span className="line-through text-gray-400">{i.quantity_requested}</span>
-                          <span className="ml-1 font-bold text-gray-800">{i.quantity_approved}</span>
-                        </>
-                      : i.quantity_requested}
+                    {canApprove && viewing.status === 'pending' ? (
+                      // Prefilled with what was asked for, so approving in
+                      // full stays one tap. The number asked for is kept
+                      // under it, so changing it never loses the record of
+                      // what the shop floor said it needed.
+                      <>
+                        <input
+                          type="number" min="0" step="1" inputMode="numeric"
+                          aria-label={`Quantity to approve for ${i.product_name}`}
+                          value={viewQty[idx] ?? ''}
+                          onChange={e => setViewQty(q => {
+                            const next = [...q]; next[idx] = e.target.value; return next
+                          })}
+                          className="w-full px-1.5 py-1.5 border border-gray-300 rounded-lg text-sm
+                                     text-center font-bold focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                        {String(viewQty[idx] ?? '') !== String(i.quantity_requested ?? '') && (
+                          <span className="block text-[10px] text-gray-400 mt-0.5">
+                            asked {i.quantity_requested}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      /* Approved at something other than what was asked: both
+                         numbers are shown, because the request is the record
+                         of what the shop floor said it needed. */
+                      i.quantity_approved !== undefined && i.quantity_approved !== null
+                        && i.quantity_approved !== i.quantity_requested
+                        ? <>
+                            <span className="line-through text-gray-400">{i.quantity_requested}</span>
+                            <span className="ml-1 font-bold text-gray-800">{i.quantity_approved}</span>
+                          </>
+                        : i.quantity_requested
+                    )}
                   </span>
                   <span className="col-span-2 text-right text-gray-600">
                     {i.estimated_cost ? formatCurrency(i.estimated_cost) : '—'}
@@ -457,10 +510,20 @@ export default function StockRequests() {
                   Reject
                 </button>
                 <button
-                  onClick={() => { const r = viewing; setViewing(null); openApprove(r) }}
-                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm"
+                  onClick={() => approveMutation.mutate({
+                    id: viewing._id,
+                    // An empty box means "as asked", not "none" — a blank
+                    // sent as 0 would quietly approve nothing.
+                    quantities: (viewing.items || []).map((i, idx) => {
+                      const v = viewQty[idx]
+                      return v === '' || v === undefined ? null : Number(v)
+                    }),
+                  })}
+                  disabled={approveMutation.isPending}
+                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-60
+                             text-white rounded-xl font-bold text-sm"
                 >
-                  Approve
+                  {approveMutation.isPending ? 'Approving…' : 'Approve'}
                 </button>
               </div>
             ) : (
