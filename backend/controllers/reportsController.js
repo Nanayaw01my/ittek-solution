@@ -21,7 +21,7 @@ const getDashboardStats = async (req, res) => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const isLimitedRole = ['Sales', 'Manager'].includes(req.user.role);
+    const isLimitedRole = ['Sales', 'Engineer', 'Manager'].includes(req.user.role);
     // Cast rather than trusted. find() casts a string id against the schema
     // and an aggregation does not — so a string here would match nothing,
     // silently, and a member of staff would be told they had sold nothing all

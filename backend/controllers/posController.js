@@ -14,6 +14,7 @@ const loyalty = require('../utils/loyalty');
 const fraud = require('../utils/fraudDetection');
 const { fromBase } = require('../utils/currency');
 const { normaliseGhanaPhone } = require('../utils/phone');
+const { seesOwnRecordsOnly } = require('../middleware/rbac');
 
 /**
  * Calculate cart totals with discount.
@@ -334,7 +335,7 @@ const getSales = async (req, res) => {
     const filter = {};
 
     // Sales role only sees own sales
-    if (req.user.role === 'Sales') {
+    if (seesOwnRecordsOnly(req.user.role)) {
       filter.user_id = req.user._id;
     }
 
@@ -375,7 +376,7 @@ const getTodaySales = async (req, res) => {
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
 
     const filter = { sale_date: { $gte: startOfDay, $lte: endOfDay } };
-    if (req.user.role === 'Sales') filter.user_id = req.user._id;
+    if (seesOwnRecordsOnly(req.user.role)) filter.user_id = req.user._id;
 
     const sales = await Sale.find(filter).populate('user_id', 'username');
 
@@ -407,7 +408,7 @@ const getSale = async (req, res) => {
     if (!sale) return res.status(404).json({ success: false, message: 'Sale not found.' });
 
     // Sales role can only see own sales
-    if (req.user.role === 'Sales' && String(sale.user_id._id) !== String(req.user._id)) {
+    if (seesOwnRecordsOnly(req.user.role) && String(sale.user_id._id) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 

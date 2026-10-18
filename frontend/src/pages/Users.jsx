@@ -19,8 +19,8 @@ import useBarcodeScanner from '../hooks/useBarcodeScanner'
  * manufacture a peer.
  */
 const ROLES_FOR_LEVEL = {
-  3: ['Manager', 'Sales', 'Field Agent'],
-  4: ['Super Admin', 'CEO', 'COO', 'Manager', 'Sales', 'Field Agent'],
+  3: ['Manager', 'Sales', 'Engineer', 'Field Agent'],
+  4: ['Super Admin', 'CEO', 'COO', 'Manager', 'Sales', 'Engineer', 'Field Agent'],
 }
 
 const ROLE_COLORS = {
@@ -29,6 +29,7 @@ const ROLE_COLORS = {
   'COO': 'bg-indigo-100 text-indigo-700',
   'Manager': 'bg-orange-100 text-orange-700',
   'Sales': 'bg-green-100 text-green-700',
+  'Engineer': 'bg-sky-100 text-sky-700',
   'Field Agent': 'bg-teal-100 text-teal-700',
 }
 
@@ -835,13 +836,15 @@ export default function Users() {
   const myLevel = getRoleLevel(me?.role)
 
   const visibleUsers = ['CEO', 'COO'].includes(me?.role)
-    ? users.filter(u => ['Manager', 'Sales', 'Field Agent'].includes(u.role))
+    ? users.filter(u => ['Manager', 'Sales', 'Engineer', 'Field Agent'].includes(u.role))
     : users
 
   const activeCount = visibleUsers.filter(u => u.is_active).length
   const inactiveCount = visibleUsers.filter(u => !u.is_active).length
   const managerCount = visibleUsers.filter(u => u.role === 'Manager').length
-  const salesCount = visibleUsers.filter(u => u.role === 'Sales').length
+  // Engineers sell on the same terms as Sales, so they are counted with
+  // them rather than vanishing from the only tally of who serves customers.
+  const salesCount = visibleUsers.filter(u => ['Sales', 'Engineer'].includes(u.role)).length
 
   const canActOn = (row) => {
     if (row._id === me?.id || row._id === me?._id) return false
@@ -896,7 +899,7 @@ export default function Users() {
         {[
           { label: 'Active Users', value: activeCount, color: 'bg-green-50 border-green-100', text: 'text-green-700' },
           { label: 'Managers', value: managerCount, color: 'bg-blue-50 border-blue-100', text: 'text-blue-700' },
-          { label: 'Sales Staff', value: salesCount, color: 'bg-orange-50 border-orange-100', text: 'text-orange-700' },
+          { label: 'Sales & Engineers', value: salesCount, color: 'bg-orange-50 border-orange-100', text: 'text-orange-700' },
           { label: 'Inactive', value: inactiveCount, color: 'bg-red-50 border-red-100', text: 'text-red-700' },
         ].map(s => (
           <div key={s.label} className={`${s.color} border rounded-xl p-4 flex items-center gap-3`}>

@@ -23,6 +23,7 @@ const ROLE_COLORS = {
   'COO': 'bg-indigo-100 text-indigo-700',
   'Manager': 'bg-orange-100 text-orange-700',
   'Sales': 'bg-green-100 text-green-700',
+  'Engineer': 'bg-sky-100 text-sky-700',
 }
 
 function DetailsCell({ details }) {
