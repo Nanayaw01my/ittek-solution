@@ -75,20 +75,36 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             <App />
           </CurrencyProvider>
         </I18nProvider>
+        {/*
+          Below the header, not on top of it.
+          Pinned to the top of the window, a toast landed squarely over the
+          sticky top bar — covering the menu, the avatar and the title of the
+          page it was talking about. The offset clears the 56px bar and
+          whatever the phone reserves above it for the notch.
+        */}
         <Toaster
           position="top-right"
           gutter={8}
+          containerStyle={{
+            top: 'calc(env(safe-area-inset-top, 0px) + 4rem)',
+            right: 'max(env(safe-area-inset-right, 0px), 0.75rem)',
+            left: '0.75rem',
+          }}
           toastOptions={{
             duration: 4000,
             style: {
               background: '#fff',
               color: '#1e293b',
-              borderRadius: '8px',
+              borderRadius: '14px',
               padding: '12px 16px',
               fontSize: '14px',
               fontWeight: '500',
-              boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
-              maxWidth: '380px',
+              boxShadow: '0 10px 30px rgba(15,23,42,0.14)',
+              // Room to be read on a phone; capped so it does not sprawl on
+              // a desktop.
+              maxWidth: 'min(420px, 100%)',
+              width: 'fit-content',
+              marginLeft: 'auto',
               border: '1px solid #e5e7eb',
             },
             success: { iconTheme: { primary: '#10b981', secondary: '#fff' } },

@@ -25,52 +25,72 @@ export const FIELD_AGENT_PAGES = ['/field-dispatch', '/phone-sales', '/notificat
 /** Where a field agent lands after signing in, instead of the dashboard. */
 export const FIELD_AGENT_HOME = '/field-dispatch'
 
+/**
+ * The sidebar, in groups.
+ *
+ * Forty entries in one flat list is three screens of scrolling on a phone to
+ * reach Settings, and no way to guess where anything is — Refunds sat
+ * between Point of Sale and Field Dispatch for no reason a person could
+ * name. Grouping is the whole fix: a heading tells you which handful to read
+ * and lets you skip the rest.
+ *
+ * The order of the groups follows the day: selling first, then stock, then
+ * money, then the things looked at once a week.
+ */
+const SECTIONS = [
+  { key: 'selling', label: 'Selling' },
+  { key: 'customers', label: 'Customers & credit' },
+  { key: 'stock', label: 'Stock' },
+  { key: 'money', label: 'Money' },
+  { key: 'admin', label: 'Admin' },
+];
+
 const NAV_ITEMS = [
   // All logged-in users
-  { to: '/dashboard', label: 'Dashboard', icon: FiHome, minLevel: 1 },
-  { to: '/expenses', label: 'Expenses', icon: FiDollarSign, minLevel: 1 },
-  { to: '/notifications', label: 'Notifications', icon: FiBell, minLevel: 1 },
+  { to: '/dashboard', label: 'Dashboard', icon: FiHome, minLevel: 1, section: 'selling' },
+  { to: '/expenses', label: 'Expenses', icon: FiDollarSign, minLevel: 1, section: 'money' },
+  { to: '/notifications', label: 'Notifications', icon: FiBell, minLevel: 1, section: 'selling' },
   // Sales+ (all logged-in users)
-  { to: '/pos', label: 'Point of Sale', icon: FiShoppingCart, minLevel: 1 },
-  { to: '/refunds', label: 'Refunds', icon: FiRotateCcw, minLevel: 1 },
-  { to: '/field-dispatch', label: 'Field Dispatch', icon: FiSend, minLevel: 1 },
-  { to: '/phone-sales', label: 'Phone Credit Sales', icon: FiSmartphone, minLevel: 1 },
-  { to: '/service-charges', label: 'Service Charges', icon: FiTool, minLevel: 1 },
-  { to: '/damaged-goods', label: 'Damaged & Faulty', icon: FiAlertTriangle, minLevel: 1 },
-  { to: '/cash-up', label: 'Cash Up', icon: FiLock, minLevel: 2 },
-  { to: '/customers', label: 'Customers', icon: FiUsers, minLevel: 2 },
-  { to: '/warranties', label: 'Warranties', icon: FiShield, minLevel: 1 },
-  { to: '/quotations', label: 'Quotations', icon: FiFileText, minLevel: 1 },
-  { to: '/reorder', label: 'What to Order', icon: FiTrendingUp, minLevel: 2 },
-  { to: '/receipt-approvals', label: 'Receipt Approvals', icon: FiCheckSquare, minLevel: 2 },
-  { to: '/reminders', label: 'Reminders', icon: FiBell, minLevel: 2 },
-  { to: '/contacts', label: 'Contact Book', icon: FiPhone, minLevel: 2 },
-  { to: '/installations', label: 'Installations', icon: FiTool, minLevel: 1 },
-  { to: '/payables', label: 'What We Owe', icon: FiTruck, minLevel: 3 },
-  { to: '/margins', label: 'Margin Watch', icon: FiTrendingUp, minLevel: 3, page: 'reports' },
-  { to: '/system-health', label: 'System Health', icon: FiShield, minLevel: 3 },
-  { to: '/packages-receipt', label: 'Packages Receipt', icon: FiFileText, minLevel: 2 },
+  { to: '/pos', label: 'Point of Sale', icon: FiShoppingCart, minLevel: 1, section: 'selling' },
+  { to: '/refunds', label: 'Refunds', icon: FiRotateCcw, minLevel: 1, section: 'selling' },
+  { to: '/field-dispatch', label: 'Field Dispatch', icon: FiSend, minLevel: 1, section: 'selling' },
+  { to: '/phone-sales', label: 'Phone Credit Sales', icon: FiSmartphone, minLevel: 1, section: 'selling' },
+  { to: '/service-charges', label: 'Service Charges', icon: FiTool, minLevel: 1, section: 'selling' },
+  { to: '/damaged-goods', label: 'Damaged & Faulty', icon: FiAlertTriangle, minLevel: 1, section: 'stock' },
+  { to: '/cash-up', label: 'Cash Up', icon: FiLock, minLevel: 2, section: 'money' },
+  { to: '/customers', label: 'Customers', icon: FiUsers, minLevel: 2, section: 'customers' },
+  { to: '/warranties', label: 'Warranties', icon: FiShield, minLevel: 1, section: 'customers' },
+  { to: '/quotations', label: 'Quotations', icon: FiFileText, minLevel: 1, section: 'selling' },
+  { to: '/reorder', label: 'What to Order', icon: FiTrendingUp, minLevel: 2, section: 'stock' },
+  { to: '/receipt-approvals', label: 'Receipt Approvals', icon: FiCheckSquare, minLevel: 2, section: 'selling' },
+  { to: '/reminders', label: 'Reminders', icon: FiBell, minLevel: 2, section: 'customers' },
+  { to: '/contacts', label: 'Contact Book', icon: FiPhone, minLevel: 2, section: 'customers' },
+  { to: '/installations', label: 'Installations', icon: FiTool, minLevel: 1, section: 'customers' },
+  { to: '/payables', label: 'What We Owe', icon: FiTruck, minLevel: 3, section: 'money' },
+  { to: '/margins', label: 'Margin Watch', icon: FiTrendingUp, minLevel: 3, page: 'reports', section: 'money' },
+  { to: '/system-health', label: 'System Health', icon: FiShield, minLevel: 3, section: 'admin' },
+  { to: '/packages-receipt', label: 'Packages Receipt', icon: FiFileText, minLevel: 2, section: 'selling' },
   // CEO+ only
-  { to: '/debts', label: 'Debts', icon: FiAlertCircle, minLevel: 2 },
-  { to: '/stock-requests', label: 'Stock Requests', icon: FiInbox, minLevel: 2 },
-  { to: '/credit-agreements', label: 'Credit Agreements', icon: FiCreditCard, minLevel: 2 },
-  { to: '/layaways', label: 'Layaways', icon: FiArchive, minLevel: 2 },
-  { to: '/documents', label: 'Documents', icon: FiClipboard, minLevel: 2 },
-  { to: '/fraud-alerts', label: 'Fraud Alerts', icon: FiShield, minLevel: 3 },
-  { to: '/products', label: 'Products', icon: FiPackage, minLevel: 3 },
-  { to: '/categories', label: 'Categories', icon: FiTag, minLevel: 3 },
-  { to: '/suppliers', label: 'Suppliers', icon: FiTruck, minLevel: 3 },
-  { to: '/purchases', label: 'Purchases', icon: FiShoppingBag, minLevel: 2 },
-  { to: '/workers', label: 'Worker Payments', icon: FiUsers, minLevel: 3 },
-  { to: '/financial', label: 'Financial', icon: FiTrendingUp, minLevel: 3 },
-  { to: '/reports', label: 'Reports', icon: FiBarChart2, minLevel: 3 },
-  { to: '/sales-history', label: 'Sales History', icon: FiList, minLevel: 3 },
-  { to: '/search', label: 'Search', icon: FiSearch, minLevel: 3 },
-  { to: '/users', label: 'User Management', icon: FiUser, minLevel: 3 },
-  { to: '/audit-logs', label: 'Audit Logs', icon: FiFileText, minLevel: 3 },
-  { to: '/backup', label: 'Backup & Restore', icon: FiDatabase, minLevel: 3 },
-  { to: '/delete-records', label: 'Delete Records', icon: FiTrash2, minLevel: 3 },
-  { to: '/settings', label: 'Settings', icon: FiSettings, minLevel: 3 },
+  { to: '/debts', label: 'Debts', icon: FiAlertCircle, minLevel: 2, section: 'customers' },
+  { to: '/stock-requests', label: 'Stock Requests', icon: FiInbox, minLevel: 2, section: 'stock' },
+  { to: '/credit-agreements', label: 'Credit Agreements', icon: FiCreditCard, minLevel: 2, section: 'customers' },
+  { to: '/layaways', label: 'Layaways', icon: FiArchive, minLevel: 2, section: 'customers' },
+  { to: '/documents', label: 'Documents', icon: FiClipboard, minLevel: 2, section: 'admin' },
+  { to: '/fraud-alerts', label: 'Fraud Alerts', icon: FiShield, minLevel: 3, section: 'admin' },
+  { to: '/products', label: 'Products', icon: FiPackage, minLevel: 3, section: 'stock' },
+  { to: '/categories', label: 'Categories', icon: FiTag, minLevel: 3, section: 'stock' },
+  { to: '/suppliers', label: 'Suppliers', icon: FiTruck, minLevel: 3, section: 'stock' },
+  { to: '/purchases', label: 'Purchases', icon: FiShoppingBag, minLevel: 2, section: 'stock' },
+  { to: '/workers', label: 'Worker Payments', icon: FiUsers, minLevel: 3, section: 'money' },
+  { to: '/financial', label: 'Financial', icon: FiTrendingUp, minLevel: 3, section: 'money' },
+  { to: '/reports', label: 'Reports', icon: FiBarChart2, minLevel: 3, section: 'money' },
+  { to: '/sales-history', label: 'Sales History', icon: FiList, minLevel: 3, section: 'money' },
+  { to: '/search', label: 'Search', icon: FiSearch, minLevel: 3, section: 'admin' },
+  { to: '/users', label: 'User Management', icon: FiUser, minLevel: 3, section: 'admin' },
+  { to: '/audit-logs', label: 'Audit Logs', icon: FiFileText, minLevel: 3, section: 'admin' },
+  { to: '/backup', label: 'Backup & Restore', icon: FiDatabase, minLevel: 3, section: 'admin' },
+  { to: '/delete-records', label: 'Delete Records', icon: FiTrash2, minLevel: 3, section: 'admin' },
+  { to: '/settings', label: 'Settings', icon: FiSettings, minLevel: 3, section: 'admin' },
 ]
 
 export default function Layout() {
@@ -80,6 +100,9 @@ export default function Layout() {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  // Forty-two screens is more than anybody scrolls through. Typing three
+  // letters is faster than finding "Delete Records" by eye.
+  const [navFilter, setNavFilter] = useState('')
 
   // The stored user is written at login and never again, so a page the CEO
   // grants mid-shift would not appear in the sidebar until the next login.
@@ -121,6 +144,19 @@ export default function Layout() {
       userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1))
     )
 
+  useEffect(() => { if (!sidebarOpen) setNavFilter('') }, [sidebarOpen])
+
+  // Matched on the label and on the address, so "stock" finds Stock
+  // Requests and "backup" finds Backup & Restore however it is spelt.
+  const needle = navFilter.trim().toLowerCase()
+  const matchedNav = needle
+    ? visibleNavItems.filter((i) =>
+      i.label.toLowerCase().includes(needle) || i.to.toLowerCase().includes(needle))
+    : visibleNavItems
+
+  // The page's own name, for the bar at the top of a phone.
+  const currentPage = visibleNavItems.find((n) => n.to === location.pathname)
+
   const handleLogout = async () => {
     setLoggingOut(true)
     try {
@@ -132,7 +168,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen min-h-[100dvh] bg-gray-50 flex">
       {/* Sidebar overlay on mobile */}
       {sidebarOpen && (
         <div
@@ -143,57 +179,108 @@ export default function Layout() {
 
       {/* Sidebar */}
       <aside className={`
-        fixed top-0 left-0 h-full w-64 bg-white shadow-xl z-40 flex flex-col
+        fixed top-0 left-0 h-full w-[17rem] bg-white shadow-xl z-40 flex flex-col
         transition-transform duration-300 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         lg:translate-x-0 lg:static lg:shadow-none lg:border-r lg:border-gray-200
       `}>
-        {/* Logo */}
-        <div className="bg-orange-500 px-5 py-4 flex items-center justify-between">
+        {/* Logo. The top padding clears a phone's notch when the app is
+            installed and draws under the status bar. */}
+        <div className="bg-orange-500 px-5 pb-4 pt-[calc(1rem+env(safe-area-inset-top,0px))] flex items-start justify-between">
           <div>
             <h1 className="text-white font-black text-lg leading-tight tracking-wide">ITTEK SOLUTION</h1>
             <p className="text-orange-100 text-xs font-medium leading-tight">DAN & DOR SOLAR</p>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden text-white hover:text-orange-200 p-1"
+            aria-label="Close menu"
+            className="lg:hidden -mr-2 -mt-1 text-white/90 hover:text-white p-2"
           >
             <FiX size={20} />
           </button>
         </div>
 
-        {/* Nav items */}
-        <nav className="flex-1 py-3 overflow-y-auto">
-          {visibleNavItems.map((item) => {
-            const Icon = item.icon
-            const isActive = location.pathname === item.to
-            const isNotif = item.to === '/notifications'
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all group relative
-                  ${isActive
-                    ? 'bg-orange-500 text-white'
-                    : 'text-gray-600 hover:bg-orange-50 hover:text-orange-600'
-                  }`}
+        {/* Nav items, in groups. A heading tells you which handful to read
+            and lets you skip the other thirty. */}
+        <div className="px-3 pt-3 pb-1">
+          <div className="relative">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+            <input
+              value={navFilter}
+              onChange={(e) => setNavFilter(e.target.value)}
+              placeholder="Find a screen…"
+              aria-label="Find a screen"
+              className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm
+                         focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white"
+            />
+            {navFilter && (
+              <button
+                onClick={() => setNavFilter('')}
+                aria-label="Clear"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
               >
-                <Icon size={18} className="flex-shrink-0" />
-                <span className="flex-1">{item.label}</span>
-                {isNotif && unreadCount > 0 && (
-                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center
-                    ${isActive ? 'bg-white text-orange-500' : 'bg-orange-500 text-white'}`}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                )}
-              </NavLink>
+                <FiX size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <nav className="flex-1 py-1 overflow-y-auto overscroll-contain">
+          {matchedNav.length === 0 && (
+            <p className="px-4 py-6 text-sm text-gray-400 text-center">
+              Nothing here matches “{navFilter}”.
+            </p>
+          )}
+          {SECTIONS.map((section) => {
+            const items = matchedNav.filter((i) => i.section === section.key)
+            if (items.length === 0) return null
+            return (
+              <div key={section.key} className="pb-1">
+                <p className="px-4 pt-3 pb-1 text-[10px] font-black uppercase tracking-[0.08em] text-gray-400">
+                  {section.label}
+                </p>
+                {items.map((item) => {
+                  const Icon = item.icon
+                  const isActive = location.pathname === item.to
+                  const isNotif = item.to === '/notifications'
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`mx-2 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors
+                        ${isActive
+                          ? 'bg-orange-500 text-white font-bold shadow-sm'
+                          : 'text-gray-600 font-medium hover:bg-orange-50 hover:text-orange-600'
+                        }`}
+                    >
+                      <Icon size={17} className="flex-shrink-0" />
+                      <span className="flex-1 leading-snug">{item.label}</span>
+                      {isNotif && unreadCount > 0 && (
+                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center
+                          ${isActive ? 'bg-white text-orange-500' : 'bg-orange-500 text-white'}`}>
+                          {unreadCount > 99 ? '99+' : unreadCount}
+                        </span>
+                      )}
+                    </NavLink>
+                  )
+                })}
+              </div>
             )
           })}
+
         </nav>
 
+        {/* The two controls that used to crowd the top bar on a phone. They
+            belong to the person, not to the page, so they sit with the
+            account — and outside the nav, so filtering never hides them. */}
+        <div className="lg:hidden border-t border-gray-100 px-4 py-2.5 flex items-center gap-2">
+          <LocaleSwitcher />
+          <InstallAppButton compact />
+        </div>
+
         {/* User info at bottom */}
-        <div className="border-t border-gray-200 p-4">
+        <div className="border-t border-gray-200 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
               <span className="text-orange-600 font-bold text-sm">
@@ -223,27 +310,27 @@ export default function Layout() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top navbar */}
-        <header className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
-          <div className="flex items-center justify-between px-4 h-14">
-            <div className="flex items-center gap-3">
+        <header className="bg-white/95 backdrop-blur border-b border-gray-200 sticky top-0 z-20
+                           pt-[env(safe-area-inset-top,0px)]">
+          <div className="flex items-center justify-between gap-2 px-2 sm:px-4 h-14">
+            <div className="flex items-center gap-1.5 min-w-0">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                aria-label="Open menu"
+                className="lg:hidden p-2.5 rounded-xl text-gray-700 hover:bg-orange-50 hover:text-orange-600 transition-colors"
               >
                 <FiMenu size={20} />
               </button>
-              <div className="hidden lg:block">
-                <h2 className="text-sm font-semibold text-gray-700">
-                  {visibleNavItems.find(n => n.to === location.pathname)?.label || 'Dashboard'}
-                </h2>
-              </div>
-              {/* Mobile brand */}
-              <div className="lg:hidden">
-                <span className="font-black text-orange-500 text-base">ITTEK</span>
-              </div>
+              {/* Which page this is.
+                  The phone used to show only the word ITTEK, so the only
+                  thing naming the screen was the heading below — and a toast
+                  landing over it left nothing at all. */}
+              <h2 className="text-[15px] font-bold text-gray-800 truncate">
+                {currentPage?.label || 'Dashboard'}
+              </h2>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
               {/* Ask the system how to do something. On every screen, because
                   the question is always asked mid-task. */}
               <HelpAssistant />
@@ -251,21 +338,26 @@ export default function Layout() {
               {/* Search icon */}
               <NavLink
                 to="/search"
-                className="p-2 rounded-lg text-gray-600 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                aria-label="Search"
+                className="p-2.5 rounded-xl text-gray-600 hover:bg-orange-50 hover:text-orange-600 transition-colors"
               >
                 <FiSearch size={18} />
               </NavLink>
 
-              {/* Install as a desktop app — hides itself once installed */}
-              <InstallAppButton compact />
-
-              {/* Display currency */}
-              <LocaleSwitcher />
+              {/* Installing the app and switching currency are settings, not
+                  page controls. On a phone they moved into the menu, where
+                  they stop competing with the page's own buttons; on a wide
+                  screen there is room for them here. */}
+              <div className="hidden lg:flex items-center gap-2">
+                <InstallAppButton compact />
+                <LocaleSwitcher />
+              </div>
 
               {/* Notification bell */}
               <NavLink
                 to="/notifications"
-                className="p-2 rounded-lg text-gray-600 hover:bg-orange-50 hover:text-orange-600 transition-colors relative"
+                aria-label="Notifications"
+                className="p-2.5 rounded-xl text-gray-600 hover:bg-orange-50 hover:text-orange-600 transition-colors relative"
               >
                 <FiBell size={18} />
                 {unreadCount > 0 && (
@@ -276,8 +368,8 @@ export default function Layout() {
               </NavLink>
 
               {/* User avatar */}
-              <div className="flex items-center gap-2 ml-1">
-                <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center">
+              <div className="flex items-center gap-2 ml-0.5 sm:ml-1">
+                <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0">
                   <span className="text-white font-bold text-xs">
                     {(user?.username || 'U').charAt(0).toUpperCase()}
                   </span>
