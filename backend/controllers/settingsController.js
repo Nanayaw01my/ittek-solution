@@ -27,7 +27,8 @@ const getSettings = async (req, res) => {
     // The SMS key is select:false, so it is already absent — but the screen
     // still has to show whether one is set, and which. The last four
     // characters tell one key from another without handing over a working one.
-    const withKey = await Settings.findById(settings._id).select('+sms_config.api_key').lean();
+    const withKey = await Settings.findById(settings._id)
+      .select('+sms_config.api_key +email_config.brevo_key').lean();
     const key = withKey?.sms_config?.api_key || '';
     const data = settings.toObject();
     data.sms_config = {
@@ -35,6 +36,16 @@ const getSettings = async (req, res) => {
       api_key: undefined,
       api_key_set: !!key,
       api_key_tail: key ? key.slice(-4) : '',
+    };
+
+    // Same treatment for the Brevo key: whether one is set, and which one,
+    // but never the key itself.
+    const brevo = withKey?.email_config?.brevo_key || '';
+    data.email_config = {
+      ...(data.email_config || {}),
+      brevo_key: undefined,
+      brevo_key_set: !!brevo,
+      brevo_key_tail: brevo ? brevo.slice(-4) : '',
     };
 
     return res.status(200).json({ success: true, data });
@@ -245,20 +256,30 @@ const getSmsBalance = async (req, res) => {
  */
 const updateEmailConfig = async (req, res) => {
   try {
-    const { smtp_host, smtp_port, smtp_user, smtp_pass, from_email } = req.body;
+    const {
+      provider, smtp_host, smtp_port, smtp_user, smtp_pass, from_email, brevo_key,
+    } = req.body;
 
-    // The password is select:false, so a plain findOne does not load it —
-    // and writing the object back without it silently wiped the password
-    // every time anybody saved this tab after changing only the host.
-    let settings = await Settings.findOne().select('+email_config.smtp_pass');
+    // The password and the Brevo key are select:false, so a plain findOne
+    // does not load them — and writing the object back without them silently
+    // wiped both every time anybody saved this tab after changing only the
+    // host.
+    let settings = await Settings.findOne()
+      .select('+email_config.smtp_pass +email_config.brevo_key');
     if (!settings) settings = new Settings();
 
     settings.email_config = {
+      provider: provider === 'brevo' || provider === 'smtp'
+        ? provider
+        : (settings.email_config?.provider || 'smtp'),
       smtp_host: smtp_host || settings.email_config?.smtp_host,
       smtp_port: smtp_port || settings.email_config?.smtp_port,
       smtp_user: smtp_user || settings.email_config?.smtp_user,
       smtp_pass: smtp_pass || settings.email_config?.smtp_pass,
       from_email: from_email || settings.email_config?.from_email,
+      // Left blank on purpose keeps whatever is already stored, same as the
+      // password — the screen never gets the key back to re-submit.
+      brevo_key: brevo_key || settings.email_config?.brevo_key,
     };
     settings.updated_at = new Date();
     settings.updated_by = req.user._id;
@@ -351,7 +372,13 @@ const testEmail = async (req, res) => {
     const { sendEmail, mailAccount } = require('../utils/email');
     const account = await mailAccount();
 
-    const to = String(req.body?.to || '').trim() || account.user;
+    // On Brevo there is no SMTP username to fall back to, so the From
+    // address stands in — otherwise a Brevo-only setup cannot be tested
+    // without typing an address in every time.
+    const { parseFrom } = require('../utils/brevo');
+    const to = String(req.body?.to || '').trim()
+      || account.user
+      || parseFrom(account.from).email;
     if (!to) {
       return res.status(400).json({
         success: false,
@@ -362,6 +389,12 @@ const testEmail = async (req, res) => {
     const shop = (await Settings.findOne().select('company_name').lean())?.company_name
       || 'ITTEK Solution';
 
+    // Which way it actually went. Somebody who switched to Brevo and still
+    // sees "smtp.gmail.com:587" has learned the switch did not take.
+    const route = account.provider === 'brevo'
+      ? 'Brevo (HTTPS)'
+      : `${account.host}:${account.port}`;
+
     await sendEmail({
       to,
       subject: `${shop} — test email`,
@@ -369,14 +402,16 @@ const testEmail = async (req, res) => {
              <p>If you are reading it, the mail account works and the nightly backup
              can be sent.</p>
              <p style="color:#666;font-size:13px">Sent ${new Date().toLocaleString('en-GB')}
-             via ${account.host}:${account.port} as ${account.user}.</p>`,
+             via ${account.provider === 'brevo' ? 'Brevo' : `${account.host}:${account.port} as ${account.user}`}.</p>`,
     });
 
     return res.status(200).json({
       success: true,
-      message: `Sent to ${to} via ${account.host}:${account.port}. Check the inbox — `
-        + 'and the spam folder.',
-      data: { to, host: account.host, port: account.port, using: account.source },
+      message: `Sent to ${to} via ${route}. Check the inbox — and the spam folder.`,
+      data: {
+        to, host: account.host, port: account.port, using: account.source,
+        provider: account.provider, route,
+      },
     });
   } catch (err) {
     // The mail server's own words. "Server error." would leave somebody

@@ -4,7 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const { requireLevel, requireRoles } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
-  createManualBackup, getSummary, getHistory, restoreBackup,
+  createManualBackup, getSummary, getHistory, restoreBackup, getCloudBackups,
 } = require('../controllers/backupController');
 
 // CEO (3) and Super Admin (4)
@@ -18,6 +18,9 @@ router.get('/create', auditLog('CREATE_BACKUP'), createManualBackup);
 
 router.get('/summary', getSummary);
 router.get('/history', getHistory);
+// The copies that are off this machine. The disk-based history above is
+// erased by every deploy; these are not.
+router.get('/cloud', getCloudBackups);
 
 // Restore: Super Admin only. It empties the database and writes the file over
 // the top of it.

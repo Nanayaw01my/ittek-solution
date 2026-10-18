@@ -1,4 +1,5 @@
 const { createBackup, getBackupHistory, restoreFromBackup } = require('../utils/backup');
+const { listBackups, cloudConfigured } = require('../utils/cloudBackup');
 
 /**
  * POST /api/backup/create — the whole database, as a file to download.
@@ -98,4 +99,46 @@ const restoreBackup = async (req, res) => {
   }
 };
 
-module.exports = { createManualBackup, getSummary, getHistory, restoreBackup };
+/**
+ * GET /api/backup/cloud — the copies that are actually off this server.
+ *
+ * The history list below is written to the container's disk, which Render
+ * wipes on every deploy, so on a fresh boot it says "No backup history"
+ * whether or not backups have been running for months. This reads the copies
+ * themselves, from Cloudinary, which is the only honest answer to "are the
+ * backups working".
+ *
+ * Each link is signed here and now with the API secret. The files are stored
+ * `authenticated`, so there is no public URL to leak — a shop's whole
+ * database at a guessable address would be worse than no backup at all.
+ */
+const getCloudBackups = async (req, res) => {
+  try {
+    if (!cloudConfigured()) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          configured: false,
+          backups: [],
+          message: 'Off-site backups are not set up on this server.',
+        },
+      });
+    }
+
+    const backups = await listBackups();
+    return res.status(200).json({
+      success: true,
+      data: { configured: true, backups },
+    });
+  } catch (err) {
+    console.error('Cloud backup list error:', err.stack || err.message);
+    return res.status(502).json({
+      success: false,
+      message: `Could not read the off-site copies: ${err.message}`,
+    });
+  }
+};
+
+module.exports = {
+  createManualBackup, getSummary, getHistory, restoreBackup, getCloudBackups,
+};

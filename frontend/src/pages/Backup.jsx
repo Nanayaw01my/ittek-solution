@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiDownload, FiUpload, FiDatabase, FiAlertTriangle } from 'react-icons/fi'
-import { createBackup, restoreBackup, getBackupHistory, getBackupSummary } from '../api/settings'
+import { FiDownload, FiUpload, FiDatabase, FiAlertTriangle, FiCloud, FiExternalLink } from 'react-icons/fi'
+import { createBackup, restoreBackup, getBackupHistory, getBackupSummary, getCloudBackups } from '../api/settings'
 import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
 import { formatDateTime } from '../utils/helpers'
@@ -30,6 +30,19 @@ export default function Backup() {
   })
 
   const history = historyData?.history || historyData || []
+
+  /**
+   * The copies that are off this server.
+   *
+   * The history list below lives on the container's disk, which the host
+   * wipes on every deploy — so it reads "No backup history" on a fresh boot
+   * however long backups have been running. These are the files themselves,
+   * and they are the honest answer to "are our backups working".
+   */
+  const { data: cloud, isLoading: loadingCloud } = useQuery({
+    queryKey: ['cloud-backups'],
+    queryFn: () => getCloudBackups().then(r => r.data),
+  })
 
   // What is actually in the database right now, so the button is not a leap
   // of faith and the file can be checked against it afterwards.
@@ -199,10 +212,72 @@ export default function Backup() {
         )}
       </div>
 
+      {/* Off-site copies. Listed before the disk history because these are
+          the ones that survive a deploy. */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+          <FiCloud size={18} className="text-orange-500" />
+          <div>
+            <h3 className="font-bold text-gray-900">Off-Site Copies</h3>
+            <p className="text-xs text-gray-500">
+              Kept away from this server, so a wiped server is not a lost shop
+            </p>
+          </div>
+        </div>
+
+        {loadingCloud ? (
+          <div className="p-6 space-y-3">
+            {Array(3).fill(0).map((_, i) => (
+              <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : cloud?.configured === false ? (
+          <div className="px-5 py-6 text-sm text-gray-600">
+            <p className="font-semibold text-gray-800">Off-site backups are not set up.</p>
+            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+              Nothing is being kept away from this server, so a nightly backup depends entirely
+              on email getting through. Ask whoever runs the server to set the Cloudinary keys.
+            </p>
+          </div>
+        ) : (cloud?.backups || []).length === 0 ? (
+          <p className="text-center py-10 text-gray-400 text-sm">
+            No off-site copy yet — the first one is taken by tonight's backup.
+          </p>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {(cloud.backups || []).map((b) => (
+              <div key={b.public_id} className="px-5 py-3 flex items-center justify-between gap-3 text-sm">
+                <div className="min-w-0">
+                  <p className="font-semibold truncate">{b.filename}</p>
+                  <p className="text-xs text-gray-500">
+                    {formatDateTime(b.created_at)}
+                    {b.bytes ? ` · ${(b.bytes / 1024 / 1024).toFixed(1)} MB` : ''}
+                  </p>
+                </div>
+                {/* A fresh signed link each time the screen loads. The files
+                    are not public — this link is what makes one readable. */}
+                <a
+                  href={b.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 border border-orange-500 text-orange-600 rounded-xl text-xs font-bold hover:bg-orange-50"
+                >
+                  <FiExternalLink size={13} /> Download
+                </a>
+              </div>
+            ))}
+            <p className="px-5 py-3 text-[11px] text-gray-400 leading-relaxed">
+              These arrive compressed (.json.gz). Unzip one first, then upload the .json inside
+              on this screen to restore it.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* History */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100">
-          <h3 className="font-bold text-gray-900">Backup History</h3>
+          <h3 className="font-bold text-gray-900">Backup History (on this server)</h3>
         </div>
         {isLoading ? (
           <div className="p-6 space-y-3">
@@ -211,7 +286,10 @@ export default function Backup() {
             ))}
           </div>
         ) : history.length === 0 ? (
-          <p className="text-center py-10 text-gray-400 text-sm">No backup history</p>
+          <p className="text-center py-10 text-gray-400 text-sm px-6 leading-relaxed">
+            Nothing here. This list lives on the server's own disk and is erased by every
+            deploy — the off-site copies above are the ones that last.
+          </p>
         ) : (
           <div className="divide-y divide-gray-100">
             {history.map((h, i) => (

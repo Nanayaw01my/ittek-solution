@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const EmailQueue = require('../models/EmailQueue');
 const Settings = require('../models/Settings');
+const { sendViaBrevo } = require('./brevo');
 
 /**
  * The mail account, from Settings first and the server's variables second.
@@ -22,8 +23,9 @@ const mailAccount = async () => {
     // Leaf paths only. Asking for email_config and email_config.smtp_pass
     // together is a path collision, which mongo rejects outright.
     const doc = await Settings.findOne()
-      .select('email_config.smtp_host email_config.smtp_port email_config.smtp_user '
-        + 'email_config.from_email +email_config.smtp_pass')
+      .select('email_config.provider email_config.smtp_host email_config.smtp_port '
+        + 'email_config.smtp_user email_config.from_email '
+        + '+email_config.smtp_pass +email_config.brevo_key')
       .lean();
     saved = doc?.email_config || {};
   } catch (err) {
@@ -35,9 +37,31 @@ const mailAccount = async () => {
   const port = Number(saved.smtp_port) || parseInt(process.env.EMAIL_PORT, 10) || 587;
   const user = saved.smtp_user || process.env.EMAIL_USER;
   const pass = saved.smtp_pass || process.env.EMAIL_PASS;
+  const brevoKey = saved.brevo_key || process.env.BREVO_API_KEY;
   const from = saved.from_email || process.env.EMAIL_FROM || `ITTEK Solution <${user}>`;
 
-  return { host, port, user, pass, from, source: saved.smtp_user ? 'settings' : 'server' };
+  /**
+   * Which route a send takes.
+   *
+   * What is chosen in Settings wins — somebody who picked Brevo meant it,
+   * and silently falling back to SMTP on a host where SMTP is blocked just
+   * reproduces the original fault with an extra twenty-second wait. The one
+   * exception is choosing Brevo without a key: then there is nothing to
+   * choose with, and SMTP is at least worth trying.
+   */
+  const asked = saved.provider || (process.env.BREVO_API_KEY ? 'brevo' : 'smtp');
+  const provider = asked === 'brevo' && brevoKey ? 'brevo' : 'smtp';
+
+  return {
+    host,
+    port,
+    user,
+    pass,
+    from,
+    provider,
+    brevoKey,
+    source: saved.smtp_user || saved.brevo_key ? 'settings' : 'server',
+  };
 };
 
 /**
@@ -94,6 +118,26 @@ const queueEmail = async ({ to, toName = '', subject, html, priority = 'normal' 
  */
 const sendEmail = async ({ to, subject, html, attachments }) => {
   const account = await mailAccount();
+
+  /**
+   * Brevo over HTTPS, where that is what is set up.
+   *
+   * Same call, same arguments, same thrown error on failure — so nothing
+   * that already sends email had to learn about a second way of sending it.
+   */
+  if (account.provider === 'brevo') {
+    const info = await sendViaBrevo({
+      apiKey: account.brevoKey,
+      from: account.from,
+      to,
+      subject,
+      html,
+      attachments,
+    });
+    console.log(`Email sent to ${to} via Brevo: ${info.messageId}`);
+    return info;
+  }
+
   const transporter = await createTransporter();
   const mailOptions = {
     from: account.from,
@@ -121,16 +165,29 @@ const processEmailQueue = async () => {
     if (pending.length === 0) return;
 
     const account = await mailAccount();
-    const transporter = await createTransporter();
+    // Built once for the whole batch where SMTP is the route — twenty
+    // connections for twenty emails is how a queue run times out. Brevo has
+    // no connection to reuse, so there is nothing to build.
+    const transporter = account.provider === 'brevo' ? null : await createTransporter();
 
     for (const email of pending) {
       try {
-        await transporter.sendMail({
-          from: account.from,
-          to: email.to_email,
-          subject: email.subject,
-          html: email.body,
-        });
+        if (transporter) {
+          await transporter.sendMail({
+            from: account.from,
+            to: email.to_email,
+            subject: email.subject,
+            html: email.body,
+          });
+        } else {
+          await sendViaBrevo({
+            apiKey: account.brevoKey,
+            from: account.from,
+            to: email.to_email,
+            subject: email.subject,
+            html: email.body,
+          });
+        }
 
         email.status = 'sent';
         email.sent_at = new Date();

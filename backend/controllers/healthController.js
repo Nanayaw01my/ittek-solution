@@ -115,9 +115,23 @@ const systemHealth = async (req, res) => {
       if (!run) return 'Check Settings → Email Config, then press “Run what is due”.';
       const why = String(run.message || '').toLowerCase();
       if (run.ok) return null;
-      if (why.includes('no address') || why.includes('nowhere to go')) {
-        return 'Put an address in Settings → Company → Email (or set BACKUP_EMAIL on the '
-          + 'server), then press “Run what is due”.';
+      if (why.includes('no address') || why.includes('nowhere to go')
+        || why.includes('nowhere to put')) {
+        return 'Nothing is set up to keep a backup. Put an address in Settings → Company → '
+          + 'Email (or set BACKUP_EMAIL on the server), and set Cloudinary up on the server '
+          + 'for the off-site copy. Then press “Run what is due”.';
+      }
+      // Both routes failed, and the message carries both reasons. Naming the
+      // off-site one first is deliberate: it is the route that works on this
+      // host, so it is the one worth fixing.
+      if (why.includes('could not save it anywhere')) {
+        if (why.includes('cloudinary is not set up')) {
+          return 'The backup was made and went nowhere. Set CLOUDINARY_CLOUD_NAME, '
+            + 'CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET on the server so the off-site '
+            + 'copy works — email alone is not reliable here, as the hosting plan blocks it.';
+        }
+        return 'The backup was made and went nowhere — both the off-site copy and the email '
+          + 'failed. The reasons are in the message above; start with the off-site one.';
       }
       if (why.includes('too large')) {
         return 'The backup is too big to email. Download one by hand from Backup & Restore, '
@@ -134,9 +148,11 @@ const systemHealth = async (req, res) => {
       }
       if (why.includes('timeout') || why.includes('econn') || why.includes('etimedout')
         || why.includes('socket') || why.includes('getaddrinfo') || why.includes('ehostunreach')) {
-        return 'The backup was made but the mail server could not be reached. Check the host '
-          + 'and port in Settings → Email Config and send a test from there — if port 587 '
-          + 'times out, try 465.';
+        return 'The backup was made but the mail server could not be reached. On a free '
+          + 'hosting plan this is usually the plan itself blocking SMTP, not a wrong '
+          + 'setting — switch Settings → Email Config to Brevo, which sends over HTTPS, '
+          + 'and send a test from there. Otherwise check the host and port, and try 465 '
+          + 'if 587 times out.';
       }
       if (why.includes('could not email') || why.includes('smtp')) {
         return 'The backup was made but could not be emailed. Check Settings → Email Config '

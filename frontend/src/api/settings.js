@@ -32,4 +32,13 @@ export const getBackupHistory = () => api.get('/backup/history')
 
 /** What a backup would hold, so the screen can say so before you take one. */
 export const getBackupSummary = () => api.get('/backup/summary')
+
+/**
+ * The copies that are off this server.
+ *
+ * The history list is kept on the container's disk, which the host wipes on
+ * every deploy — so it can say "no backup history" while months of backups
+ * sit safely off-site. This reads the files themselves.
+ */
+export const getCloudBackups = () => api.get('/backup/cloud')
 export const globalSearch = (body) => api.post('/search', body)

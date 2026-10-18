@@ -538,16 +538,21 @@ function EmailConfigTab({ settings }) {
   })
 
   const saved = settings?.email_config || {}
-  const { register, handleSubmit, getValues } = useForm({
+  const { register, handleSubmit, getValues, watch } = useForm({
     defaultValues: {
+      provider: saved.provider || 'smtp',
       smtpHost: saved.smtp_host || '',
       smtpPort: saved.smtp_port || '',
       smtpUser: saved.smtp_user || '',
       smtpPassword: '',
       smtpFrom: saved.from_email || '',
+      brevoKey: '',
       testEmail: '',
     },
   })
+  // Which half of the form matters. Showing SMTP boxes to somebody who has
+  // picked Brevo is an invitation to fill in details nothing will read.
+  const provider = watch('provider')
   const [testing, setTesting] = useState(false)
 
   const handleTest = async () => {
@@ -561,7 +566,7 @@ function EmailConfigTab({ settings }) {
       const d = res.data || {}
       toast.success(
         d.to
-          ? `Sent to ${d.to} via ${d.host}:${d.port} (using the ${d.using === 'settings' ? 'settings here' : 'server settings'}). Check the inbox, and the spam folder.`
+          ? `Sent to ${d.to} via ${d.route || `${d.host}:${d.port}`} (using the ${d.using === 'settings' ? 'settings here' : 'server settings'}). Check the inbox, and the spam folder.`
           : 'Test email sent!',
         { duration: 9000 }
       )
@@ -577,16 +582,64 @@ function EmailConfigTab({ settings }) {
   return (
     <form
       onSubmit={handleSubmit((d) => save.mutate({
+        provider: d.provider,
         smtp_host: d.smtpHost?.trim() || undefined,
         smtp_port: d.smtpPort ? Number(d.smtpPort) : undefined,
         smtp_user: d.smtpUser?.trim() || undefined,
         // Left blank on purpose keeps whatever is already stored.
         smtp_pass: d.smtpPassword || undefined,
         from_email: d.smtpFrom?.trim() || undefined,
+        // Blank keeps the stored key, same as the password.
+        brevo_key: d.brevoKey?.trim() || undefined,
       }))}
       className="space-y-4 max-w-lg"
     >
-      <div className="grid grid-cols-2 gap-3">
+      {/* How email leaves the server.
+          Worth a choice rather than a setting buried in the server's
+          variables: on a free hosting plan the SMTP ports are shut, so the
+          ordinary route silently times out on every send and no amount of
+          correcting the Gmail password fixes it. */}
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">How email is sent</label>
+        <div className="space-y-2">
+          <label className={`flex gap-3 p-3 rounded-xl border cursor-pointer ${provider === 'smtp' ? 'border-orange-400 bg-orange-50' : 'border-gray-200'}`}>
+            <input type="radio" value="smtp" {...register('provider')} className="mt-1 accent-orange-500" />
+            <span>
+              <span className="block text-sm font-bold text-gray-900">Ordinary mailbox (SMTP)</span>
+              <span className="block text-xs text-gray-500 leading-relaxed">
+                Gmail or any mail account. Needs nothing extra — but a free hosting plan blocks
+                the ports it uses, and then every send times out.
+              </span>
+            </span>
+          </label>
+          <label className={`flex gap-3 p-3 rounded-xl border cursor-pointer ${provider === 'brevo' ? 'border-orange-400 bg-orange-50' : 'border-gray-200'}`}>
+            <input type="radio" value="brevo" {...register('provider')} className="mt-1 accent-orange-500" />
+            <span>
+              <span className="block text-sm font-bold text-gray-900">Brevo (over the web)</span>
+              <span className="block text-xs text-gray-500 leading-relaxed">
+                Sends through Brevo's website instead of a mail port, so it works where SMTP is
+                blocked. Free for 300 emails a day. You need an API key and a verified sender.
+              </span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      {provider === 'brevo' && (
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Brevo API Key</label>
+          <input type="password" {...register('brevoKey')}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            placeholder={saved.brevo_key_set ? `Saved — ending ${saved.brevo_key_tail}` : 'xkeysib-...'} />
+          <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+            From Brevo → SMTP &amp; API → API Keys. Leave this blank to keep the key already
+            saved. The From Email below has to be a sender you have verified with Brevo, or
+            Brevo refuses the message.
+          </p>
+        </div>
+      )}
+
+      <div className={`grid grid-cols-2 gap-3 ${provider === 'brevo' ? 'opacity-50' : ''}`}>
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1">SMTP Host</label>
           <input {...register('smtpHost')}
@@ -600,13 +653,13 @@ function EmailConfigTab({ settings }) {
             placeholder="587" />
         </div>
       </div>
-      <div>
+      <div className={provider === 'brevo' ? 'opacity-50' : ''}>
         <label className="block text-sm font-semibold text-gray-700 mb-1">SMTP Username</label>
         <input {...register('smtpUser')}
           className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
           placeholder="your@email.com" />
       </div>
-      <div>
+      <div className={provider === 'brevo' ? 'opacity-50' : ''}>
         <label className="block text-sm font-semibold text-gray-700 mb-1">SMTP Password</label>
         <input type="password" {...register('smtpPassword')}
           className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -616,7 +669,7 @@ function EmailConfigTab({ settings }) {
         <label className="block text-sm font-semibold text-gray-700 mb-1">From Email</label>
         <input type="email" {...register('smtpFrom')}
           className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-          placeholder="noreply@dandorsolar.com" />
+          placeholder="the address the emails come from" />
       </div>
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1">Test Email Address</label>
