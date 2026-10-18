@@ -45,12 +45,26 @@ const SettingsSchema = new mongoose.Schema(
       type: String,
       default: 'GH₵',
     },
+    /**
+     * How email leaves this server.
+     *
+     * Two ways, because one of them does not work everywhere. SMTP is the
+     * ordinary route and needs nothing but a mailbox; it is also blocked
+     * outright on Render's free plan, where ports 25, 465 and 587 are shut
+     * and every send hangs until it times out. Brevo carries the same email
+     * over HTTPS on 443, which is open.
+     *
+     * The Brevo key is select:false and never goes back to the browser —
+     * only whether one is set, and its last four characters.
+     */
     email_config: {
+      provider: { type: String, enum: ['smtp', 'brevo'], default: 'smtp' },
       smtp_host: { type: String },
       smtp_port: { type: Number },
       smtp_user: { type: String },
       smtp_pass: { type: String, select: false },
       from_email: { type: String },
+      brevo_key: { type: String, select: false },
     },
     /**
      * Sending an SMS for real, through Arkesel.

@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiDownload, FiUpload, FiDatabase, FiAlertTriangle } from 'react-icons/fi'
-import { createBackup, restoreBackup, getBackupHistory, getBackupSummary } from '../api/settings'
+import { FiDownload, FiUpload, FiDatabase, FiAlertTriangle, FiCloud, FiExternalLink } from 'react-icons/fi'
+import { createBackup, restoreBackup, getBackupHistory, getBackupSummary, getCloudBackups } from '../api/settings'
 import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
 import { formatDateTime } from '../utils/helpers'
@@ -19,6 +19,16 @@ export default function Backup() {
   const fileRef = useRef(null)
 
   const [backingUp, setBackingUp] = useState(false)
+  /**
+   * The finished file, held so it can be tapped.
+   *
+   * A phone will not always save a file the page asks it to save on its own:
+   * iOS allows a download only while it is still handling the tap that asked
+   * for it, and fetching the backup takes longer than that, so the save is
+   * silently refused. Keeping the file here and offering a real link to tap
+   * works on every phone, and on a desktop it is simply a second chance.
+   */
+  const [ready, setReady] = useState(null)
   const [restoring, setRestoring] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [showConfirm, setShowConfirm] = useState(false)
@@ -31,6 +41,19 @@ export default function Backup() {
 
   const history = historyData?.history || historyData || []
 
+  /**
+   * The copies that are off this server.
+   *
+   * The history list below lives on the container's disk, which the host
+   * wipes on every deploy — so it reads "No backup history" on a fresh boot
+   * however long backups have been running. These are the files themselves,
+   * and they are the honest answer to "are our backups working".
+   */
+  const { data: cloud, isLoading: loadingCloud } = useQuery({
+    queryKey: ['cloud-backups'],
+    queryFn: () => getCloudBackups().then(r => r.data),
+  })
+
   // What is actually in the database right now, so the button is not a leap
   // of faith and the file can be checked against it afterwards.
   const { data: summary } = useQuery({
@@ -38,21 +61,72 @@ export default function Backup() {
     queryFn: () => getBackupSummary().then(r => r.data),
   })
 
+  /**
+   * Why it failed, in the server's own words.
+   *
+   * The download asks for a file, so when the server refuses, its
+   * explanation arrives as a blob rather than as JSON — and reading it as
+   * JSON found nothing, so every failure for every reason said the same two
+   * words: "Backup failed". That is the one message that cannot be acted on.
+   */
+  const describe = async (err) => {
+    const body = err.response?.data
+    if (typeof Blob !== 'undefined' && body instanceof Blob) {
+      try {
+        const text = await body.text()
+        try { return JSON.parse(text).message } catch { return text.slice(0, 300) }
+      } catch { /* fall through to the generic reasons */ }
+    }
+    if (body?.message) return body.message
+    if (err.code === 'ECONNABORTED') {
+      return 'the server took too long to answer. It may have been asleep — try once more.'
+    }
+    if (err.response?.status) return `the server answered ${err.response.status}.`
+    return err.message || 'the server could not be reached.'
+  }
+
+  // The file is held in the browser's memory until it is let go of.
+  useEffect(() => () => { if (ready?.url) URL.revokeObjectURL(ready.url) }, [ready])
+
   const handleBackup = async () => {
     setBackingUp(true)
+    setReady(null)
+    let res
     try {
-      const res = await createBackup()
+      res = await createBackup()
+    } catch (err) {
+      // The server's own message often already begins "Backup failed:",
+      // and "Backup failed — Backup failed: ..." reads like a stutter.
+      const why = await describe(err)
+      toast.error(/^backup failed/i.test(why) ? why : `Backup failed — ${why}`,
+        { duration: 12000 })
+      setBackingUp(false)
+      return
+    }
+
+    try {
       const blob = new Blob([res.data], { type: 'application/json' })
-      saveAs(blob, `backup-dandorsolar-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`)
+      if (blob.size === 0) {
+        // An empty file that saves without complaint is the worst outcome
+        // here: it looks like a backup until the day it is needed.
+        toast.error('The server sent an empty file. Nothing was saved — tell the office.',
+          { duration: 12000 })
+        return
+      }
+
+      const filename = `backup-dandorsolar-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`
+      // Offered to tap first, then attempted automatically. If the phone
+      // refuses the automatic save, the link is already on screen.
+      setReady({ url: URL.createObjectURL(blob), filename, size: blob.size })
+      try { saveAs(blob, filename) } catch { /* the link below is the answer */ }
+
       // Say what came out, so an empty or half file is obvious immediately
       // rather than on the day it is needed.
       const cols = res.headers?.['x-backup-collections']
       const docs = res.headers?.['x-backup-documents']
       toast.success(docs
-        ? `Backup downloaded — ${Number(docs).toLocaleString()} records from ${cols} collections`
-        : 'Backup created and downloaded')
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Backup failed')
+        ? `Backup ready — ${Number(docs).toLocaleString()} records from ${cols} collections`
+        : 'Backup ready')
     } finally {
       setBackingUp(false)
     }
@@ -150,6 +224,25 @@ export default function Backup() {
             <FiDownload size={16} />
             {backingUp ? 'Creating Backup...' : 'Download Backup'}
           </button>
+
+          {/* The file is made and waiting. On a phone this link is usually
+              how it actually gets saved. */}
+          {ready && (
+            <div className="mt-4 bg-green-50 border border-green-200 rounded-xl p-3">
+              <p className="text-sm font-bold text-green-900">Your backup is ready</p>
+              <p className="text-xs text-green-800 mt-0.5">
+                {(ready.size / 1024 / 1024).toFixed(2)} MB. If it did not save by itself —
+                phones often will not — tap below.
+              </p>
+              <a
+                href={ready.url}
+                download={ready.filename}
+                className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-sm"
+              >
+                <FiDownload size={15} /> Save {ready.filename}
+              </a>
+            </div>
+          )}
         </div>
 
         {/* Restore */}
@@ -199,10 +292,72 @@ export default function Backup() {
         )}
       </div>
 
+      {/* Off-site copies. Listed before the disk history because these are
+          the ones that survive a deploy. */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+          <FiCloud size={18} className="text-orange-500" />
+          <div>
+            <h3 className="font-bold text-gray-900">Off-Site Copies</h3>
+            <p className="text-xs text-gray-500">
+              Kept away from this server, so a wiped server is not a lost shop
+            </p>
+          </div>
+        </div>
+
+        {loadingCloud ? (
+          <div className="p-6 space-y-3">
+            {Array(3).fill(0).map((_, i) => (
+              <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : cloud?.configured === false ? (
+          <div className="px-5 py-6 text-sm text-gray-600">
+            <p className="font-semibold text-gray-800">Off-site backups are not set up.</p>
+            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+              Nothing is being kept away from this server, so a nightly backup depends entirely
+              on email getting through. Ask whoever runs the server to set the Cloudinary keys.
+            </p>
+          </div>
+        ) : (cloud?.backups || []).length === 0 ? (
+          <p className="text-center py-10 text-gray-400 text-sm">
+            No off-site copy yet — the first one is taken by tonight's backup.
+          </p>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {(cloud.backups || []).map((b) => (
+              <div key={b.public_id} className="px-5 py-3 flex items-center justify-between gap-3 text-sm">
+                <div className="min-w-0">
+                  <p className="font-semibold truncate">{b.filename}</p>
+                  <p className="text-xs text-gray-500">
+                    {formatDateTime(b.created_at)}
+                    {b.bytes ? ` · ${(b.bytes / 1024 / 1024).toFixed(1)} MB` : ''}
+                  </p>
+                </div>
+                {/* A fresh signed link each time the screen loads. The files
+                    are not public — this link is what makes one readable. */}
+                <a
+                  href={b.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 border border-orange-500 text-orange-600 rounded-xl text-xs font-bold hover:bg-orange-50"
+                >
+                  <FiExternalLink size={13} /> Download
+                </a>
+              </div>
+            ))}
+            <p className="px-5 py-3 text-[11px] text-gray-400 leading-relaxed">
+              These arrive compressed (.json.gz). Unzip one first, then upload the .json inside
+              on this screen to restore it.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* History */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100">
-          <h3 className="font-bold text-gray-900">Backup History</h3>
+          <h3 className="font-bold text-gray-900">Backup History (on this server)</h3>
         </div>
         {isLoading ? (
           <div className="p-6 space-y-3">
@@ -211,7 +366,10 @@ export default function Backup() {
             ))}
           </div>
         ) : history.length === 0 ? (
-          <p className="text-center py-10 text-gray-400 text-sm">No backup history</p>
+          <p className="text-center py-10 text-gray-400 text-sm px-6 leading-relaxed">
+            Nothing here. This list lives on the server's own disk and is erased by every
+            deploy — the off-site copies above are the ones that last.
+          </p>
         ) : (
           <div className="divide-y divide-gray-100">
             {history.map((h, i) => (
