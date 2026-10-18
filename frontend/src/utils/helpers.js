@@ -50,6 +50,10 @@ export const getRoleBadgeColor = (role) => {
     'COO': 'bg-indigo-100 text-indigo-800',
     'Manager': 'bg-green-100 text-green-800',
     'Sales': 'bg-orange-100 text-orange-700',
+    // Engineer does the same job as Sales, so it reads as the same kind of
+    // badge — a different colour only so the two can be told apart at a
+    // glance in a list of staff.
+    'Engineer': 'bg-sky-100 text-sky-700',
   }
   return colors[role] || 'bg-gray-100 text-gray-700'
 }

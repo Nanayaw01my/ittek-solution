@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const HeldSale = require('../models/HeldSale');
+const { seesOwnRecordsOnly } = require('../middleware/rbac');
 
 const makeReference = () => `HOLD-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
@@ -48,7 +49,7 @@ const holdSale = async (req, res) => {
  */
 const getHolds = async (req, res) => {
   try {
-    const filter = req.user.role === 'Sales' ? { held_by: req.user._id } : {};
+    const filter = seesOwnRecordsOnly(req.user.role) ? { held_by: req.user._id } : {};
     const holds = await HeldSale.find(filter).populate('held_by', 'username').sort({ createdAt: -1 }).limit(100);
     return res.status(200).json({ success: true, data: holds });
   } catch (err) {
@@ -63,7 +64,7 @@ const getHold = async (req, res) => {
     const held = await HeldSale.findById(req.params.id).populate('held_by', 'username');
     if (!held) return res.status(404).json({ success: false, message: 'Held sale not found.' });
 
-    if (req.user.role === 'Sales' && String(held.held_by._id) !== String(req.user._id)) {
+    if (seesOwnRecordsOnly(req.user.role) && String(held.held_by._id) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
@@ -80,7 +81,7 @@ const deleteHold = async (req, res) => {
     const held = await HeldSale.findById(req.params.id);
     if (!held) return res.status(404).json({ success: false, message: 'Held sale not found.' });
 
-    if (req.user.role === 'Sales' && String(held.held_by) !== String(req.user._id)) {
+    if (seesOwnRecordsOnly(req.user.role) && String(held.held_by) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 

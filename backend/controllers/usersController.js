@@ -5,6 +5,7 @@ const Category = require('../models/Category');
 const { sanitizeGrants } = require('../config/pageAccess');
 
 const { ROLE_LEVELS } = require('../config/pageAccess');
+const { STAFF_ROLES } = require('../middleware/rbac');
 
 const canManage = (actorRole, targetRole) => {
   const actorLevel = ROLE_LEVELS[actorRole] || 0;
@@ -26,7 +27,7 @@ const getUsers = async (req, res) => {
     // below CEO belongs here — leaving one out hides those people from the
     // only screen that can edit them.
     if (['CEO', 'COO'].includes(req.user.role)) {
-      filter.role = { $in: ['Manager', 'Sales', 'Field Agent'] };
+      filter.role = { $in: STAFF_ROLES };
     }
 
     const users = await User.find(filter).populate('created_by', 'username email').sort({ createdAt: -1 });

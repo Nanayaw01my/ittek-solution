@@ -8,7 +8,7 @@
  * assistant at all.
  *
  * `level` is the lowest role level that may see a topic, using the same
- * numbers as the rest of the system: Sales and Field Agent 1, Manager 2,
+ * numbers as the rest of the system: Sales, Engineer and Field Agent 1, Manager 2,
  * CEO / COO / Super Admin 3, Super Admin 4.
  *
  * Money is the line that matters. Cost prices, margins, takings, profit,
@@ -310,7 +310,7 @@ export const HELP_TOPICS = [
     pages: ['/users'],
     keywords: ['role', 'permission', 'access', 'staff', 'user', 'cannot see', 'denied'],
     steps: [
-      'Sales and Field Agent handle selling and stock, and do not see cost prices or profit.',
+      'Sales, Engineer and Field Agent handle selling and stock, and do not see cost prices or profit.',
       'Managers run the shop floor: stock, requests, customers and cashing up.',
       'CEO, COO and Super Admin see the money — costs, margins, profit, debts and wages.',
       'Super Admin alone changes system settings and users.',

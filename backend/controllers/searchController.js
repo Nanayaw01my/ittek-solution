@@ -5,6 +5,7 @@ const Expense = require('../models/Expense');
 const CreditAgreement = require('../models/CreditAgreement');
 
 const { ROLE_LEVELS } = require('../config/pageAccess');
+const { seesOwnRecordsOnly } = require('../middleware/rbac');
 
 /**
  * POST /api/search
@@ -40,7 +41,7 @@ const universalSearch = async (req, res) => {
     // Sales
     if (userLevel >= 1) {
       const saleFilter = {};
-      if (req.user.role === 'Sales') saleFilter.user_id = req.user._id;
+      if (seesOwnRecordsOnly(req.user.role)) saleFilter.user_id = req.user._id;
       if (Object.keys(dateFilter).length > 0) saleFilter.sale_date = dateFilter;
       if (query) {
         saleFilter.$or = [
@@ -58,7 +59,7 @@ const universalSearch = async (req, res) => {
     // Expenses - Manager and above (all), Sales (own only)
     if (userLevel >= 1) {
       const expFilter = {};
-      if (req.user.role === 'Sales') expFilter.user_id = req.user._id;
+      if (seesOwnRecordsOnly(req.user.role)) expFilter.user_id = req.user._id;
       if (Object.keys(dateFilter).length > 0) expFilter.expense_date = dateFilter;
       if (query) expFilter.$or = [
         { description: { $regex: query, $options: 'i' } },

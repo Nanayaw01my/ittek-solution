@@ -2,7 +2,7 @@ const Refund = require('../models/Refund');
 const Sale = require('../models/Sale');
 const Product = require('../models/Product');
 const Notification = require('../models/Notification');
-const { ROLE_LEVELS } = require('../middleware/rbac');
+const { ROLE_LEVELS, seesOwnRecordsOnly } = require('../middleware/rbac');
 
 /** Put returned goods back on the shelf. */
 const restoreStock = async (items = []) => {
@@ -104,7 +104,7 @@ const searchSales = async (req, res) => {
 
     // A Sales user sees only their own sales here, matching how the sales
     // history already scopes them.
-    if (req.user.role === 'Sales') filter.user_id = req.user._id;
+    if (seesOwnRecordsOnly(req.user.role)) filter.user_id = req.user._id;
 
     const sales = await Sale.find(filter)
       .select('invoice_no offline_ref customer_name customer_phone total_amount sale_date items')
@@ -178,7 +178,7 @@ const scanForRefund = async (req, res) => {
     // on that sale's line, and a product since deleted has no id to match.
     const filter = { $or: [{ 'items.barcode': code }] };
     if (product) filter.$or.push({ 'items.product_id': product._id });
-    if (req.user.role === 'Sales') filter.user_id = req.user._id;
+    if (seesOwnRecordsOnly(req.user.role)) filter.user_id = req.user._id;
 
     const sales = await Sale.find(filter)
       .select('invoice_no offline_ref customer_name customer_phone total_amount sale_date items')

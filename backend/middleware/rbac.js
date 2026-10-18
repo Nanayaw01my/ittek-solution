@@ -6,6 +6,7 @@
  *   CEO         = 3
  *   Manager     = 2
  *   Sales       = 1
+ *   Engineer    = 1
  */
 
 const ROLE_LEVELS = {
@@ -18,11 +19,36 @@ const ROLE_LEVELS = {
   COO: 3,
   Manager: 2,
   Sales: 1,
+  // An engineer does the same job as Sales from the system's point of view:
+  // sells, takes payment, books service work, and sees no cost price. It is
+  // a separate role only so the shop can tell who did what.
+  Engineer: 1,
   // A DSR on the field. Level 1 so everything gated at Manager and above is
   // shut to them, but the level is not the real boundary — see
   // FIELD_AGENT_ALLOWED in middleware/auth.js, which is an allowlist.
   'Field Agent': 1,
 };
+
+/**
+ * Who sees only what they themselves did.
+ *
+ * Sales staff are shown their own sales, their own refunds and their own
+ * held carts, never the shop's. That was written a dozen times over as
+ * `req.user.role === 'Sales'`, which is exactly the kind of line that gets
+ * missed when a role is added — and a missed one does not fail loudly, it
+ * quietly shows somebody the whole shop's takings.
+ *
+ * One list, asked everywhere, so adding a role is adding a line here.
+ */
+const SELF_ONLY_ROLES = ['Sales', 'Engineer'];
+
+const seesOwnRecordsOnly = (role) => SELF_ONLY_ROLES.includes(role);
+
+/**
+ * The staff an owner manages, as opposed to the owners themselves. Used for
+ * the user list a Manager is allowed to see, and for staff counts.
+ */
+const STAFF_ROLES = ['Manager', 'Sales', 'Engineer', 'Field Agent'];
 
 /**
  * requireRoles(...roles)
@@ -118,4 +144,5 @@ const isOwner = (role) => OWNER_ROLES.includes(role);
 
 module.exports = {
   requireRoles, requireLevel, requirePage, ROLE_LEVELS, OWNER_ROLES, isOwner,
+  SELF_ONLY_ROLES, seesOwnRecordsOnly, STAFF_ROLES,
 };

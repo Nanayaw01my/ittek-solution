@@ -36,6 +36,7 @@ const BADGE_LABELS = {
   ceo: 'CEO',
   manager: 'Manager',
   sales: 'Sales',
+  engineer: 'Engineer',
 }
 
 export default function Badge({ status, label, size = 'sm' }) {
