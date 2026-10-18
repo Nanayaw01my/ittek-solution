@@ -153,6 +153,10 @@ test('where the nightly backup ends up', async (t) => {
     assert.strictEqual(uploads.length, 1);
     assert.strictEqual(sent.length, 0);
     assert.match(said, /off-site/);
+    // And not nagged about it. Leaving the address blank is a choice, and a
+    // nightly note about a copy nobody asked for is how real warnings come
+    // to be ignored.
+    assert.strictEqual(notices.length, 0);
   });
 
   await t.test('nothing set up at all: said, and no pointless work done', async () => {

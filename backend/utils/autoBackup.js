@@ -112,7 +112,8 @@ const runNightlyBackup = async () => {
   let emailed = false;
   let emailWhy = '';
   if (!to) {
-    emailWhy = 'No address is set for backups.';
+    // Nobody asked for an emailed copy. Said for the job log, not raised.
+    emailWhy = 'No address is set for backups, so none was emailed.';
   } else if (packed.length > MAX_ATTACHMENT_BYTES) {
     // Too big to post. Better to say so tonight than to discover it on the
     // morning somebody needs the backup.
@@ -177,13 +178,17 @@ const runNightlyBackup = async () => {
   }
 
   /**
-   * One copy where there should be two is worth saying, quietly.
+   * A copy that should have been made and was not is worth saying, quietly.
    *
-   * Not a failure — the data is safe — but a shop running on a single copy
-   * should know it is, rather than finding out the night that copy also
-   * fails.
+   * Not a failure — the data is safe — but a shop that thinks it has two
+   * copies and has one should be told, rather than finding out on the night
+   * the remaining one also fails.
+   *
+   * Deliberately not setting an address is not that. Email is the second
+   * copy, not the backup, and somebody who left it blank does not need
+   * telling again every night for the rest of the year.
    */
-  if (!cloud || !emailed) {
+  if (!cloud || (!emailed && to)) {
     await notifyOwners({
       type: 'system',
       title: 'Backup saved, but only one copy',
