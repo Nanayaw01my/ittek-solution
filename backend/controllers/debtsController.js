@@ -3,6 +3,7 @@ const Sale = require('../models/Sale');
 const Notification = require('../models/Notification');
 const { queueEmail, templates } = require('../utils/email');
 const Settings = require('../models/Settings');
+const { sendPaymentReceipt } = require('../utils/paymentReceipt');
 
 /**
  * GET /api/debts
@@ -159,6 +160,35 @@ const recordPayment = async (req, res) => {
       }
     }
 
+    /**
+     * Tell the customer their money landed.
+     *
+     * After the payment is saved, never before, and never in a way that can
+     * fail it: the money has been taken and the record is the point. If the
+     * text does not go, the counter is told why on the same screen and can
+     * hand over the printed slip instead.
+     */
+    const remainingAfter = Math.max(0, debt.amount_owed - debt.amount_paid);
+    const texted = await sendPaymentReceipt({
+      name: debt.customer_name,
+      phone: debt.customer_phone,
+      amount: paymentAmount,
+      remaining: remainingAfter,
+      receiptNo: receipt_no,
+    });
+
+    // Written against the payment, so months later "did you tell them?" has
+    // an answer that is not somebody's memory.
+    await Debt.updateOne(
+      { _id: debt._id, 'payments.receipt_no': receipt_no },
+      {
+        $set: {
+          'payments.$.sms_sent': !!texted.sent,
+          'payments.$.sms_error': texted.sent ? undefined : String(texted.reason || ''),
+        },
+      }
+    ).catch((err) => console.error('[Debts] could not record the text:', err.message));
+
     // Everything the printed receipt needs, so the counter does not have to
     // re-fetch the debt to put a slip of paper in the customer's hand.
     return res.status(200).json({
@@ -172,10 +202,14 @@ const recordPayment = async (req, res) => {
         payment_method: req.body.payment_method || 'cash',
         amount_owed: debt.amount_owed,
         amount_paid: debt.amount_paid,
-        remaining: Math.max(0, debt.amount_owed - debt.amount_paid),
+        remaining: remainingAfter,
         customer_name: debt.customer_name,
         customer_phone: debt.customer_phone,
         received_by: req.user.username,
+        // So the counter knows whether the customer has been told, before
+        // they decide whether to print anything.
+        texted: !!texted.sent,
+        text_note: texted.sent ? null : String(texted.reason || ''),
       },
     });
   } catch (err) {

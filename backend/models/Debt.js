@@ -6,6 +6,15 @@ const DebtPaymentSchema = new mongoose.Schema(
     payment_date: { type: Date, default: Date.now },
     receipt_no: { type: String },
     recorded_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    /**
+     * Whether the customer was texted that this payment landed.
+     *
+     * Written down because "did you tell them?" is a real question months
+     * later, and because a shop that can see the text went out has an answer
+     * to "I paid you and heard nothing".
+     */
+    sms_sent: { type: Boolean, default: false },
+    sms_error: { type: String },
   },
   { _id: true }
 );

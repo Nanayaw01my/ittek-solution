@@ -282,6 +282,9 @@ function SmsConfigTab({ settings }) {
   const [apiKey, setApiKey] = useState('')
   const [senderId, setSenderId] = useState(cfg.sender_id || '')
   const [enabled, setEnabled] = useState(cfg.enabled !== false)
+  // A receipt text after a debt payment. On unless switched off — a shop
+  // that has set texting up wants its receipts.
+  const [receipts, setReceipts] = useState(cfg.payment_receipts !== false)
   const [testNumber, setTestNumber] = useState('')
   // Chasing rides on this screen because it is the same question: what does
   // this shop send, and when.
@@ -308,6 +311,7 @@ function SmsConfigTab({ settings }) {
       api_key: apiKey.trim() || undefined,
       sender_id: senderId,
       enabled,
+      payment_receipts: receipts,
       debt_chasing: chase,
     }),
     onSuccess: () => {
@@ -347,6 +351,19 @@ function SmsConfigTab({ settings }) {
           <span className="font-bold">Texting is on</span>
           <span className="block text-xs text-gray-500">
             Turn this off to stop every Text button at once, without deleting the key.
+          </span>
+        </span>
+      </label>
+
+      <label className="flex items-start gap-2.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3 cursor-pointer">
+        <input type="checkbox" checked={receipts} onChange={(e) => setReceipts(e.target.checked)}
+          disabled={!enabled}
+          className="mt-0.5 w-4 h-4 accent-orange-500 disabled:opacity-40" />
+        <span className={enabled ? '' : 'opacity-50'}>
+          <span className="font-bold">Text a receipt when a debt is paid</span>
+          <span className="block text-xs text-gray-500">
+            The customer gets the amount, what is left and the receipt number, on the
+            phone the debt was recorded against. One credit per payment.
           </span>
         </span>
       </label>
