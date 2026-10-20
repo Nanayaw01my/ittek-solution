@@ -144,7 +144,7 @@ const smsCredentials = async () => {
 /** PUT /api/settings/sms — the Arkesel key, sender ID and on/off switch. */
 const updateSmsConfig = async (req, res) => {
   try {
-    const { api_key, sender_id, enabled } = req.body;
+    const { api_key, sender_id, enabled, payment_receipts } = req.body;
 
     let settings = await Settings.findOne().select('+sms_config.api_key');
     if (!settings) settings = new Settings();
@@ -167,6 +167,7 @@ const updateSmsConfig = async (req, res) => {
       next.sender_id = id;
     }
     if (typeof enabled === 'boolean') next.enabled = enabled;
+    if (typeof payment_receipts === 'boolean') next.payment_receipts = payment_receipts;
     next.provider = 'arkesel';
     settings.sms_config = next;
 

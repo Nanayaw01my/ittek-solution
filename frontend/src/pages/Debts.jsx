@@ -130,7 +130,21 @@ function PaymentModal({ debt, onClose, isOpen, onPaid }) {
   const mutation = useMutation({
     mutationFn: ({ id, data }) => recordDebtPayment(id, data),
     onSuccess: (res) => {
-      toast.success('Payment recorded!')
+      /**
+       * Say whether the customer was told.
+       *
+       * The counter decides what to do next from this: a customer who has
+       * the text on their phone needs no slip, and one who was not reached
+       * does. "Payment recorded!" alone leaves that to chance.
+       */
+      const d = res?.data || {}
+      if (d.texted) {
+        toast.success(`Payment recorded — texted to ${d.customer_phone}`, { duration: 6000 })
+      } else if (d.text_note) {
+        toast.success(`Payment recorded. Not texted: ${d.text_note}`, { duration: 9000 })
+      } else {
+        toast.success('Payment recorded!')
+      }
       queryClient.invalidateQueries(['debts'])
       queryClient.invalidateQueries(['debt-summary'])
       reset()

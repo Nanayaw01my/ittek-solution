@@ -83,6 +83,14 @@ const SettingsSchema = new mongoose.Schema(
       // Arkesel registers this and refuses anything longer than 11 characters.
       sender_id: { type: String, trim: true, maxlength: 11 },
       enabled: { type: Boolean, default: false },
+      /**
+       * Text the customer when a debt payment is taken.
+       *
+       * On unless switched off: a shop that has set texting up wants its
+       * receipts, and this is the message customers are gladdest to get.
+       * It costs one credit a payment, so it can be turned off.
+       */
+      payment_receipts: { type: Boolean, default: true },
     },
 
     /**
