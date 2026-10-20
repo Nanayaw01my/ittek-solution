@@ -3,6 +3,7 @@ const CreditAgreement = require('../models/CreditAgreement');
 const Notification = require('../models/Notification');
 const Settings = require('../models/Settings');
 const { generateCreditAgreement, generateExchangeNote } = require('../utils/pdfGenerator');
+const { sendPaymentReceipt, recordSend } = require('../utils/paymentReceipt');
 
 /**
  * GET /api/credit-agreements
@@ -139,9 +140,6 @@ const recordPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Agreement is already completed.' });
     }
 
-    const totalPaid = agreement.payments.reduce((sum, p) => sum + p.amount, 0) + Number(amount);
-    const remaining = Math.max(0, agreement.remaining - totalPaid + agreement.payments.reduce((sum, p) => sum + p.amount, 0));
-
     agreement.payments.push({
       amount: Number(amount),
       payment_date: new Date(),
@@ -149,17 +147,52 @@ const recordPayment = async (req, res) => {
       recorded_by: req.user._id,
     });
 
-    // Check if completed
+    /**
+     * What this customer still owes.
+     *
+     * Worked out by the model, which counts the down payment and every
+     * instalment against the total. The arithmetic here used to subtract
+     * only the payment being taken from the amount financed at the start:
+     *   remaining = financed - (paidBefore + amount) + paidBefore
+     * which cancels to `financed - amount` and ignores everything paid
+     * before today. A customer three payments into a plan was told a
+     * balance thousands of cedis too high, and the agreement could only
+     * ever complete if one payment cleared the whole thing — so a plan paid
+     * off weekly, as intended, stayed open for ever.
+     */
+    const remaining = agreement.outstanding();
     if (remaining <= 0) {
       agreement.status = 'completed';
     }
 
     await agreement.save();
 
+    // Tell the customer, after the money is recorded and without being able
+    // to unrecord it.
+    const lastPayment = agreement.payments[agreement.payments.length - 1];
+    const texted = await sendPaymentReceipt({
+      name: agreement.customer_name,
+      phone: agreement.customer_phone,
+      amount: Number(amount),
+      remaining,
+      // No reference: an agreement carries no number the customer has ever
+      // been shown, and inventing one here would have them quoting a code
+      // that appears on nothing in their hand.
+      receiptNo: null,
+      settledNote: 'Your agreement is now fully paid. Thank you.',
+    });
+
+    await recordSend(CreditAgreement, { _id: agreement._id, 'payments._id': lastPayment?._id }, texted);
+
     return res.status(200).json({
       success: true,
       message: 'Payment recorded.',
-      data: { agreement, remaining },
+      data: {
+        agreement,
+        remaining,
+        texted: !!texted.sent,
+        text_note: texted.sent ? null : String(texted.reason || ''),
+      },
     });
   } catch (err) {
     console.error('Credit agreement payment error:', err.message);

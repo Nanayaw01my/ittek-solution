@@ -30,7 +30,15 @@ function PaymentModal({ layaway, onClose }) {
   const mutation = useMutation({
     mutationFn: (data) => addLayawayPayment(layaway._id, data),
     onSuccess: (res) => {
-      toast.success(res.data?.message || 'Payment recorded')
+      // Whether the customer has the text on their phone decides whether
+      // the counter needs to print anything.
+      const d = res.data || {}
+      toast.success(
+        d.texted ? `Payment recorded — texted to ${d.customer_phone}`
+          : d.text_note ? `Payment recorded. Not texted: ${d.text_note}`
+            : 'Payment recorded',
+        { duration: d.texted ? 6000 : 9000 }
+      )
       queryClient.invalidateQueries({ queryKey: ['layaways'] })
       onClose()
     },

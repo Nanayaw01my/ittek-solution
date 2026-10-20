@@ -174,3 +174,35 @@ test('when it sends, and when it does not', async (t) => {
     await assert.doesNotReject(() => send());
   });
 });
+
+test('writing down whether it went can never cost a payment', async (t) => {
+  await t.test('a model without the method does not throw', async () => {
+    // This runs after money has been taken and saved. A synchronous throw
+    // here — a stub, a mis-wired model, anything — would turn a recorded
+    // payment into a 500 and send the customer away unsure.
+    await assert.doesNotReject(() => pr.recordSend({}, { _id: 'x' }, { sent: true }));
+  });
+
+  await t.test('a database that refuses the write does not throw', async () => {
+    await assert.doesNotReject(() => pr.recordSend(
+      { updateOne: async () => { throw new Error('connection lost'); } },
+      { _id: 'x' }, { sent: false, reason: 'nope' }
+    ));
+  });
+
+  await t.test('a successful send is written as sent', async () => {
+    let got = null;
+    await pr.recordSend({ updateOne: async (f, u) => { got = u; } }, { _id: 'x' }, { sent: true });
+    assert.strictEqual(got.$set['payments.$.sms_sent'], true);
+  });
+
+  await t.test('a failed send keeps the reason', async () => {
+    let got = null;
+    await pr.recordSend(
+      { updateOne: async (f, u) => { got = u; } },
+      { _id: 'x' }, { sent: false, reason: 'Arkesel refused the API key.' }
+    );
+    assert.strictEqual(got.$set['payments.$.sms_sent'], false);
+    assert.match(got.$set['payments.$.sms_error'], /refused/);
+  });
+});
