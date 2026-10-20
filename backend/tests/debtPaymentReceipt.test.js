@@ -20,6 +20,11 @@ Module._load = function (req) {
   if (req.includes('models/Settings')) return { findOne: async () => null };
   if (req.endsWith('../utils/paymentReceipt') || req.includes('utils/paymentReceipt')) return {
     sendPaymentReceipt: async () => receipt,
+    // The real one writes the result against the payment and swallows every
+    // fault, because it runs after money has already been taken.
+    recordSend: async (Model, filter, texted) => {
+      updates.push({ f: filter, u: { $set: { 'payments.$.sms_sent': !!texted.sent } } });
+    },
   };
   if (req.includes('utils/email')) return { queueEmail: async () => {}, templates: { debtPayment: () => '' } };
   return orig.apply(this, arguments);

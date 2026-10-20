@@ -441,8 +441,14 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
 
   const payMutation = useMutation({
     mutationFn: ({ id, data }) => recordCreditPayment(id, data),
-    onSuccess: () => {
-      toast.success('Payment recorded!')
+    onSuccess: (res) => {
+      const d = res.data || {}
+      toast.success(
+        d.texted ? `Payment recorded — the customer has been texted`
+          : d.text_note ? `Payment recorded. Not texted: ${d.text_note}`
+            : 'Payment recorded!',
+        { duration: d.texted ? 6000 : 9000 }
+      )
       queryClient.invalidateQueries(['credit-agreements'])
       setPayAmount('')
     },

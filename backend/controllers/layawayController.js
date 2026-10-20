@@ -4,6 +4,7 @@ const Notification = require('../models/Notification');
 const { buildSaleItems, deductStock, restoreStock } = require('../utils/saleHelpers');
 const { createSaleWithInvoice } = require('../utils/generateInvoice');
 const Product = require('../models/Product');
+const { sendPaymentReceipt, recordSend } = require('../utils/paymentReceipt');
 
 /**
  * A layaway line stores no cost price, but a sale line requires one. It is
@@ -265,6 +266,27 @@ const addPayment = async (req, res) => {
       });
     }
 
+    /**
+     * Tell the customer their instalment landed.
+     *
+     * A layaway customer pays a little every week for months and has even
+     * less to show for it than a debtor — so the text matters more here, not
+     * less. Sent after the plan is saved, and unable to fail the payment.
+     */
+    const lastPayment = layaway.payments[layaway.payments.length - 1];
+    const texted = await sendPaymentReceipt({
+      name: layaway.customer_name,
+      phone: layaway.customer_phone,
+      amount: value,
+      remaining: layaway.balance,
+      receiptNo: layaway.reference,
+      // A layaway that is paid off has goods sitting on a shelf waiting for
+      // somebody to come and get them. Saying so is the whole point.
+      settledNote: 'Fully paid - your goods are ready for collection. Thank you.',
+    });
+
+    await recordSend(Layaway, { _id: layaway._id, 'payments._id': lastPayment?._id }, texted);
+
     const notes = [];
     if (reinstated) {
       notes.push(shortOfStock.length
@@ -279,7 +301,21 @@ const addPayment = async (req, res) => {
         layaway.status === 'completed' ? 'Paid in full — goods ready for collection.' : 'Payment recorded.',
         ...notes,
       ].join(' '),
-      data: layaway,
+      /**
+       * Inside `data`, not beside it.
+       *
+       * The browser's axios layer unwraps {success, data} and keeps only
+       * `data` — every sibling field is dropped on the way through. A
+       * `texted` flag sent alongside would never reach the screen that has
+       * to decide whether to print a slip.
+       */
+      data: {
+        ...(layaway.toObject ? layaway.toObject() : layaway),
+        reinstated,
+        short_of_stock: shortOfStock,
+        texted: !!texted.sent,
+        text_note: texted.sent ? null : String(texted.reason || ''),
+      },
       reinstated,
       short_of_stock: shortOfStock,
     });

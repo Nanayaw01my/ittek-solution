@@ -6,6 +6,10 @@ const CreditPaymentSchema = new mongoose.Schema(
     payment_date: { type: Date, default: Date.now },
     week_number: { type: Number },
     recorded_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    // Whether the customer was texted that this instalment landed. See
+    // utils/paymentReceipt.js.
+    sms_sent: { type: Boolean, default: false },
+    sms_error: { type: String },
   },
   { _id: true }
 );

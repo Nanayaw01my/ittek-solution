@@ -27,6 +27,10 @@ const LayawayPaymentSchema = new mongoose.Schema(
     reference: { type: String, trim: true },
     paid_at: { type: Date, default: Date.now },
     received_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    // Whether the customer was texted that this instalment landed. See
+    // utils/paymentReceipt.js.
+    sms_sent: { type: Boolean, default: false },
+    sms_error: { type: String },
   },
   { _id: true }
 );

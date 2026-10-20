@@ -1,8 +1,9 @@
 /**
  * Telling the customer their payment landed.
  *
- * Somebody pays off part of a debt at the counter and walks away with a slip
- * of paper, or with nothing at all if the printer is out. The shop's record
+ * Somebody pays off part of a debt, a layaway or a credit agreement at the
+ * counter and walks away with a slip of paper, or with nothing at all if the
+ * printer is out. The shop's record
  * is updated; the customer's record is their memory. That gap is where
  * "I paid you last month" arguments come from, and the shop has no answer
  * that is not its own word against theirs.
@@ -35,12 +36,17 @@ const money = (n) => `GHC${(Number(n) || 0).toFixed(2)}`;
  *
  * Exported on its own so the words can be tested without sending anything.
  */
-const composeReceiptSms = ({ company, name, amount, remaining, receiptNo }) => {
+const composeReceiptSms = ({ company, name, amount, remaining, receiptNo, settledNote }) => {
   const first = String(name || '').trim().split(/\s+/)[0] || 'Customer';
   const settled = Number(remaining) <= 0.004;
 
+  // What "nothing left to pay" means differs by plan. A layaway customer
+  // has goods waiting for them and should be told to come for them; a debt
+  // is simply finished.
+  const done = settledNote || 'Your balance is now cleared. Thank you.';
+
   const core = settled
-    ? `Hi ${first}, we received ${money(amount)}. Your balance is now cleared. Thank you.`
+    ? `Hi ${first}, we received ${money(amount)}. ${done}`
     : `Hi ${first}, we received ${money(amount)}. Balance left: ${money(remaining)}.`;
 
   const parts = [core];
@@ -58,7 +64,7 @@ const composeReceiptSms = ({ company, name, amount, remaining, receiptNo }) => {
  * Returns {sent, reason} rather than throwing — every caller is in the
  * middle of recording money, and nothing here is worth losing that over.
  */
-const sendPaymentReceipt = async ({ name, phone, amount, remaining, receiptNo }) => {
+const sendPaymentReceipt = async ({ name, phone, amount, remaining, receiptNo, settledNote }) => {
   try {
     const number = normaliseGhanaPhone(phone);
     if (!number) return { sent: false, reason: 'no usable phone number on the debt' };
@@ -90,6 +96,7 @@ const sendPaymentReceipt = async ({ name, phone, amount, remaining, receiptNo })
       amount,
       remaining,
       receiptNo,
+      settledNote,
     });
 
     const result = await sendSms({ apiKey, sender, to: number, message });
@@ -104,4 +111,29 @@ const sendPaymentReceipt = async ({ name, phone, amount, remaining, receiptNo })
   }
 };
 
-module.exports = { sendPaymentReceipt, composeReceiptSms, money };
+/**
+ * Write down whether the customer was told, without that ever mattering.
+ *
+ * This runs after money has been taken and saved. Anything it does must be
+ * incapable of failing the payment — including a model that turns out not
+ * to have the method, which throws where it stands rather than returning a
+ * promise to catch. So: try/catch around the lot, and a log.
+ *
+ * @param {Object} Model   the mongoose model holding the payment
+ * @param {Object} filter  which document and which payment
+ * @param {Object} texted  the result from sendPaymentReceipt
+ */
+const recordSend = async (Model, filter, texted) => {
+  try {
+    await Model.updateOne(filter, {
+      $set: {
+        'payments.$.sms_sent': !!texted?.sent,
+        'payments.$.sms_error': texted?.sent ? undefined : String(texted?.reason || ''),
+      },
+    });
+  } catch (err) {
+    console.error('[PaymentReceipt] could not record the text:', err.message);
+  }
+};
+
+module.exports = { sendPaymentReceipt, composeReceiptSms, recordSend, money };

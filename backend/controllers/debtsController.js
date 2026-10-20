@@ -3,7 +3,7 @@ const Sale = require('../models/Sale');
 const Notification = require('../models/Notification');
 const { queueEmail, templates } = require('../utils/email');
 const Settings = require('../models/Settings');
-const { sendPaymentReceipt } = require('../utils/paymentReceipt');
+const { sendPaymentReceipt, recordSend } = require('../utils/paymentReceipt');
 
 /**
  * GET /api/debts
@@ -179,15 +179,7 @@ const recordPayment = async (req, res) => {
 
     // Written against the payment, so months later "did you tell them?" has
     // an answer that is not somebody's memory.
-    await Debt.updateOne(
-      { _id: debt._id, 'payments.receipt_no': receipt_no },
-      {
-        $set: {
-          'payments.$.sms_sent': !!texted.sent,
-          'payments.$.sms_error': texted.sent ? undefined : String(texted.reason || ''),
-        },
-      }
-    ).catch((err) => console.error('[Debts] could not record the text:', err.message));
+    await recordSend(Debt, { _id: debt._id, 'payments.receipt_no': receipt_no }, texted);
 
     // Everything the printed receipt needs, so the counter does not have to
     // re-fetch the debt to put a slip of paper in the customer's hand.
