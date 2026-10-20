@@ -52,3 +52,10 @@ export const getBackupSummary = () => api.get('/backup/summary')
  */
 export const getCloudBackups = () => api.get('/backup/cloud')
 export const globalSearch = (body) => api.post('/search', body)
+
+/**
+ * Who sold what, to whom, and at what discount. Owners only.
+ */
+export const getStaffSalesSummary = (params) => api.get('/staff-sales/summary', { params })
+export const getStaffSales = (params) => api.get('/staff-sales/sales', { params })
+export const getSaleTrail = (id) => api.get(`/staff-sales/sale/${id}`)

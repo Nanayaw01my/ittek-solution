@@ -279,6 +279,8 @@ app.use('/api/financial', require('./routes/financial'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/backup', require('./routes/backup'));
+// Who sold what, to whom, at what discount. Owners only.
+app.use('/api/staff-sales', require('./routes/staffSales'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/audit-logs', require('./routes/auditLogs'));

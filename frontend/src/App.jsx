@@ -25,6 +25,7 @@ import Reports from './pages/Reports'
 import Users from './pages/Users'
 import AuditLogs from './pages/AuditLogs'
 import Backup from './pages/Backup'
+import StaffSales from './pages/StaffSales'
 import Settings from './pages/Settings'
 import Notifications from './pages/Notifications'
 import Search from './pages/Search'
@@ -297,6 +298,15 @@ export default function App() {
           element={
             <ProtectedRoute minLevel={3}>
               <Backup />
+            </ProtectedRoute>
+          }
+        />
+        {/* Who sold what, to whom, at what discount. Owners only. */}
+        <Route
+          path="staff-sales"
+          element={
+            <ProtectedRoute minLevel={3}>
+              <StaffSales />
             </ProtectedRoute>
           }
         />
