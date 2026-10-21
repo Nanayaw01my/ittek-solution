@@ -300,7 +300,12 @@ export default function Dashboard() {
       </div>
 
       {/* Row 2 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 sm:gap-4">
+      {/* Four across, not seven.
+          Seven tiles share a 1440px screen at about 140px each, which is
+          narrower than "GH₵ 12,480.00" — so every figure on the row was cut
+          to "GH₵ 0…". A money tile too narrow to show the money is not a
+          tile. */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
         {/* Already counted inside Today's Sales — this says how much of the
             day came from agents on the field rather than over the counter. */}
         <StatCard

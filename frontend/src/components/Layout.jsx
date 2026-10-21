@@ -179,11 +179,27 @@ export default function Layout() {
       )}
 
       {/* Sidebar */}
+      {/*
+        On a desktop this is a column as tall as the window and no taller.
+
+        It used to be `lg:static h-full`, and h-full has nothing to resolve
+        against in a min-height container — so instead of the nav scrolling
+        inside itself, the whole sidebar grew to fit all forty-two entries.
+        At 2,119px in a 900px window that put Settings a thousand pixels
+        below the fold, reachable only by scrolling the entire page, and on
+        a short page not reachable at all. Grouping the menu added the
+        headings that tipped it over.
+
+        Sticky rather than static: the column stays put while the page
+        scrolls, and h-screen gives the nav inside it a height to scroll
+        against.
+      */}
       <aside className={`
         fixed top-0 left-0 h-full w-[17rem] bg-white shadow-xl z-40 flex flex-col
         transition-transform duration-300 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0 lg:static lg:shadow-none lg:border-r lg:border-gray-200
+        lg:translate-x-0 lg:sticky lg:top-0 lg:h-screen lg:self-start
+        lg:shadow-none lg:border-r lg:border-gray-200
       `}>
         {/* Logo. The top padding clears a phone's notch when the app is
             installed and draws under the status bar. */}
