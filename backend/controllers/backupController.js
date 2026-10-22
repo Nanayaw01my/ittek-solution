@@ -1,5 +1,21 @@
+const zlib = require('zlib');
+const { promisify } = require('util');
 const { createBackup, getBackupHistory, restoreFromBackup } = require('../utils/backup');
 const { listBackups, cloudConfigured } = require('../utils/cloudBackup');
+/**
+ * Required at the top, not inside the handler.
+ *
+ * A require that resolves when the request runs is a require that misses
+ * every stand-in a test put in place beforehand — so the test quietly got
+ * the real models and sat waiting ten seconds for a database that is not
+ * there. This is the third time that trap has been walked into in this
+ * codebase; the fix is always the same.
+ */
+const Settings = require('../models/Settings');
+const { sendEmail, mailAccount } = require('../utils/email');
+const { backupAddress, MAX_ATTACHMENT_BYTES, human } = require('../utils/autoBackup');
+
+const gzip = promisify(zlib.gzip);
 
 /**
  * POST /api/backup/create — the whole database, as a file to download.
@@ -139,6 +155,80 @@ const getCloudBackups = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/backup/email — send one now, to find out whether it works.
+ *
+ * The nightly job runs at an hour nobody is awake for, and "did last night's
+ * backup arrive?" was a question answered by waiting until tomorrow and
+ * looking. Worse, a run already claimed for today will not run again, so
+ * there was no honest way to test a change to the mail settings at all.
+ *
+ * This does the same work the job does — take a backup, compress it, attach
+ * it — without touching the job's record of the night, and reports in words
+ * what happened. An address can be given, so an owner can send one to
+ * themselves without changing where tonight's goes.
+ */
+const emailBackupNow = async (req, res) => {
+  try {
+    const settings = await Settings.findOne().select('company_name company_email').lean();
+    const to = String(req.body?.to || '').trim() || backupAddress(settings);
+    if (!to) {
+      return res.status(400).json({
+        success: false,
+        message: 'There is no address to send it to. Put one in Settings → Company → Email, '
+          + 'or type one here.',
+      });
+    }
+
+    const backup = await createBackup();
+    const packed = await gzip(Buffer.from(backup.json, 'utf8'));
+    const name = `${backup.filename.replace(/\.json$/, '')}.json.gz`;
+    const shop = settings?.company_name || 'ITTEK Solution';
+    const summary = `${backup.meta.document_count} records across ${backup.meta.collection_count} collections`;
+
+    if (packed.length > MAX_ATTACHMENT_BYTES) {
+      return res.status(400).json({
+        success: false,
+        message: `The backup is ${human(packed.length)}, too large to email. Use the off-site `
+          + 'copy on this screen instead.',
+      });
+    }
+
+    const account = await mailAccount();
+    await sendEmail({
+      to,
+      subject: `${shop} — backup ${backup.filename.replace(/^ittek-backup-/, '').replace(/\.json$/, '')}`,
+      html: `<p>Backup of <strong>${shop}</strong>, sent by hand from the Backup screen.</p>
+             <p>${summary}. Attached, compressed, as <code>${name}</code> (${human(packed.length)}).</p>
+             <p style="color:#666;font-size:13px">Keep these. To restore one, unzip it first and
+             upload the .json inside on the Backup screen.</p>`,
+      attachments: [{ filename: name, content: packed }],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Sent ${human(packed.length)} to ${to}.`,
+      data: {
+        to,
+        size: human(packed.length),
+        summary,
+        // Which route carried it, so a setting that did not take is visible
+        // rather than guessed at.
+        via: account.provider === 'brevo' ? 'Brevo (HTTPS)' : `${account.host}:${account.port}`,
+      },
+    });
+  } catch (err) {
+    console.error('Email backup error:', err.stack || err.message);
+    // The mail server's own words. "Failed" would leave somebody guessing at
+    // exactly the moment they are trying to fix this.
+    return res.status(400).json({
+      success: false,
+      message: `Could not email it: ${err.message}`,
+    });
+  }
+};
+
 module.exports = {
   createManualBackup, getSummary, getHistory, restoreBackup, getCloudBackups,
+  emailBackupNow,
 };

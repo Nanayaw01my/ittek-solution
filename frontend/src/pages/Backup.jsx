@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiDownload, FiUpload, FiDatabase, FiAlertTriangle, FiCloud, FiExternalLink } from 'react-icons/fi'
-import { createBackup, restoreBackup, getBackupHistory, getBackupSummary, getCloudBackups } from '../api/settings'
+import { FiDownload, FiUpload, FiDatabase, FiAlertTriangle, FiCloud, FiExternalLink, FiMail } from 'react-icons/fi'
+import { createBackup, restoreBackup, getBackupHistory, getBackupSummary, getCloudBackups, emailBackupNow } from '../api/settings'
 import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
 import { formatDateTime } from '../utils/helpers'
@@ -29,6 +29,12 @@ export default function Backup() {
    * works on every phone, and on a desktop it is simply a second chance.
    */
   const [ready, setReady] = useState(null)
+  // Sending one to an inbox on demand. Waiting until 2am to find out whether
+  // the mail settings work is not a way to fix mail settings — and a night
+  // already claimed by the job will not run again, so there was no honest
+  // way to test a change at all.
+  const [emailing, setEmailing] = useState(false)
+  const [emailTo, setEmailTo] = useState('')
   const [restoring, setRestoring] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [showConfirm, setShowConfirm] = useState(false)
@@ -83,6 +89,24 @@ export default function Backup() {
     }
     if (err.response?.status) return `the server answered ${err.response.status}.`
     return err.message || 'the server could not be reached.'
+  }
+
+  const handleEmail = async () => {
+    setEmailing(true)
+    try {
+      const res = await emailBackupNow(emailTo.trim())
+      const d = res.data || {}
+      toast.success(
+        d.to ? `Sent ${d.size} to ${d.to} via ${d.via}. Check the inbox — and the spam folder.`
+          : 'Backup emailed.',
+        { duration: 10000 }
+      )
+    } catch (err) {
+      // The mail server's own words, on screen long enough to act on.
+      toast.error(err.response?.data?.message || 'Could not email it', { duration: 14000 })
+    } finally {
+      setEmailing(false)
+    }
   }
 
   // The file is held in the browser's memory until it is let go of.
@@ -224,6 +248,35 @@ export default function Backup() {
             <FiDownload size={16} />
             {backingUp ? 'Creating Backup...' : 'Download Backup'}
           </button>
+
+          {/* Straight to an inbox, now. The nightly job sends to the same
+              address; this proves whether it can. */}
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">
+              Email a copy now
+            </label>
+            <div className="flex gap-2">
+              <input
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                placeholder="Leave blank to use the backup address"
+                className="flex-1 min-w-0 px-3 py-2.5 border border-gray-200 rounded-xl text-sm
+                           focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              <button
+                onClick={handleEmail}
+                disabled={emailing}
+                className="flex items-center gap-1.5 px-4 py-2.5 border border-orange-500 text-orange-600
+                           rounded-xl text-sm font-bold hover:bg-orange-50 disabled:opacity-60 flex-shrink-0"
+              >
+                <FiMail size={15} /> {emailing ? 'Sending…' : 'Send'}
+              </button>
+            </div>
+            <p className="mt-1.5 text-[11px] text-gray-500 leading-relaxed">
+              The same thing the nightly backup does, so this says whether tonight's will arrive.
+              If it fails, the message is the mail server's own words.
+            </p>
+          </div>
 
           {/* The file is made and waiting. On a phone this link is usually
               how it actually gets saved. */}
