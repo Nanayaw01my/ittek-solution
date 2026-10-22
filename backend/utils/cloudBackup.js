@@ -25,12 +25,19 @@ const FOLDER = 'ittek/backups';
 /** How many nights are kept. Older ones are deleted so storage is bounded. */
 const KEEP = 30;
 
-/** Is Cloudinary set up at all? Three variables, all or nothing. */
-const cloudConfigured = () => Boolean(
-  process.env.CLOUDINARY_CLOUD_NAME
-  && process.env.CLOUDINARY_API_KEY
-  && process.env.CLOUDINARY_API_SECRET
-);
+/**
+ * Is Cloudinary set up at all?
+ *
+ * Asked of the library rather than of the environment. A server can be told
+ * about Cloudinary through three separate variables or through the single
+ * CLOUDINARY_URL the dashboard hands out, and reading only the three meant
+ * a shop whose logo uploads had worked for months was told its off-site
+ * backups were "not set up".
+ */
+const cloudConfigured = () => {
+  const cfg = cloudinary.config() || {};
+  return Boolean(cfg.cloud_name && cfg.api_key && cfg.api_secret);
+};
 
 /**
  * A link that opens the file, signed by this server.

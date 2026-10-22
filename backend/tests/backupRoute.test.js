@@ -38,6 +38,7 @@ Module._load = function (req) {
     restoreBackup: (q, r) => r.end('{}'),
     getCloudBackups: (q, r) => r.end('{}'),
     emailBackupNow: (q, r) => r.end('{}'),
+    backupOffsiteNow: (q, r) => r.end('{}'),
   };
   return orig.apply(this, arguments);
 };
@@ -62,6 +63,12 @@ test('a backup can be asked for without sending anything', async (t) => {
 
   await t.test('the off-site listing is readable', () => {
     assert.ok(routes.some((r) => r.path === '/cloud' && r.methods.includes('get')));
+  });
+
+  await t.test('a copy can be put off-site on demand', () => {
+    // The off-site copy is the one that does not depend on mail working, so
+    // it is the one worth being able to prove without waiting for 2am.
+    assert.ok(routes.some((r) => r.path === '/offsite' && r.methods.includes('post')));
   });
 
   await t.test('a backup can be emailed on demand', () => {
