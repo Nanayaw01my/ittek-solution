@@ -2,8 +2,10 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiSettings, FiBell, FiMail, FiSave, FiTrash2, FiAlertTriangle, FiX, FiMessageSquare, FiSend, FiCheckCircle } from 'react-icons/fi'
+import { FiSettings, FiBell, FiMail, FiSave, FiTrash2, FiAlertTriangle, FiX, FiMessageSquare, FiSend, FiCheckCircle, FiGift,
+} from 'react-icons/fi'
 import { getSettings, updateSettings, updateEmailConfig, testEmail, updateSmsConfig, testSms, getSmsBalance } from '../api/settings'
+import { getProducts } from '../api/products'
 import api from '../api/axios'
 import { clearAllOfflineData } from '../utils/offlineQueue'
 import useAuthStore from '../store/authStore'
@@ -24,6 +26,7 @@ const TABS = [
   { label: 'Company', icon: FiSettings },
   { label: 'Notifications', icon: FiBell },
   { label: 'Text messages', icon: FiMessageSquare },
+  { label: 'Promotion', icon: FiGift },
   { label: 'Email Config', icon: FiMail },
 ]
 
@@ -267,6 +270,126 @@ function NotificationsTab({ settings, onSave, loading }) {
   )
 }
 
+
+/**
+ * Spend this much, get a gift.
+ *
+ * A till cannot rely on staff to remember a promotion: people change, the
+ * threshold moves, and a customer who should have been given something
+ * walks out without it — which costs the shop the goodwill it paid for by
+ * running the promotion in the first place. Set it here and the till does
+ * the remembering.
+ */
+function PromotionTab({ settings, onSave, loading }) {
+  const promo = settings?.gift_promo || {}
+  const [enabled, setEnabled] = useState(!!promo.enabled)
+  const [threshold, setThreshold] = useState(String(promo.threshold ?? 3000))
+  const [giftName, setGiftName] = useState(promo.gift_name || '')
+  const [productId, setProductId] = useState(promo.gift_product_id || '')
+  const [search, setSearch] = useState('')
+
+  const { data: found } = useQuery({
+    queryKey: ['promo-products', search],
+    queryFn: () => getProducts({ search, limit: 8 }).then(r => r.data),
+    enabled: search.trim().length >= 2,
+  })
+  const matches = found?.products || found || []
+  const chosen = matches.find?.((p) => String(p._id) === String(productId))
+
+  const save = () => onSave({
+    gift_promo: {
+      enabled,
+      threshold: Number(threshold) || 0,
+      gift_name: giftName.trim(),
+      gift_product_id: productId || null,
+    },
+  })
+
+  const box = 'w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500'
+
+  return (
+    <div className="space-y-4 max-w-lg">
+      <label className="flex items-start gap-2.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3 cursor-pointer">
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)}
+          className="mt-0.5 w-4 h-4 accent-orange-500" />
+        <span>
+          <span className="font-bold">Run the gift promotion</span>
+          <span className="block text-xs text-gray-500">
+            The till says so when a sale reaches the amount below, and asks whether the gift
+            was handed over before the sale is closed.
+          </span>
+        </span>
+      </label>
+
+      <div className={enabled ? '' : 'opacity-50 pointer-events-none'}>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              Spend needed, on one sale
+            </label>
+            <input type="number" min="0" step="1" value={threshold}
+              onChange={(e) => setThreshold(e.target.value)} className={box} placeholder="3000" />
+            <p className="mt-1 text-xs text-gray-500">
+              A sale of this much or more qualifies. It is the total after any discount.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">What they get</label>
+            <input value={giftName} onChange={(e) => setGiftName(e.target.value)}
+              className={box} placeholder="e.g. a branded flask" />
+            <p className="mt-1 text-xs text-gray-500">
+              Shown to whoever is at the till, so write what they should hand over.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              Is the gift something you stock? <span className="font-normal text-gray-400">(optional)</span>
+            </label>
+            {chosen || productId ? (
+              <div className="flex items-center justify-between gap-2 px-3 py-2.5 border border-orange-200 bg-orange-50 rounded-xl">
+                <span className="text-sm font-semibold text-gray-800 truncate">
+                  {chosen?.name || 'Chosen product'}
+                </span>
+                <button type="button" onClick={() => { setProductId(''); setSearch('') }}
+                  className="text-xs font-bold text-gray-500 hover:text-red-600 flex-shrink-0">
+                  remove
+                </button>
+              </div>
+            ) : (
+              <>
+                <input value={search} onChange={(e) => setSearch(e.target.value)}
+                  className={box} placeholder="Search your products…" />
+                {matches.length > 0 && (
+                  <div className="mt-1 border border-gray-200 rounded-xl divide-y max-h-44 overflow-y-auto">
+                    {matches.map((p) => (
+                      <button key={p._id} type="button"
+                        onClick={() => { setProductId(p._id); setSearch('') }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+              Naming a product takes one off the shelf each time the gift is given. Leave it
+              empty for something that was never counted as stock — a crate of branded mugs,
+              say — and nothing is deducted.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <button onClick={save} disabled={loading}
+        className="flex items-center gap-2 px-6 py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm">
+        <FiSave size={15} /> {loading ? 'Saving...' : 'Save promotion'}
+      </button>
+    </div>
+  )
+}
 
 /**
  * Arkesel: the key, the sender ID, and proof that it works.
@@ -731,7 +854,7 @@ export default function Settings() {
   })
 
   const isSuperAdmin = user?.role === 'Super Admin'
-  const tabs = isSuperAdmin ? TABS : TABS.slice(0, 3)
+  const tabs = isSuperAdmin ? TABS : TABS.slice(0, 4)
 
   const handleClearData = async () => {
     if (confirmText !== 'CLEAR') return
@@ -762,6 +885,8 @@ export default function Settings() {
     <CompanyTab key="company" settings={settings} onSave={d => updateMutation.mutate(d)} loading={updateMutation.isPending} />,
     <NotificationsTab key="notif" settings={settings} onSave={d => updateMutation.mutate(d)} loading={updateMutation.isPending} />,
     <SmsConfigTab key="sms" settings={settings} />,
+    <PromotionTab key="promo" settings={settings} onSave={d => updateMutation.mutate(d)}
+      loading={updateMutation.isPending} />,
     <EmailConfigTab key="email" settings={settings} />,
   ]
 

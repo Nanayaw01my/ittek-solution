@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiCrosshair, FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart, FiCreditCard, FiPause, FiList, FiRefreshCw, FiPackage, FiDownloadCloud } from 'react-icons/fi'
+import { FiCrosshair, FiSearch, FiPlus, FiMinus, FiTrash2, FiPrinter, FiDownload, FiX, FiCheck, FiAlertTriangle, FiShoppingCart, FiCreditCard, FiPause, FiList, FiRefreshCw, FiPackage, FiDownloadCloud, FiGift,
+} from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
 import { getProducts, getOfflineCatalogue, getProductByBarcode } from '../api/products'
 import { createSale, createShortPayment } from '../api/pos'
@@ -511,6 +512,20 @@ export default function POS() {
   // Offline the Cloudinary URL is unreachable, so use the cached copy.
   const receiptLogo = isOnline ? (settings.logo_url || getCachedLogo()) : (getCachedLogo() || null)
 
+  /**
+   * Spend this much, get a gift.
+   *
+   * A till cannot rely on staff to remember a promotion: people change, the
+   * threshold moves, and a customer who should have been given something
+   * walks out without it — which costs the shop the goodwill it paid for by
+   * running the promotion at all. So the till remembers, says so while
+   * there is still time to tell the customer, and asks before the sale
+   * closes whether the gift was handed over.
+   */
+  const promo = settings.gift_promo || {}
+  const promoOn = !!promo.enabled && Number(promo.threshold) > 0
+  const giftName = (promo.gift_name || '').trim() || 'a gift'
+
   const { data: productsData, isLoading: productsLoading, refetch: refetchProducts, isFetching: productsFetching } = useQuery({
     queryKey: ['pos-products', debouncedSearch],
     // Always use GET /products — pass 'search' param when the user is typing
@@ -747,6 +762,8 @@ export default function POS() {
   }
 
   const clearCart = () => {
+    // The next customer is a different question.
+    setGiftGiven(null)
     setCart([])
     setDiscountValue('')
     setAmountPaid('')
@@ -792,6 +809,9 @@ export default function POS() {
     payment_method: paymentMethod.toLowerCase().replace(' ', '_'),
     customer_name: customerName || extras.customer_name || undefined,
     customer_phone: customerPhone || extras.customer_phone || undefined,
+    // Recorded whether or not one was given: how many customers qualified
+    // and were not given one is as much worth knowing as how many were.
+    gift: giftPayload(),
     ...extras,
   })
 
@@ -999,8 +1019,26 @@ export default function POS() {
     ...extras,
   })
 
+  // Asked once per sale, and cleared with the cart. null means "not asked".
+  const [giftGiven, setGiftGiven] = useState(null)
+  const [askingGift, setAskingGift] = useState(false)
+
+  const qualifiesForGift = promoOn && grandTotal >= Number(promo.threshold)
+
+  /** What goes on the sale, whatever the answer was. */
+  const giftPayload = () => (qualifiesForGift
+    ? {
+      given: giftGiven === true,
+      name: giftName,
+      product_id: promo.gift_product_id || undefined,
+      threshold: Number(promo.threshold),
+    }
+    : undefined)
+
   const handleCompleteSale = () => {
     if (cart.length === 0) { toast.error('Cart is empty'); return }
+    // Ask before the money is taken, not after the customer has left.
+    if (qualifiesForGift && giftGiven === null) { setAskingGift(true); return }
     if (paidAmount < grandTotal) {
       toast.error('Amount paid is less than total. Use Short Payment instead.')
       return
@@ -1230,6 +1268,36 @@ export default function POS() {
             <span className="text-2xl font-black text-orange-600">{formatCurrency(grandTotal)}</span>
           </div>
 
+          {/* Said while the customer is still at the counter, not after the
+              sale is closed — the point of the promotion is that they are
+              told about it. */}
+          {qualifiesForGift && (
+            <div className={`rounded-xl px-3 py-2.5 border flex items-start gap-2.5
+              ${giftGiven === false
+                ? 'bg-gray-50 border-gray-200'
+                : 'bg-green-50 border-green-300'}`}>
+              <FiGift size={16} className={`flex-shrink-0 mt-0.5 ${giftGiven === false ? 'text-gray-400' : 'text-green-600'}`} />
+              <div className="min-w-0 flex-1">
+                <p className={`text-xs font-black ${giftGiven === false ? 'text-gray-600' : 'text-green-900'}`}>
+                  {giftGiven === true ? `${giftName} — given`
+                    : giftGiven === false ? `No ${giftName} this time`
+                      : `This sale earns ${giftName}`}
+                </p>
+                <p className="text-[11px] text-gray-500 leading-snug">
+                  Over {formatCurrency(promo.threshold)}. Tell the customer before they pay.
+                </p>
+              </div>
+              {giftGiven !== null && (
+                <button
+                  onClick={() => setGiftGiven(null)}
+                  className="text-[11px] font-bold text-gray-500 hover:text-gray-800 flex-shrink-0"
+                >
+                  change
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Customer */}
           <div className="grid grid-cols-2 gap-2">
             <input
@@ -1370,6 +1438,52 @@ export default function POS() {
       </div>
 
       {/* Short Payment Modal */}
+      {/*
+        Asked once, before the money is taken.
+        After the sale is closed the customer is walking out of the door,
+        and a prompt then is a prompt about something that can no longer be
+        done gracefully.
+      */}
+      <Modal
+        isOpen={askingGift}
+        onClose={() => setAskingGift(false)}
+        title="This sale earns a gift"
+        size="sm"
+      >
+        <div className="p-5 space-y-4">
+          <div className="flex gap-3 p-3 rounded-xl bg-green-50 border border-green-200">
+            <FiGift size={20} className="text-green-600 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-black text-green-900">{giftName}</p>
+              <p className="text-xs text-green-800 leading-relaxed">
+                {formatCurrency(grandTotal)} is over the {formatCurrency(promo.threshold)} mark.
+                {promo.gift_product_id
+                  ? ' Marking it given takes one off stock.'
+                  : ' Nothing is taken off stock for this.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setGiftGiven(false); setAskingGift(false) }}
+              className="flex-1 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-50"
+            >
+              Not this time
+            </button>
+            <button
+              onClick={() => { setGiftGiven(true); setAskingGift(false) }}
+              className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm"
+            >
+              Gift given
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-500 text-center leading-relaxed">
+            Either answer is recorded against the sale. Press Complete Sale again afterwards.
+          </p>
+        </div>
+      </Modal>
+
       <ShortPaymentModal
         isOpen={showShortModal}
         onClose={() => setShowShortModal(false)}

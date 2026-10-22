@@ -65,7 +65,7 @@ const updateSettings = async (req, res) => {
       tax_rate, low_stock_alert, receipt_header, receipt_footer,
       currency_symbol, notification_settings, logo_url,
       base_currency, currencies, loyalty_settings, fraud_settings, layaway_settings,
-      receipt_width_mm,
+      receipt_width_mm, gift_promo,
     } = req.body;
 
     let settings = await Settings.findOne();
@@ -86,6 +86,16 @@ const updateSettings = async (req, res) => {
       settings.notification_settings = { ...settings.notification_settings, ...notification_settings };
     }
     if (logo_url !== undefined) settings.logo_url = logo_url;
+    if (gift_promo !== undefined) {
+      // Merged, so saving the switch does not wipe the threshold.
+      const now = settings.gift_promo?.toObject?.() || settings.gift_promo || {};
+      settings.gift_promo = {
+        ...now,
+        ...gift_promo,
+        // An empty product means "no product", not "leave the old one".
+        gift_product_id: gift_promo.gift_product_id || undefined,
+      };
+    }
     if (base_currency !== undefined) settings.base_currency = base_currency;
     if (Array.isArray(currencies)) {
       // The base currency must always sit at rate 1, or every conversion drifts.

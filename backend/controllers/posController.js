@@ -10,6 +10,7 @@ const { queueEmail, templates } = require('../utils/email');
 const { generateReceipt } = require('../utils/pdfGenerator');
 const { withReceiptQr, buildReceiptUrl, generateReceiptQrBuffer } = require('../utils/receipt');
 const { buildSaleItems, deductStock, validatePayments } = require('../utils/saleHelpers');
+const { giftFor, giftStockLines } = require('../utils/giftPromo');
 const loyalty = require('../utils/loyalty');
 const fraud = require('../utils/fraudDetection');
 const { fromBase } = require('../utils/currency');
@@ -123,11 +124,25 @@ const processSale = async (req, res) => {
       display_total: display?.amount ?? cart_total,
       loyalty_phone: normaliseGhanaPhone(customer_phone) || undefined,
       loyalty_discount: loyaltyDiscount,
+      gift: giftFor(req.body?.gift),
       items,
     });
     const invoice_no = sale.invoice_no;
 
     await deductStock(items);
+
+    /**
+     * A gift that is stocked comes off the shelf like anything else.
+     *
+     * Only when the shop named a product for it. A crate of branded flasks
+     * that was never counted as stock has nothing to deduct, and inventing
+     * a deduction for it would put the count wrong the other way.
+     */
+    const giftLines = giftStockLines(sale.gift);
+    if (giftLines.length) {
+      await deductStock(giftLines)
+        .catch((err) => console.error('[POS] could not take the gift off stock:', err.message));
+    }
 
     // Loyalty: redeem what was used, earn on what was paid
     try {
