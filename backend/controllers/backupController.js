@@ -1,7 +1,7 @@
 const zlib = require('zlib');
 const { promisify } = require('util');
 const { createBackup, getBackupHistory, restoreFromBackup } = require('../utils/backup');
-const { listBackups, cloudConfigured } = require('../utils/cloudBackup');
+const { listBackups, cloudConfigured, uploadBackup, pruneBackups } = require('../utils/cloudBackup');
 /**
  * Required at the top, not inside the handler.
  *
@@ -228,7 +228,58 @@ const emailBackupNow = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/backup/offsite — put a copy off this server now.
+ *
+ * The off-site copy is the one that does not depend on mail working, which
+ * makes it the one worth being sure about. Waiting for the small hours to
+ * find out whether it uploads is the same bad loop as waiting to find out
+ * whether an email sends, and the answer when it fails has to be the
+ * reason, not a red square.
+ *
+ * It does what the nightly job does and leaves the job's record of the
+ * night alone.
+ */
+const backupOffsiteNow = async (req, res) => {
+  try {
+    if (!cloudConfigured()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cloudinary is not set up on this server. It needs CLOUDINARY_CLOUD_NAME, '
+          + 'CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET — or the single CLOUDINARY_URL.',
+      });
+    }
+
+    const backup = await createBackup();
+    const packed = await gzip(Buffer.from(backup.json, 'utf8'));
+    const name = `${backup.filename.replace(/\.json$/, '')}.json.gz`;
+
+    const up = await uploadBackup(packed, name);
+    // Only after a success, so a prune fault can never read as a failed
+    // backup.
+    await pruneBackups().catch(() => {});
+
+    return res.status(200).json({
+      success: true,
+      message: `${human(packed.length)} is off this server.`,
+      data: {
+        filename: name,
+        size: human(packed.length),
+        url: up.url,
+        summary: `${backup.meta.document_count} records across ${backup.meta.collection_count} collections`,
+      },
+    });
+  } catch (err) {
+    console.error('Off-site backup error:', err.stack || err.message);
+    // Cloudinary's own words. A shop told only that it "failed" cannot act.
+    return res.status(400).json({
+      success: false,
+      message: `Could not put it off-site: ${err.message}`,
+    });
+  }
+};
+
 module.exports = {
   createManualBackup, getSummary, getHistory, restoreBackup, getCloudBackups,
-  emailBackupNow,
+  emailBackupNow, backupOffsiteNow,
 };

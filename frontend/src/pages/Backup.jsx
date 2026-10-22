@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiDownload, FiUpload, FiDatabase, FiAlertTriangle, FiCloud, FiExternalLink, FiMail } from 'react-icons/fi'
-import { createBackup, restoreBackup, getBackupHistory, getBackupSummary, getCloudBackups, emailBackupNow } from '../api/settings'
+import { FiDownload, FiUpload, FiDatabase, FiAlertTriangle, FiCloud, FiExternalLink, FiMail, FiUploadCloud } from 'react-icons/fi'
+import { createBackup, restoreBackup, getBackupHistory, getBackupSummary, getCloudBackups, emailBackupNow, backupOffsiteNow } from '../api/settings'
 import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
 import { formatDateTime } from '../utils/helpers'
@@ -16,6 +16,8 @@ export default function Backup() {
   // never true, so the restore half of this screen was hidden from everybody,
   // including the one person permitted to use it.
   const isSuperAdmin = user?.role === 'Super Admin'
+  // So a copy saved off-site by hand shows up in the list underneath it.
+  const queryClient = useQueryClient()
   const fileRef = useRef(null)
 
   const [backingUp, setBackingUp] = useState(false)
@@ -35,6 +37,7 @@ export default function Backup() {
   // way to test a change at all.
   const [emailing, setEmailing] = useState(false)
   const [emailTo, setEmailTo] = useState('')
+  const [offsiting, setOffsiting] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [showConfirm, setShowConfirm] = useState(false)
@@ -106,6 +109,22 @@ export default function Backup() {
       toast.error(err.response?.data?.message || 'Could not email it', { duration: 14000 })
     } finally {
       setEmailing(false)
+    }
+  }
+
+  const handleOffsite = async () => {
+    setOffsiting(true)
+    try {
+      const res = await backupOffsiteNow()
+      const d = res.data || {}
+      toast.success(`${d.size || 'The backup'} is off this server — ${d.summary || 'saved'}.`,
+        { duration: 9000 })
+      queryClient.invalidateQueries({ queryKey: ['cloud-backups'] })
+    } catch (err) {
+      // Cloudinary's own words. "Failed" cannot be acted on.
+      toast.error(err.response?.data?.message || 'Could not put it off-site', { duration: 14000 })
+    } finally {
+      setOffsiting(false)
     }
   }
 
@@ -348,14 +367,23 @@ export default function Backup() {
       {/* Off-site copies. Listed before the disk history because these are
           the ones that survive a deploy. */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-          <FiCloud size={18} className="text-orange-500" />
-          <div>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+          <FiCloud size={18} className="text-orange-500 flex-shrink-0" />
+          <div className="flex-1 min-w-[12rem]">
             <h3 className="font-bold text-gray-900">Off-Site Copies</h3>
             <p className="text-xs text-gray-500">
               Kept away from this server, so a wiped server is not a lost shop
             </p>
           </div>
+          {/* Proving it works should not take until 2am. */}
+          <button
+            onClick={handleOffsite}
+            disabled={offsiting}
+            className="flex items-center gap-1.5 px-3 py-2 border border-orange-500 text-orange-600
+                       rounded-xl text-xs font-bold hover:bg-orange-50 disabled:opacity-60 flex-shrink-0"
+          >
+            <FiUploadCloud size={14} /> {offsiting ? 'Sending…' : 'Save one off-site now'}
+          </button>
         </div>
 
         {loadingCloud ? (

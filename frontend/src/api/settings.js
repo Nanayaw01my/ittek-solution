@@ -60,6 +60,14 @@ export const getCloudBackups = () => api.get('/backup/cloud')
  */
 export const emailBackupNow = (to) =>
   api.post('/backup/email', to ? { to } : {}, { timeout: 0 })
+
+/**
+ * Put a copy off this server now.
+ *
+ * The off-site copy is the one that does not depend on mail working, so it
+ * is the one worth being able to prove.
+ */
+export const backupOffsiteNow = () => api.post('/backup/offsite', {}, { timeout: 0 })
 export const globalSearch = (body) => api.post('/search', body)
 
 /**

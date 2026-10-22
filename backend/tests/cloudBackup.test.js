@@ -216,6 +216,14 @@ test('the off-site copies are not public', async (t) => {
   const o = Module._load;
   Module._load = function (req) {
     if (req.includes('config/cloudinary')) return {
+      // The real SDK answers config() with whatever it was told, however it
+      // was told — three variables or one CLOUDINARY_URL. Asking it is what
+      // stopped a configured shop being told its backups were not set up.
+      config: () => ({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+      }),
       uploader: {
         upload_stream: (opts, cb) => {
           uploadOpts = opts;
@@ -270,5 +278,72 @@ test('the off-site copies are not public', async (t) => {
     assert.strictEqual(cloud.cloudConfigured(), false);
     assert.deepStrictEqual(await cloud.listBackups(), []);
     await assert.rejects(() => cloud.uploadBackup(Buffer.from('z'), 'b.gz'), /not set up/);
+  });
+});
+
+/**
+ * However this server was told about Cloudinary.
+ *
+ * Two ways are in use in the wild: three separate variables, or the single
+ * CLOUDINARY_URL the dashboard hands out. Reading only the three told a shop
+ * whose logo uploads had worked for months that its off-site backups were
+ * "not set up" — and sent its owner to set something that was already set.
+ */
+test('knowing whether Cloudinary is set up', async (t) => {
+  const keys = ['CLOUDINARY_URL', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const clear = () => keys.forEach((k) => { delete process.env[k]; });
+  t.after(() => {
+    clear();
+    for (const [k, v] of Object.entries(saved)) if (v !== undefined) process.env[k] = v;
+  });
+
+  /** cloudConfigured, asked against a given SDK state. */
+  const askedWith = (cfg) => {
+    const o = Module._load;
+    Module._load = function (req) {
+      if (req.includes('config/cloudinary')) return { config: () => cfg };
+      return o.apply(this, arguments);
+    };
+    delete require.cache[require.resolve(path.join(B, 'utils/cloudBackup.js'))];
+    const mod = require(path.join(B, 'utils/cloudBackup.js'));
+    Module._load = o;
+    delete require.cache[require.resolve(path.join(B, 'utils/cloudBackup.js'))];
+    return mod.cloudConfigured();
+  };
+
+  await t.test('it asks the library, not the environment', () => {
+    // The whole fix. The library knows about CLOUDINARY_URL; the three
+    // environment variables do not.
+    clear();
+    assert.strictEqual(
+      askedWith({ cloud_name: 'dandor', api_key: '123', api_secret: 'abc' }),
+      true,
+      'a configured library means a configured server, whatever set it up'
+    );
+  });
+
+  await t.test('half of it set is not set up', () => {
+    // A cloud name with no secret cannot upload anything, and calling that
+    // configured turns a clear message into a nightly failure.
+    assert.strictEqual(askedWith({ cloud_name: 'dandor' }), false);
+    assert.strictEqual(askedWith({ cloud_name: 'dandor', api_key: '123' }), false);
+  });
+
+  await t.test('nothing set is nothing set', () => {
+    assert.strictEqual(askedWith({}), false);
+  });
+
+  await t.test('CLOUDINARY_URL alone really does configure the library', () => {
+    // config/cloudinary.js used to pass three undefined values straight to
+    // config(), wiping out what the SDK had already worked out for itself.
+    clear();
+    process.env.CLOUDINARY_URL = 'cloudinary://123:abc@dandor';
+    delete require.cache[require.resolve('cloudinary')];
+    delete require.cache[require.resolve(path.join(B, 'config/cloudinary.js'))];
+    const sdk = require(path.join(B, 'config/cloudinary.js'));
+    assert.strictEqual(sdk.config().cloud_name, 'dandor');
+    delete require.cache[require.resolve('cloudinary')];
+    delete require.cache[require.resolve(path.join(B, 'config/cloudinary.js'))];
   });
 });
