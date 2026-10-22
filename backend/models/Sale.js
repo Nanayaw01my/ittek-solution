@@ -218,6 +218,24 @@ const SaleSchema = new mongoose.Schema(
     points_earned: { type: Number, default: 0 },
     points_redeemed: { type: Number, default: 0 },
     loyalty_discount: { type: Number, default: 0 },
+
+    /**
+     * A promotional gift handed over with this sale.
+     *
+     * Recorded whether or not one was given, because both answers are worth
+     * having: how many gifts went out this month, and how many customers
+     * qualified and were not given one. Goods leaving the shop for nothing
+     * is exactly the kind of thing that should be written down.
+     */
+    gift: {
+      given: { type: Boolean, default: false },
+      name: { type: String, trim: true },
+      product_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+      // What the cart had to reach to qualify, as it stood on the day — the
+      // promotion will be changed, and last month's sales must still read
+      // correctly.
+      threshold: { type: Number },
+    },
     sale_date: {
       type: Date,
       default: Date.now,

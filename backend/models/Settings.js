@@ -204,6 +204,36 @@ const SettingsSchema = new mongoose.Schema(
       default_after_days: { type: Number, default: 30, min: 1 },
     },
 
+    /**
+     * The spend-and-get-a-gift promotion.
+     *
+     * A till cannot be relied on to remember a promotion. Staff change, the
+     * threshold moves, and a customer who should have been given something
+     * walks out without it — which costs the shop the goodwill it paid for
+     * by running the promotion at all.
+     *
+     * So the till does the remembering: once a cart reaches the threshold it
+     * says so, and asks before the sale is finished whether the gift was
+     * handed over. The answer is recorded against the sale either way, so
+     * "how many gifts went out this month" is a question with an answer and
+     * stock that walks out of the door is written down.
+     */
+    gift_promo: {
+      enabled: { type: Boolean, default: false },
+      // What a customer has to spend, on one sale, to qualify.
+      threshold: { type: Number, default: 3000, min: 0 },
+      // What they get. Free text, because a promotional gift is usually a
+      // branded flask or a cap and not something the shop sells.
+      gift_name: { type: String, trim: true, default: '' },
+      /**
+       * If the gift is something the shop stocks, naming it here takes one
+       * off the shelf when it is given. Left unset, nothing is deducted —
+       * which is right for a crate of branded mugs that was never counted
+       * as stock in the first place.
+       */
+      gift_product_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+    },
+
     // ─── Fraud detection thresholds ────────────────────────────────────────
     fraud_settings: {
       enabled: { type: Boolean, default: true },
