@@ -47,6 +47,21 @@ const human = (bytes) => {
 };
 
 /**
+ * Where a backup is sent, in one place.
+ *
+ * Four possible sources and they are tried in the order somebody would
+ * expect: an address set for backups specifically, then the admin address,
+ * then the shop's own email, then whatever mailbox the system sends from.
+ * The job and the "send me one now" button must agree about this, or a test
+ * that arrives proves nothing about tonight.
+ */
+const backupAddress = (settings) => process.env.BACKUP_EMAIL
+  || process.env.ADMIN_EMAIL
+  || settings?.company_email
+  || process.env.EMAIL_USER
+  || '';
+
+/**
  * Make tonight's backup and send it somewhere safe.
  *
  * Returns a sentence describing what happened, which the job log keeps — so
@@ -54,10 +69,7 @@ const human = (bytes) => {
  */
 const runNightlyBackup = async () => {
   const settings = await Settings.findOne().select('company_name company_email').lean();
-  const to = process.env.BACKUP_EMAIL
-    || process.env.ADMIN_EMAIL
-    || settings?.company_email
-    || process.env.EMAIL_USER;
+  const to = backupAddress(settings);
 
   if (!to && !cloudConfigured()) {
     // Said out loud rather than failing quietly, because a backup nobody is
@@ -208,4 +220,4 @@ const runNightlyBackup = async () => {
   return `${human(packed.length)} ${where} — ${summary}.`;
 };
 
-module.exports = { runNightlyBackup, MAX_ATTACHMENT_BYTES, human };
+module.exports = { runNightlyBackup, backupAddress, MAX_ATTACHMENT_BYTES, human };

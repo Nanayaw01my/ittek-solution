@@ -37,6 +37,7 @@ Module._load = function (req) {
     getHistory: (q, r) => r.end('{}'),
     restoreBackup: (q, r) => r.end('{}'),
     getCloudBackups: (q, r) => r.end('{}'),
+    emailBackupNow: (q, r) => r.end('{}'),
   };
   return orig.apply(this, arguments);
 };
@@ -61,6 +62,13 @@ test('a backup can be asked for without sending anything', async (t) => {
 
   await t.test('the off-site listing is readable', () => {
     assert.ok(routes.some((r) => r.path === '/cloud' && r.methods.includes('get')));
+  });
+
+  await t.test('a backup can be emailed on demand', () => {
+    // Without this there is no way to find out whether the mail settings
+    // work short of waiting for 2am — and a night already claimed by the
+    // job will not run again.
+    assert.ok(routes.some((r) => r.path === '/email' && r.methods.includes('post')));
   });
 });
 

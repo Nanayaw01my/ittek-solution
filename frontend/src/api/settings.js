@@ -51,6 +51,15 @@ export const getBackupSummary = () => api.get('/backup/summary')
  * sit safely off-site. This reads the files themselves.
  */
 export const getCloudBackups = () => api.get('/backup/cloud')
+
+/**
+ * Send a backup to an inbox now.
+ *
+ * So "do the mail settings work?" is answered in ten seconds rather than by
+ * waiting until the small hours and looking.
+ */
+export const emailBackupNow = (to) =>
+  api.post('/backup/email', to ? { to } : {}, { timeout: 0 })
 export const globalSearch = (body) => api.post('/search', body)
 
 /**

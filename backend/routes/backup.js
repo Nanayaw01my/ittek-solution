@@ -5,6 +5,7 @@ const { requireLevel, requireRoles } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
   createManualBackup, getSummary, getHistory, restoreBackup, getCloudBackups,
+  emailBackupNow,
 } = require('../controllers/backupController');
 
 // CEO (3) and Super Admin (4)
@@ -21,6 +22,10 @@ router.get('/history', getHistory);
 // The copies that are off this machine. The disk-based history above is
 // erased by every deploy; these are not.
 router.get('/cloud', getCloudBackups);
+
+// Send one to an inbox now, rather than waiting until 2am to find out
+// whether the mail settings work.
+router.post('/email', auditLog('EMAIL_BACKUP'), emailBackupNow);
 
 // Restore: Super Admin only. It empties the database and writes the file over
 // the top of it.
