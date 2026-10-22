@@ -4148,8 +4148,28 @@ const generateEstimate = async (quote = {}, options = {}) => {
         .text(companyName, ML, y, { width: W, align: 'center', lineBreak: false });
       doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
         .text(`${companyAddress}  |  Tel: ${companyPhone}`, ML, y + 17, { width: W, align: 'center', lineBreak: false });
-      doc.fontSize(12).font('Helvetica-Bold').fillColor(ORANGE)
-        .text('ESTIMATE', ML, y + 32, { width: W, align: 'center', lineBreak: false });
+      /**
+       * Whose estimate this is, in the heading.
+       *
+       * "ESTIMATE" on its own could be anybody's. A customer holding three
+       * quotes from three shops wants to see their own name at the top, and
+       * so does whoever picks the sheet up off a counter.
+       *
+       * Shrunk to fit rather than cut: a long name is common here —
+       * "ESTIMATE FOR NANA KWAME OSEI-BONSU" is wider than the sheet at full
+       * size — and a heading clipped mid-name is worse than a smaller one.
+       */
+      const who = String(quote.customer_name || '').trim();
+      const heading = who ? `ESTIMATE FOR ${who.toUpperCase()}` : 'ESTIMATE';
+      doc.font('Helvetica-Bold');
+      let headSize = 12;
+      while (headSize > 8 && doc.fontSize(headSize).widthOfString(heading) > W) {
+        headSize -= 0.5;
+      }
+      doc.fontSize(headSize).fillColor(ORANGE)
+        .text(heading, ML, y + 32 + (12 - headSize) / 2, {
+          width: W, align: 'center', lineBreak: false, ellipsis: true,
+        });
       reset();
       y += 50;
       doc.moveTo(ML, y).lineTo(ML + W, y).lineWidth(1.2).strokeColor(ORANGE).stroke();
@@ -4157,11 +4177,20 @@ const generateEstimate = async (quote = {}, options = {}) => {
       y += 12;
 
       // ── Who it is for ───────────────────────────────────────────────────
+      /**
+       * One labelled value on a ruled line.
+       *
+       * Clamped to a single line's height. lineBreak:false alone does not
+       * hold a hyphenated name — "ANNOR-GYAMFI" breaks after the hyphen
+       * whatever it says — and the second line then sits across the rule
+       * underneath and into the row below. The height is what makes the
+       * ellipsis actually apply.
+       */
       const field = (label, value, x, yy, width) => {
         doc.fontSize(6.5).font('Helvetica-Bold').fillColor(LGRAY)
           .text(label, x, yy, { width, lineBreak: false });
         doc.fontSize(9).font('Helvetica').fillColor('#111111')
-          .text(String(value || '—'), x, yy + 9, { width, lineBreak: false, ellipsis: true });
+          .text(String(value || '—'), x, yy + 9, { width, height: 11, ellipsis: true });
         doc.moveTo(x, yy + 21).lineTo(x + width, yy + 21).lineWidth(0.3).strokeColor('#cccccc').stroke();
         reset();
       };

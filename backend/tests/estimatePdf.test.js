@@ -72,6 +72,26 @@ test('the estimate sheet', async (t) => {
     assert.ok(pdf.length > 1000);
   });
 
+  await t.test('the heading names the customer', async () => {
+    // "ESTIMATE" on its own could be anybody's. A customer holding three
+    // quotes from three shops wants their own name at the top of theirs.
+    const text = textOf(await generateEstimate({ ...quote, customer_name: 'Mr Yaw' }, {}));
+    assert.match(text, /ESTIMATE FOR MR YAW/);
+  });
+
+  await t.test('a long name shrinks to fit rather than being cut', async () => {
+    const name = 'NANA KWAME OSEI-BONSU ANNOR-GYAMFI';
+    const text = textOf(await generateEstimate({ ...quote, customer_name: name }, {}));
+    assert.match(text, new RegExp(`ESTIMATE FOR ${name}`));
+  });
+
+  await t.test('no name still produces a sensible heading', async () => {
+    // A draft started before anybody asked who it is for.
+    const text = textOf(await generateEstimate({ ...quote, customer_name: '' }, {}));
+    assert.match(text, /ESTIMATE/);
+    assert.ok(!/ESTIMATE FOR/.test(text));
+  });
+
   await t.test('it says it is an estimate and reserves nothing', async () => {
     const s = textOf(await generateEstimate(quote, {}));
     assert.match(s, /ESTIMATE/);
