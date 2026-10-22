@@ -4095,7 +4095,193 @@ const generateStarlinkFlyer = async (options = {}) => {
   });
 };
 
+/**
+ * An estimate for a customer, on one A4 sheet.
+ *
+ * Solar is a quoting business: somebody wants a figure for panels, a battery,
+ * an inverter and the cabling, and they take it away to think about it. Until
+ * now that figure was written on paper, because a quotation lived in the
+ * system and there was no way to put it in the customer's hand — which is
+ * half a quotation.
+ *
+ * It says, on the sheet and not only in the shop's head, that nothing has
+ * been set aside. An estimate reserves no goods and takes no money: the
+ * prices hold until the date printed on it, and the items are sold to
+ * whoever buys them first. A customer who thinks a quote is a reservation
+ * comes back in three weeks expecting goods that went out last Tuesday.
+ */
+const generateEstimate = async (quote = {}, options = {}) => {
+  const logoBuf = await fetchBuf(options.logoUrl || null);
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margins: { top: 40, bottom: 40, left: 50, right: 50 },
+        autoFirstPage: true,
+      });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const ML = 50;
+      const W = 495;
+      const ORANGE = '#e86b00';
+      const LGRAY = '#777777';
+
+      const company = options.company || {};
+      const companyName = company.name || 'DAN & DOR SOLAR COMPANY LIMITED';
+      const companyAddress = company.address || 'Bogoso, Western Region';
+      const companyPhone = company.phone || '+233 595413632';
+
+      const gh = (n) => 'GHC' + (Number(n) || 0).toFixed(2);
+      const dateStr = (d) => (d ? new Date(d).toLocaleDateString('en-GH') : '—');
+      const reset = () => doc.fillColor('#000000').strokeColor('#000000').lineWidth(1);
+
+      attachWatermark(doc, logoBuf);
+
+      let y = 40;
+
+      // ── Who it is from ──────────────────────────────────────────────────
+      doc.fontSize(13).font('Helvetica-Bold').fillColor('#111111')
+        .text(companyName, ML, y, { width: W, align: 'center', lineBreak: false });
+      doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
+        .text(`${companyAddress}  |  Tel: ${companyPhone}`, ML, y + 17, { width: W, align: 'center', lineBreak: false });
+      doc.fontSize(12).font('Helvetica-Bold').fillColor(ORANGE)
+        .text('ESTIMATE', ML, y + 32, { width: W, align: 'center', lineBreak: false });
+      reset();
+      y += 50;
+      doc.moveTo(ML, y).lineTo(ML + W, y).lineWidth(1.2).strokeColor(ORANGE).stroke();
+      reset();
+      y += 12;
+
+      // ── Who it is for ───────────────────────────────────────────────────
+      const field = (label, value, x, yy, width) => {
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor(LGRAY)
+          .text(label, x, yy, { width, lineBreak: false });
+        doc.fontSize(9).font('Helvetica').fillColor('#111111')
+          .text(String(value || '—'), x, yy + 9, { width, lineBreak: false, ellipsis: true });
+        doc.moveTo(x, yy + 21).lineTo(x + width, yy + 21).lineWidth(0.3).strokeColor('#cccccc').stroke();
+        reset();
+      };
+
+      const c3 = (W - 8) / 3;
+      field('Estimate No.', quote.reference, ML, y, c3 - 4);
+      field('Date', dateStr(quote.createdAt || new Date()), ML + c3, y, c3 - 4);
+      field('Valid until', dateStr(quote.valid_until), ML + c3 * 2, y, c3 - 4);
+      y += 28;
+      field('Customer', quote.customer_name, ML, y, c3 - 4);
+      field('Phone', quote.customer_phone, ML + c3, y, c3 - 4);
+      field('Prepared by', options.preparedBy, ML + c3 * 2, y, c3 - 4);
+      y += 28;
+      if (quote.customer_address) {
+        field('Address', quote.customer_address, ML, y, W);
+        y += 28;
+      }
+
+      // ── What is being quoted ────────────────────────────────────────────
+      y += 4;
+      const cols = { item: ML + 4, qty: ML + 300, price: ML + 350, total: ML + 420 };
+      doc.rect(ML, y, W, 18).fillColor('#f3f4f6').fill();
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor(LGRAY);
+      doc.text('ITEM', cols.item, y + 5.5, { width: 290, lineBreak: false });
+      doc.text('QTY', cols.qty, y + 5.5, { width: 40, align: 'right', lineBreak: false });
+      doc.text('PRICE', cols.price, y + 5.5, { width: 60, align: 'right', lineBreak: false });
+      doc.text('TOTAL', cols.total, y + 5.5, { width: 71, align: 'right', lineBreak: false });
+      reset();
+      y += 18;
+
+      const items = quote.items || [];
+      for (const it of items) {
+        // A page cannot hold an unlimited quote, and text written past the
+        // bottom margin silently adds a page with no heading on it.
+        if (y > 690) {
+          doc.addPage();
+          y = 50;
+        }
+        const qty = Number(it.quantity) || 0;
+        const unit = Number(it.unit_price) || 0;
+        doc.fontSize(9).font('Helvetica').fillColor('#111111');
+        doc.text(String(it.product_name || '—'), cols.item, y + 5, { width: 290, lineBreak: false, ellipsis: true });
+        doc.text(String(qty), cols.qty, y + 5, { width: 40, align: 'right', lineBreak: false });
+        doc.text(gh(unit), cols.price, y + 5, { width: 60, align: 'right', lineBreak: false });
+        doc.font('Helvetica-Bold')
+          .text(gh(qty * unit), cols.total, y + 5, { width: 71, align: 'right', lineBreak: false });
+        doc.moveTo(ML, y + 19).lineTo(ML + W, y + 19).lineWidth(0.3).strokeColor('#e5e7eb').stroke();
+        reset();
+        y += 20;
+      }
+      if (items.length === 0) {
+        doc.fontSize(9).font('Helvetica-Oblique').fillColor(LGRAY)
+          .text('Nothing listed yet.', cols.item, y + 6, { width: W, lineBreak: false });
+        reset();
+        y += 22;
+      }
+
+      // ── What it comes to ────────────────────────────────────────────────
+      y += 6;
+      const subtotal = Number(quote.subtotal)
+        || items.reduce((n, i) => n + (Number(i.quantity) || 0) * (Number(i.unit_price) || 0), 0);
+      const discount = Number(quote.discount) || 0;
+      const total = Number(quote.total_amount) || Math.max(0, subtotal - discount);
+
+      const money = (label, value, bold) => {
+        doc.fontSize(bold ? 11 : 9).font(bold ? 'Helvetica-Bold' : 'Helvetica')
+          .fillColor(bold ? '#111111' : LGRAY)
+          .text(label, ML + 250, y, { width: 130, align: 'right', lineBreak: false });
+        doc.fillColor(bold ? ORANGE : '#111111')
+          .text(value, ML + 384, y, { width: 107, align: 'right', lineBreak: false });
+        reset();
+        y += bold ? 20 : 15;
+      };
+      money('Subtotal', gh(subtotal));
+      if (discount > 0) money('Less discount', `- ${gh(discount)}`);
+      doc.moveTo(ML + 250, y).lineTo(ML + W, y).lineWidth(0.8).strokeColor(ORANGE).stroke();
+      reset();
+      y += 6;
+      money('TOTAL', gh(total), true);
+
+      // ── Notes ───────────────────────────────────────────────────────────
+      if (quote.notes) {
+        y += 6;
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('NOTES', ML, y, { width: W });
+        y += 11;
+        doc.fontSize(8.5).font('Helvetica').fillColor('#333333')
+          .text(String(quote.notes), ML, y, { width: W });
+        y = doc.y + 8;
+        reset();
+      }
+
+      // ── What an estimate is, and is not ─────────────────────────────────
+      y += 6;
+      const noteH = 46;
+      doc.rect(ML, y, W, noteH).fillColor('#fff7ed').fill();
+      doc.rect(ML, y, W, noteH).lineWidth(0.6).strokeColor('#fdba74').stroke();
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#9a3412')
+        .text('THIS IS AN ESTIMATE, NOT A RESERVATION', ML + 8, y + 7, { width: W - 16, lineBreak: false });
+      doc.fontSize(7.5).font('Helvetica').fillColor('#7c2d12')
+        .text('No goods are set aside and no money has been taken. Prices hold until the date above, '
+          + 'after which they may change. Items are sold to whoever buys them first — to hold stock, '
+          + 'a deposit or a layaway is needed.', ML + 8, y + 19, { width: W - 16 });
+      reset();
+      y += noteH + 14;
+
+      doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
+        .text(`Prepared ${new Date().toLocaleString('en-GH')}  |  ${companyName}`,
+          ML, y, { width: W, align: 'center', lineBreak: false });
+      reset();
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 module.exports = {
+  generateEstimate,
   generateStarlinkFlyer,
   generateBarcodeSheet,
   generateExchangeNote,

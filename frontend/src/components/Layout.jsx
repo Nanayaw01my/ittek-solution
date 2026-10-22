@@ -60,7 +60,7 @@ const NAV_ITEMS = [
   { to: '/cash-up', label: 'Cash Up', icon: FiLock, minLevel: 2, section: 'money' },
   { to: '/customers', label: 'Customers', icon: FiUsers, minLevel: 2, section: 'customers' },
   { to: '/warranties', label: 'Warranties', icon: FiShield, minLevel: 1, section: 'customers' },
-  { to: '/quotations', label: 'Quotations', icon: FiFileText, minLevel: 1, section: 'selling' },
+  { to: '/quotations', label: 'Quotations & Estimates', icon: FiFileText, minLevel: 1, section: 'selling' },
   { to: '/reorder', label: 'What to Order', icon: FiTrendingUp, minLevel: 2, section: 'stock' },
   { to: '/receipt-approvals', label: 'Receipt Approvals', icon: FiCheckSquare, minLevel: 2, section: 'selling' },
   { to: '/reminders', label: 'Reminders', icon: FiBell, minLevel: 2, section: 'customers' },

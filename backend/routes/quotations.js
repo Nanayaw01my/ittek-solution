@@ -5,7 +5,7 @@ const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
   getQuotations, getQuotation, createQuotation, updateQuotation,
-  acceptQuotation, deleteQuotation,
+  acceptQuotation, deleteQuotation, printQuotation,
 } = require('../controllers/quotationsController');
 
 // Quoting is selling — anyone at the counter can price a job up.
@@ -13,6 +13,8 @@ router.use(authenticate, requireLevel(1));
 
 router.get('/', getQuotations);
 router.get('/:id', getQuotation);
+// The estimate as a sheet to hand the customer.
+router.get('/:id/pdf', printQuotation);
 router.post('/', auditLog('CREATE_QUOTATION', (req) => ({
   customer: req.body.customer_name,
 })), createQuotation);
