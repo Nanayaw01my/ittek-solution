@@ -304,7 +304,46 @@ const deleteQuotation = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/quotations/:id/pdf — the estimate, as a sheet to hand over.
+ *
+ * A quotation that lives only in the system is half a quotation: the figure
+ * still ends up written on paper, and then nothing knows what was promised.
+ * This is the same figures on headed paper, with the shop's logo behind it
+ * and, in plain words on the sheet itself, what an estimate is not — nothing
+ * is set aside and nothing has been paid.
+ */
+const printQuotation = async (req, res) => {
+  try {
+    const q = await Quotation.findById(req.params.id).populate('prepared_by', 'username').lean();
+    if (!q) return res.status(404).json({ success: false, message: 'Quotation not found.' });
+
+    const Settings = require('../models/Settings');
+    const { generateEstimate } = require('../utils/pdfGenerator');
+    const settings = (await Settings.findOne().lean()) || {};
+
+    const pdf = await generateEstimate(q, {
+      logoUrl: settings.logo_url,
+      preparedBy: q.prepared_by?.username,
+      company: {
+        name: settings.company_name,
+        address: settings.company_address,
+        phone: settings.company_phone,
+      },
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    // Inline: the counter opens it, looks at it, then prints or shares it.
+    res.setHeader('Content-Disposition',
+      `inline; filename="estimate-${String(q.reference || q._id).replace(/[^\w-]/g, '')}.pdf"`);
+    return res.end(pdf);
+  } catch (err) {
+    console.error('Quotation PDF error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not build the estimate: ${err.message}` });
+  }
+};
+
 module.exports = {
   getQuotations, getQuotation, createQuotation, updateQuotation,
-  acceptQuotation, deleteQuotation,
+  acceptQuotation, deleteQuotation, printQuotation,
 };

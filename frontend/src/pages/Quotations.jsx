@@ -16,7 +16,9 @@ import { getCachedProducts } from '../utils/offlineQueue'
 import useOnlineStatus from '../hooks/useOnlineStatus'
 import {
   getQuotations, createQuotation, updateQuotation, acceptQuotation, deleteQuotation,
+  getQuotationPdf,
 } from '../api/quotations'
+import { openPdfInNewTab } from '../utils/openPdf'
 import useAuthStore from '../store/authStore'
 
 const STATUS_STYLES = {
@@ -171,6 +173,15 @@ function QuoteModal({ quote, onClose }) {
             className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-gray-600 hover:text-gray-900">
             <FiPlus size={13} /> add a line by hand
           </button>
+          {/* Said where the work is done, not only on the printed sheet. A
+              person pricing a job up needs to know that doing so commits
+              nothing — and that labour, delivery and anything not in the
+              catalogue can simply be typed. */}
+          <p className="mt-2 text-[11px] text-gray-500 leading-relaxed">
+            Pick from the products, or type anything that is not in them — labour, delivery,
+            a part you will order in. Nothing here is reserved and no stock comes off the
+            shelf until the quote is marked accepted.
+          </p>
         </div>
 
         {lines.length > 0 && (
@@ -367,8 +378,8 @@ export default function Quotations() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Quotations"
-        subtitle="Price a job up, and find out how many turn into sales"
+        title="Quotations & Estimates"
+        subtitle="Price a job up and hand the customer a sheet. Nothing is reserved and no stock moves."
         action={
           <div className="flex items-center gap-2">
             <RefreshButton keys={['quotations']} />
@@ -449,6 +460,19 @@ export default function Quotations() {
                     {formatCurrency(q.total_amount)}
                   </p>
                   <div className="flex items-center gap-2">
+                    {/* The sheet the customer takes away. On every quote,
+                        accepted ones included — somebody always asks for a
+                        copy of what they agreed to. */}
+                    <button
+                      onClick={() => openPdfInNewTab(
+                        () => getQuotationPdf(q._id),
+                        `estimate-${q.reference}.pdf`
+                      )}
+                      title="Open the estimate to print or send"
+                      className="px-3 py-1.5 text-xs font-bold text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-50"
+                    >
+                      Estimate
+                    </button>
                     {q.status !== 'accepted' && (
                       <>
                         <button onClick={() => setEditing(q)}
