@@ -65,6 +65,7 @@ function CompanyTab({ settings, onSave, loading }) {
     defaultValues: {
       ...toFormValues(settings, COMPANY_FIELDS),
       receipt_width_mm: settings?.receipt_width_mm ?? 80,
+      auto_print_receipt: settings?.auto_print_receipt !== false,
     },
   })
 
@@ -81,6 +82,7 @@ function CompanyTab({ settings, onSave, loading }) {
         tax_rate: data.taxRate === '' ? undefined : Number(data.taxRate),
         low_stock_alert: data.lowStockThreshold === '' ? undefined : Number(data.lowStockThreshold),
         receipt_width_mm: Number(data.receipt_width_mm) || 80,
+        auto_print_receipt: !!data.auto_print_receipt,
         logo_url: logoUrl,
       }))}
       className="space-y-4 max-w-lg"
@@ -139,6 +141,19 @@ function CompanyTab({ settings, onSave, loading }) {
           <option value={76}>76mm</option>
           <option value={82}>82mm — widest this printer takes</option>
         </select>
+
+        <label className="mt-3 flex items-start gap-2.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3 cursor-pointer">
+          <input type="checkbox" {...register('auto_print_receipt')}
+            className="mt-0.5 w-4 h-4 accent-orange-500" />
+          <span>
+            <span className="font-bold">Print the receipt as soon as a sale is completed</span>
+            <span className="block text-xs text-gray-500 leading-relaxed">
+              The slip goes to the printer without anybody pressing Print. The browser will
+              still ask which printer unless it has been set up not to — ask whoever set up
+              the till about Chrome's kiosk printing.
+            </span>
+          </span>
+        </label>
         <p className="text-xs text-gray-400 mt-1">
           The printed receipt scales to this width. Measure your roll if you are unsure — printing at
           the wrong width slices off the right-hand edge.
