@@ -65,7 +65,7 @@ const updateSettings = async (req, res) => {
       tax_rate, low_stock_alert, receipt_header, receipt_footer,
       currency_symbol, notification_settings, logo_url,
       base_currency, currencies, loyalty_settings, fraud_settings, layaway_settings,
-      receipt_width_mm, gift_promo,
+      receipt_width_mm, gift_promo, auto_print_receipt,
     } = req.body;
 
     let settings = await Settings.findOne();
@@ -86,6 +86,7 @@ const updateSettings = async (req, res) => {
       settings.notification_settings = { ...settings.notification_settings, ...notification_settings };
     }
     if (logo_url !== undefined) settings.logo_url = logo_url;
+    if (auto_print_receipt !== undefined) settings.auto_print_receipt = !!auto_print_receipt;
     if (gift_promo !== undefined) {
       // Merged, so saving the switch does not wipe the threshold.
       const now = settings.gift_promo?.toObject?.() || settings.gift_promo || {};

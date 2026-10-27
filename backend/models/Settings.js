@@ -218,6 +218,18 @@ const SettingsSchema = new mongoose.Schema(
      * "how many gifts went out this month" is a question with an answer and
      * stock that walks out of the door is written down.
      */
+    /**
+     * Print the receipt the moment a sale is completed.
+     *
+     * At a counter the slip is part of finishing the sale, not a separate
+     * decision — a cashier who has to press Print as well is a cashier who
+     * sometimes does not, and the customer leaves without one.
+     *
+     * The browser still asks which printer unless it has been told not to;
+     * see the note in frontend/src/utils/printReceipt.js.
+     */
+    auto_print_receipt: { type: Boolean, default: true },
+
     gift_promo: {
       enabled: { type: Boolean, default: false },
       // What a customer has to spend, on one sale, to qualify.

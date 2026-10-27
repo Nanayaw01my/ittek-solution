@@ -17,7 +17,7 @@ import {
   cacheLogo, getCachedLogo, nextOfflineInvoiceNo,
 } from '../utils/offlineQueue'
 import { buildWhatsAppReceiptLink } from '../utils/phone'
-import { printReceipt } from '../utils/printReceipt'
+import { printReceipt, printWhenReady } from '../utils/printReceipt'
 import Modal from '../components/Modal'
 import Ean13 from '../components/Ean13'
 import { mintReceiptBarcode } from '../utils/ean13'
@@ -100,8 +100,37 @@ function CartItem({ item, onUpdateQty, onRemove }) {
   )
 }
 
-function ReceiptModal({ isOpen, onClose, saleData, logoUrl, companyName, companyAddress, companyPhone, receiptWidthMm }) {
+function ReceiptModal({
+  isOpen, onClose, saleData, logoUrl, companyName, companyAddress, companyPhone,
+  receiptWidthMm, autoPrint,
+}) {
   const receiptRef = useRef(null)
+  // Which slip has already been sent to the printer. A sale prints once,
+  // however many times React re-renders the window around it.
+  const printedFor = useRef(null)
+
+  /**
+   * The slip prints itself.
+   *
+   * At a counter printing is part of finishing the sale, not a separate
+   * decision — a cashier who has to press Print as well is a cashier who
+   * sometimes does not, and the customer leaves without one.
+   *
+   * Before the early return below, because a hook that runs only sometimes
+   * is a hook React will not forgive.
+   */
+  useEffect(() => {
+    if (!isOpen || !autoPrint || !saleData) return undefined
+    const key = saleData.invoice_no || saleData.invoiceNo
+      || saleData.receipt_barcode || saleData.offline_ref || saleData._id
+    if (!key || printedFor.current === key) return undefined
+    printedFor.current = key
+
+    // One frame for the window to render its contents, then print once the
+    // logo and barcode have arrived.
+    const t = setTimeout(() => { printWhenReady(receiptWidthMm) }, 120)
+    return () => clearTimeout(t)
+  }, [isOpen, autoPrint, saleData, receiptWidthMm])
 
   if (!saleData) return null
 
@@ -1532,6 +1561,8 @@ export default function POS() {
         saleData={lastSale}
         logoUrl={receiptLogo}
         receiptWidthMm={settings.receipt_width_mm}
+        // Default on: a shop that fits a thermal printer wants the slip.
+        autoPrint={settings.auto_print_receipt !== false}
         companyName={settings.company_name}
         companyAddress={settings.company_address}
         companyPhone={settings.company_phone}

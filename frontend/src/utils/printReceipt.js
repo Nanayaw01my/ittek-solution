@@ -199,3 +199,48 @@ export function printReceipt(widthMm = BASELINE_MM) {
 }
 
 export { metricsFor, BASELINE_MM, MIN_PRINTABLE_MM }
+
+/**
+ * Print as soon as the slip is on screen and its pictures have arrived.
+ *
+ * Printing the instant React renders catches the logo and the barcode
+ * mid-download, and a thermal slip with a blank square where the logo should
+ * be is the one the customer keeps. So: wait for the images in the receipt,
+ * then print — but never wait for ever, because an unreachable logo must
+ * cost the shop a logo, not a receipt.
+ *
+ * Note on silence: a browser always asks which printer unless it has been
+ * started with --kiosk-printing (Chrome), which prints to the default
+ * printer with no dialog at all. Nothing in a web page can suppress that
+ * prompt on its own, and pretending otherwise would be a promise this code
+ * cannot keep.
+ */
+export function printWhenReady(widthMm, { timeout = 2500 } = {}) {
+  const area = document.querySelector('.receipt-print-area')
+  if (!area) return Promise.resolve(false)
+
+  const images = [...area.querySelectorAll('img')].filter((i) => !i.complete)
+  if (images.length === 0) {
+    printReceipt(widthMm)
+    return Promise.resolve(true)
+  }
+
+  return new Promise((resolve) => {
+    let done = false
+    const go = () => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      printReceipt(widthMm)
+      resolve(true)
+    }
+    let left = images.length
+    const tick = () => { left -= 1; if (left <= 0) go() }
+    images.forEach((img) => {
+      img.addEventListener('load', tick, { once: true })
+      // A logo that will not load must not hold up the slip.
+      img.addEventListener('error', tick, { once: true })
+    })
+    const timer = setTimeout(go, timeout)
+  })
+}
