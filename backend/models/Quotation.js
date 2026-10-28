@@ -58,6 +58,24 @@ const QuotationSchema = new mongoose.Schema(
     sale_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale' },
     invoice_no: { type: String, trim: true },
 
+    /**
+     * Paying for it over time.
+     *
+     * A customer asks what it comes to and then whether they can manage it.
+     * GHC2,700 over three months is GHC900 a month, which sounds like a lot;
+     * it is also GHC30 a day, which does not. The estimate carries what they
+     * put down and how long they have, and the sheet works the rest out.
+     *
+     * Optional: most quotes are for cash, and an empty plan prints nothing.
+     */
+    installment: {
+      enabled: { type: Boolean, default: false },
+      down_payment: { type: Number, default: 0, min: 0 },
+      // How long the balance is spread over. Months, because that is how a
+      // term is agreed at a counter, whichever rhythm they then pay in.
+      months: { type: Number, default: 3, min: 1, max: 60 },
+    },
+
     notes: { type: String, trim: true },
     prepared_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     decided_at: { type: Date },

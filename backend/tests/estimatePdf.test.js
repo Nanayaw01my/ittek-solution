@@ -150,3 +150,55 @@ test('the estimate sheet', async (t) => {
     assert.match(textOf(pdf), /Item number 59/);
   });
 });
+
+/**
+ * Paying for it over time, on the sheet.
+ *
+ * Printed as all three rhythms at once rather than the one the shop guessed
+ * at: a customer who balks at GHC900 a month will often take GHC30 a day
+ * without blinking, and the sheet should let them find that out themselves
+ * rather than need a second visit.
+ */
+test('the payment plan on the estimate', async (t) => {
+  const withPlan = {
+    ...quote,
+    total_amount: 3000,
+    installment: { enabled: true, down_payment: 300, months: 3 },
+  };
+
+  await t.test('the deposit and the balance are stated', async () => {
+    const s = textOf(await generateEstimate(withPlan, {}));
+    assert.match(s, /Pay today/);
+    assert.match(s, /GHC300\.00/);
+    assert.match(s, /GHC2700\.00/);
+    assert.match(s, /over 3 months/);
+  });
+
+  await t.test('all three rhythms are printed', async () => {
+    const s = textOf(await generateEstimate(withPlan, {}));
+    assert.match(s, /DAILY/);
+    assert.match(s, /WEEKLY/);
+    assert.match(s, /MONTHLY/);
+    assert.match(s, /GHC30\.00/);
+    assert.match(s, /GHC900\.00/);
+  });
+
+  await t.test('a figure that does not divide evenly says so', async () => {
+    const s = textOf(await generateEstimate(withPlan, {}));
+    assert.match(s, /approx/i);
+  });
+
+  await t.test('no plan prints nothing about paying over time', async () => {
+    // Most quotes are for cash. A block of instalments on one of those is
+    // an offer the shop did not make.
+    const s = textOf(await generateEstimate({ ...quote, installment: { enabled: false } }, {}));
+    assert.ok(!/OR PAY OVER TIME/.test(s));
+  });
+
+  await t.test('it still says nothing is reserved', async () => {
+    // A payment plan on the sheet must not read as an agreement.
+    const s = textOf(await generateEstimate(withPlan, {}));
+    assert.match(s, /NOT A RESERVATION/);
+    assert.match(s, /Nothing is agreed until a payment plan is signed/);
+  });
+});

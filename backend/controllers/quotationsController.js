@@ -37,6 +37,21 @@ const cleanItems = (items) => (items || [])
     unit_price: Number(i.unit_price) || 0,
   }));
 
+/**
+ * The payment plan as it should be stored.
+ *
+ * A plan switched off keeps its figures rather than losing them, so turning
+ * it back on does not mean typing the deposit in again.
+ */
+const cleanPlan = (p) => {
+  if (!p || typeof p !== 'object') return undefined;
+  return {
+    enabled: !!p.enabled,
+    down_payment: Math.max(0, Number(p.down_payment) || 0),
+    months: Math.max(1, Math.min(60, Math.round(Number(p.months) || 3))),
+  };
+};
+
 /** GET /api/quotations */
 const getQuotations = async (req, res) => {
   try {
@@ -103,7 +118,7 @@ const createQuotation = async (req, res) => {
   try {
     const {
       customer_name, customer_phone, customer_address,
-      items, discount, valid_until, notes, status,
+      items, discount, valid_until, notes, status, installment,
     } = req.body;
 
     if (!customer_name || !String(customer_name).trim()) {
@@ -129,6 +144,7 @@ const createQuotation = async (req, res) => {
           valid_until: valid_until ? new Date(valid_until) : undefined,
           status: ['draft', 'sent'].includes(status) ? status : 'draft',
           notes,
+          installment: cleanPlan(installment),
           prepared_by: req.user._id,
         });
       } catch (err) {
@@ -172,6 +188,7 @@ const updateQuotation = async (req, res) => {
       record.valid_until = f.valid_until ? new Date(f.valid_until) : undefined;
     }
     if (f.notes !== undefined) record.notes = f.notes;
+    if (f.installment !== undefined) record.installment = cleanPlan(f.installment);
     // 'accepted' is not settable here — that goes through the sale.
     if (['draft', 'sent', 'declined', 'expired'].includes(f.status)) {
       record.status = f.status;
