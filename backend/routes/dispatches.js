@@ -6,6 +6,7 @@ const { auditLog } = require('../middleware/auditLogger');
 const {
   getFieldAgents, getDispatches, getDispatch, createDispatch,
   returnDispatchItems, payDispatchItems, closeDispatch, deleteDispatch, getDispatchSheet,
+  getDispatchesByAgent,
 } = require('../controllers/dispatchesController');
 
 // Open to everyone who can sign in, but not equally: a field agent sees only
@@ -28,6 +29,8 @@ const shopStaffOnly = (req, res, next) => {
 };
 
 router.get('/', getDispatches);
+// The same sheets, gathered under the person holding them.
+router.get('/by-agent', getDispatchesByAgent);
 // Who a sheet can be issued to. Counter staff need this and cannot reach
 // /api/users, which is CEO only.
 router.get('/agents', shopStaffOnly, getFieldAgents);

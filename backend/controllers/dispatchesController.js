@@ -1,4 +1,13 @@
 const Dispatch = require('../models/Dispatch');
+const { groupByAgent } = require('../utils/dispatchGrouping');
+
+/**
+ * How long a sheet may stay open before the screen says something.
+ *
+ * Two weeks: long enough for a trip that runs over, short enough that stock
+ * sitting with somebody for a month is not quietly normal.
+ */
+const STALE_AFTER_DAYS = 14;
 const Product = require('../models/Product');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
@@ -100,6 +109,67 @@ const getFieldAgents = async (req, res) => {
   } catch (err) {
     console.error('Get field agents error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * GET /api/dispatches/by-agent
+ *
+ * The same sheets, gathered under the person holding them.
+ *
+ * Worked out across every open sheet rather than across one page of them:
+ * the list is paginated, and an agent whose fourth sheet fell onto page two
+ * would otherwise be reported as carrying less than they are — which is the
+ * one number on this screen that must not be wrong.
+ */
+const getDispatchesByAgent = async (req, res) => {
+  try {
+    const base = {};
+    // A field agent sees their own and nobody else's.
+    if (req.user.role === 'Field Agent') base.agent_user_id = req.user._id;
+
+    const [openSheets, closed] = await Promise.all([
+      Dispatch.find({ ...base, status: { $ne: 'closed' } })
+        .populate('issued_by', 'username')
+        .populate('agent_user_id', 'username')
+        .sort({ issued_at: -1 })
+        .lean(),
+      Dispatch.aggregate([
+        { $match: { ...base, status: 'closed' } },
+        {
+          $group: {
+            _id: { $ifNull: ['$agent_user_id', '$agent_name'] },
+            count: { $sum: 1 },
+            agent_name: { $last: '$agent_name' },
+            agent_user_id: { $last: '$agent_user_id' },
+          },
+        },
+      ]),
+    ]);
+
+    const closedCounts = {};
+    for (const row of closed) {
+      closedCounts[String(row._id)] = {
+        count: row.count,
+        agent_name: row.agent_name,
+        agent_user_id: row.agent_user_id,
+      };
+    }
+
+    const agents = groupByAgent(openSheets, closedCounts);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        agents,
+        // What the screen calls "open too long". Sent rather than hardcoded
+        // in the browser so it can be changed in one place.
+        stale_after_days: STALE_AFTER_DAYS,
+      },
+    });
+  } catch (err) {
+    console.error('Dispatches by agent error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not read it: ${err.message}` });
   }
 };
 
@@ -681,6 +751,7 @@ const getDispatchSheet = async (req, res) => {
 };
 
 module.exports = {
+  getDispatchesByAgent,
   getFieldAgents,
   getDispatches,
   getDispatch,

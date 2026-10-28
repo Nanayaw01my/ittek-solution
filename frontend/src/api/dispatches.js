@@ -2,6 +2,15 @@ import api from './axios'
 
 export const getDispatches = (params) => api.get('/dispatches', { params })
 
+/**
+ * The same sheets, gathered under the person holding them.
+ *
+ * Totalled across every open sheet on the server, not across one page of
+ * them — an agent whose fourth sheet fell onto page two would otherwise
+ * read as carrying less than they are.
+ */
+export const getDispatchesByAgent = () => api.get('/dispatches/by-agent')
+
 /** Who a sheet can be issued to. Shop staff only. */
 export const getFieldAgents = () => api.get('/dispatches/agents')
 export const getDispatch = (id) => api.get(`/dispatches/${id}`)
