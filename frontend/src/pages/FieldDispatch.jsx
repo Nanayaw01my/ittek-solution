@@ -10,12 +10,12 @@ import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
 import LoadingSpinner from '../components/LoadingSpinner'
 import RefreshButton from '../components/RefreshButton'
-import { formatCurrency } from '../utils/helpers'
+import { formatCurrency, getRoleLevel } from '../utils/helpers'
 import { openPdfInNewTab } from '../utils/openPdf'
 import { getProducts } from '../api/products'
 import {
   getDispatches, getFieldAgents, createDispatch, returnDispatchItems, payDispatchItems,
-  closeDispatch, deleteDispatch, getDispatchSheet,
+  closeDispatch, deleteDispatch, getDispatchSheet, getDispatchesByAgent,
 } from '../api/dispatches'
 import useAuthStore from '../store/authStore'
 import { isOwner } from '../config/pageAccess'
@@ -111,6 +111,7 @@ function NewDispatchModal({ onClose }) {
         { duration: 6000 }
       )
       queryClient.invalidateQueries({ queryKey: ['dispatches'] })
+      queryClient.invalidateQueries({ queryKey: ['dispatches-by-agent'] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
       onClose()
       // Straight to the sheet — it is the point of the exercise.
@@ -284,6 +285,7 @@ function ReturnModal({ dispatch, onClose }) {
     onSuccess: (res) => {
       toast.success('Returned items have been added back to stock')
       queryClient.invalidateQueries({ queryKey: ['dispatches'] })
+      queryClient.invalidateQueries({ queryKey: ['dispatches-by-agent'] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
       onClose()
     },
@@ -400,6 +402,7 @@ function PayModal({ dispatch, onClose }) {
       const sale = res.data
       toast.success(`Sale ${sale?.invoice_no || ''} recorded`)
       queryClient.invalidateQueries({ queryKey: ['dispatches'] })
+      queryClient.invalidateQueries({ queryKey: ['dispatches-by-agent'] })
       // The dashboard cards and the sales screens must pick this up.
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ queryKey: ['sales'] })
@@ -530,6 +533,187 @@ function PayModal({ dispatch, onClose }) {
   )
 }
 
+/**
+ * Everything one agent is holding, in one card.
+ *
+ * The screen used to list sheets, newest first, so an agent with three
+ * sheets appeared three times with other people's in between — some of
+ * their goods up the page and some of it down. And the number anybody
+ * actually wants was never on it: how much is this person carrying, and how
+ * much have they paid in. You worked it out by scrolling and adding.
+ */
+function AgentCard({
+  agent, staleAfter, showMoney, canTakeMoney, isAgent, owner,
+  onPay, onReturn, onClose, onDelete, closing,
+}) {
+  // The newest sheet open to begin with: it is the one being discussed when
+  // somebody walks in. The rest are a line each until they are wanted.
+  const [open, setOpen] = useState(() => agent.sheets[0]?._id || null)
+  const [showClosed, setShowClosed] = useState(false)
+
+  const { data: closedData, isFetching: loadingClosed } = useQuery({
+    queryKey: ['dispatches-closed', agent.agent_key],
+    queryFn: () => getDispatches({
+      status: 'closed', agent: agent.agent_name, limit: 50,
+    }).then((r) => r.data),
+    enabled: showClosed && agent.closed_count > 0,
+  })
+  const closedSheets = closedData?.dispatches || []
+
+  const stale = agent.days_open >= staleAfter && agent.pieces_out > 0
+  const initial = (agent.agent_name || '?').charAt(0).toUpperCase()
+  const carrying = agent.pieces_out > 0
+
+  const sheetRow = (d, isClosed) => {
+    const isOpen = open === d._id
+    const out = d.pieces_out ?? d.items.reduce((n, i) => n + stillOut(i), 0)
+    return (
+      <div key={d._id} className={isOpen ? 'bg-gray-50/70' : ''}>
+        <button
+          onClick={() => setOpen(isOpen ? null : d._id)}
+          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left border-t border-gray-50 hover:bg-gray-50"
+        >
+          <span className={`text-gray-300 text-[10px] flex-shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[12.5px] font-bold text-gray-700">{d.dispatch_no}</span>
+            <span className="block text-[10.5px] text-gray-400 truncate">
+              {format(new Date(d.issued_at), 'dd MMM')}
+              {d.destination ? ` · ${d.destination}` : ''}
+              {` · ${d.items.length} item${d.items.length === 1 ? '' : 's'}`}
+              {out > 0 ? ` · ${out} out` : ''}
+              {d.top_ups?.length > 0 ? ` · topped up ${d.top_ups.length}×` : ''}
+            </span>
+          </span>
+          <span className={`px-2 py-0.5 text-[9.5px] font-black rounded-full flex-shrink-0 ${STATUS_STYLES[d.status]}`}>
+            {STATUS_LABELS[d.status]}
+          </span>
+        </button>
+
+        {isOpen && (
+          <>
+            <div className="px-4 pb-2 space-y-0.5">
+              {d.items.map((i) => (
+                <div key={String(i.product_id) + (i.variant_sku || '')} className="flex justify-between gap-2 text-[11.5px]">
+                  <span className="text-gray-700 truncate">
+                    {i.variant_name ? `${i.product_name} (${i.variant_name})` : i.product_name}
+                  </span>
+                  <span className="text-gray-400 flex-shrink-0 tabular-nums">
+                    out {i.quantity_issued} · sold {i.quantity_sold || 0} ·
+                    {' '}back {i.quantity_returned || 0} · with them {stillOut(i)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1 px-4 pb-3">
+              <button
+                onClick={() => openPdfInNewTab(() => getDispatchSheet(d._id), `${d.dispatch_no}.pdf`)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11.5px] font-bold text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                <FiPrinter /> Sheet
+              </button>
+              {!isClosed && canTakeMoney && (
+                <button onClick={() => onPay(d)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11.5px] font-bold text-white bg-orange-600 rounded-lg hover:bg-orange-700">
+                  <FiDollarSign /> Pay
+                </button>
+              )}
+              {!isClosed && !isAgent && (
+                <button onClick={() => onReturn(d)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11.5px] font-bold text-white bg-green-600 rounded-lg hover:bg-green-700">
+                  <FiCornerUpLeft /> Returns
+                </button>
+              )}
+              {!isClosed && !isAgent && (
+                <button onClick={() => onClose(d)} disabled={closing}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11.5px] font-bold text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                  <FiCheckCircle /> Close
+                </button>
+              )}
+              {owner && (
+                <button onClick={() => onDelete(d)}
+                  className="inline-flex items-center gap-1 px-2 py-1.5 text-[11.5px] font-bold text-red-600 border border-red-100 rounded-lg hover:bg-red-50">
+                  <FiTrash2 />
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className={`bg-white border rounded-2xl overflow-hidden ${carrying ? 'border-gray-100' : 'border-gray-100 opacity-75'}`}>
+      <div className="flex items-start gap-3 p-4 pb-3">
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0
+          ${carrying ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-400'}`}>
+          {initial}
+        </div>
+        <div className="min-w-0">
+          <p className={`font-black ${carrying ? 'text-gray-900' : 'text-gray-500'}`}>{agent.agent_name}</p>
+          <p className="text-[11px] text-gray-500">
+            {agent.sheets.length > 0
+              ? `${agent.sheets.length} sheet${agent.sheets.length === 1 ? '' : 's'} open`
+              : 'Carrying nothing · all settled'}
+            {agent.closed_count > 0 ? ` · ${agent.closed_count} closed` : ''}
+            {agent.sheets[0] ? ` · last issued ${format(new Date(agent.sheets[0].issued_at), 'dd MMM')}` : ''}
+          </p>
+        </div>
+      </div>
+
+      {/* The figures somebody settles against. Added across every open sheet
+          this agent holds, which is the thing the old screen could not do. */}
+      {agent.sheets.length > 0 && (
+        <div className="flex border-t border-orange-100 bg-orange-50/70 text-center">
+          <div className="flex-1 py-2">
+            <span className="block text-[9.5px] font-black uppercase tracking-wide text-orange-900/60">With them</span>
+            <span className="block text-[15px] font-black text-orange-900 tabular-nums">{agent.pieces_out}</span>
+          </div>
+          {showMoney && (
+            <>
+              <div className="flex-1 py-2 border-l border-orange-100">
+                <span className="block text-[9.5px] font-black uppercase tracking-wide text-orange-900/60">Value out</span>
+                <span className="block text-[15px] font-black text-orange-900 tabular-nums">
+                  {formatCurrency(agent.value_out)}
+                </span>
+              </div>
+              <div className="flex-1 py-2 border-l border-orange-100">
+                <span className="block text-[9.5px] font-black uppercase tracking-wide text-orange-900/60">Paid in</span>
+                <span className="block text-[15px] font-black text-green-700 tabular-nums">
+                  {formatCurrency(agent.paid_in)}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {stale && (
+        <p className="bg-red-50 border-t border-red-100 text-red-800 text-[11px] font-bold px-4 py-2">
+          ⚠ Oldest sheet open {agent.days_open} days — {agent.pieces_out} piece
+          {agent.pieces_out === 1 ? '' : 's'} still out
+        </p>
+      )}
+
+      {agent.sheets.map((d) => sheetRow(d, false))}
+
+      {agent.closed_count > 0 && (
+        <>
+          {showClosed && closedSheets.map((d) => sheetRow(d, true))}
+          <button
+            onClick={() => setShowClosed((v) => !v)}
+            className="w-full text-left px-4 py-2.5 border-t border-gray-50 text-[11px] font-bold text-gray-400 hover:text-gray-600"
+          >
+            {loadingClosed ? 'loading…'
+              : showClosed ? '▾ hide closed sheets'
+                : `▸ show ${agent.closed_count} closed sheet${agent.closed_count === 1 ? '' : 's'}`}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function FieldDispatch() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
@@ -546,19 +730,46 @@ export default function FieldDispatch() {
   const [showNew, setShowNew] = useState(false)
   const [returning, setReturning] = useState(null)
   const [paying, setPaying] = useState(null)
-  const [status, setStatus] = useState('')
+  // Which agents to show, rather than which sheets — the question is
+  // always about a person.
+  const [view, setView] = useState('')
 
+  /**
+   * Who is holding what, rather than a list of sheets.
+   *
+   * Totalled on the server across every open sheet — the sheet list is
+   * paginated, and an agent whose fourth sheet fell onto page two would read
+   * as carrying less than they are.
+   */
   const { data, isLoading } = useQuery({
-    queryKey: ['dispatches', status],
-    queryFn: () => getDispatches({ status: status || undefined }).then((r) => r.data),
+    queryKey: ['dispatches-by-agent'],
+    queryFn: () => getDispatchesByAgent().then((r) => r.data),
   })
-  const dispatches = data?.dispatches || []
+  const allAgents = data?.agents || []
+  const staleAfter = data?.stale_after_days ?? 14
+
+  /**
+   * Money is kept to the people the rest of the system keeps it to.
+   *
+   * A Sales hand at the counter does not see what the shop is owed, and a
+   * field agent sees their own card only — which is already their own sheet
+   * in their own hands.
+   */
+  const showMoney = getRoleLevel(user?.role) >= 2 || isAgent
+
+  const agents = allAgents.filter((a) => {
+    if (view === 'carrying') return a.pieces_out > 0
+    if (view === 'owing') return a.value_out > a.paid_in && a.pieces_out > 0
+    if (view === 'settled') return a.pieces_out === 0
+    return true
+  })
 
   const closeMutation = useMutation({
     mutationFn: (id) => closeDispatch(id),
     onSuccess: () => {
       toast.success('Dispatch closed')
       queryClient.invalidateQueries({ queryKey: ['dispatches'] })
+      queryClient.invalidateQueries({ queryKey: ['dispatches-by-agent'] })
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Could not close it'),
   })
@@ -568,6 +779,7 @@ export default function FieldDispatch() {
     onSuccess: (res) => {
       toast.success(res.data?.message || 'Dispatch cancelled — stock put back')
       queryClient.invalidateQueries({ queryKey: ['dispatches'] })
+      queryClient.invalidateQueries({ queryKey: ['dispatches-by-agent'] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Could not cancel it'),
@@ -595,12 +807,13 @@ export default function FieldDispatch() {
       </PageHeader>
 
       <div className="flex flex-wrap gap-1.5 mb-4">
-        {[['', 'All'], ['issued', 'Out on field'], ['partly_returned', 'Part returned'], ['closed', 'Closed']]
+        {[['', 'All agents'], ['carrying', 'Carrying goods'],
+          ...(showMoney ? [['owing', 'Owing money']] : []), ['settled', 'Settled']]
           .map(([value, label]) => (
             <button
-              key={value || 'all'} onClick={() => setStatus(value)}
+              key={value || 'all'} onClick={() => setView(value)}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg ${
-                status === value ? 'bg-orange-600 text-white' : 'bg-white text-gray-600 border border-gray-200'
+                view === value ? 'bg-orange-600 text-white' : 'bg-white text-gray-600 border border-gray-200'
               }`}
             >
               {label}
@@ -610,127 +823,42 @@ export default function FieldDispatch() {
 
       {isLoading && <LoadingSpinner />}
 
-      {!isLoading && dispatches.length === 0 && (
+      {!isLoading && agents.length === 0 && (
         <div className="bg-white border border-gray-100 rounded-2xl p-10 text-center">
           <FiTruck className="mx-auto text-3xl text-gray-300" />
           <p className="mt-3 text-sm text-gray-500">
             {isAgent
               ? 'You are not carrying anything. The shop adds goods here when you collect them.'
-              : 'No dispatches yet.'}
+              : view ? 'No agent matches that.' : 'No dispatches yet.'}
           </p>
         </div>
       )}
 
       <div className="space-y-3">
-        {dispatches.map((d) => {
-          const out = d.items.reduce((s, i) => s + stillOut(i), 0)
-          const issued = d.items.reduce((s, i) => s + i.quantity_issued, 0)
-          const sold = d.items.reduce((s, i) => s + (i.quantity_sold || 0), 0)
-          const back = d.items.reduce((s, i) => s + (i.quantity_returned || 0), 0)
-          const value = d.items.reduce((s, i) => s + i.unit_price * i.quantity_issued, 0)
-          const paidIn = (d.sales || []).reduce((s, x) => s + (x.amount || 0), 0)
-          return (
-            <div key={d._id} className="bg-white border border-gray-100 rounded-2xl p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-black text-gray-900">{d.agent_name}</p>
-                    <span className={`px-2 py-0.5 text-[11px] font-bold rounded-full ${STATUS_STYLES[d.status]}`}>
-                      {STATUS_LABELS[d.status]}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {d.dispatch_no} · {format(new Date(d.issued_at), 'dd MMM yyyy')}
-                    {d.destination ? ` · ${d.destination}` : ''}
-                    {d.issued_by?.username ? ` · issued by ${d.issued_by.username}` : ''}
-                  </p>
-                  {/* Goods added later, so the issue date above stops being the
-                      whole story. Said plainly rather than left to be worked
-                      out from a quantity that does not match the first load. */}
-                  {d.top_ups?.length > 0 && (
-                    <p className="text-[11px] text-orange-600 font-semibold mt-0.5">
-                      topped up {d.top_ups.length} time{d.top_ups.length === 1 ? '' : 's'}
-                      {' · last '}
-                      {format(new Date(d.top_ups[d.top_ups.length - 1].at), 'dd MMM')}
-                      {` · ${d.top_ups.reduce((t, u) => t + (u.quantity || 0), 0)} pieces added`}
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-600 mt-1">
-                    {d.items.length} item(s) · {issued} issued · {sold} sold · {back} returned ·
-                    {' '}{out} still with agent
-                  </p>
-                  <p className="text-xs text-gray-600 mt-0.5">
-                    {formatCurrency(value)} stock value ·
-                    {' '}<span className="font-bold text-green-700">{formatCurrency(paidIn)} paid in</span>
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
-                    onClick={() => openPdfInNewTab(() => getDispatchSheet(d._id), `${d.dispatch_no}.pdf`)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50"
-                  >
-                    <FiPrinter /> Sheet
-                  </button>
-                  {d.status !== 'closed' && canTakeMoney && (
-                    <button
-                      onClick={() => setPaying(d)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-orange-600 rounded-lg hover:bg-orange-700"
-                    >
-                      <FiDollarSign /> Pay
-                    </button>
-                  )}
-                  {d.status !== 'closed' && !isAgent && (
-                    <button
-                      onClick={() => setReturning(d)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-green-600 rounded-lg hover:bg-green-700"
-                    >
-                      <FiCornerUpLeft /> Returns
-                    </button>
-                  )}
-                  {d.status !== 'closed' && !isAgent && (
-                    <button
-                      onClick={() => {
-                        if (window.confirm('Close this dispatch? Anything still out stays off the shelf as sold on the field.')) {
-                          closeMutation.mutate(d._id)
-                        }
-                      }}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50"
-                    >
-                      <FiCheckCircle /> Close
-                    </button>
-                  )}
-                  {owner && (
-                    <button
-                      onClick={() => {
-                        if (window.confirm('Cancel this dispatch and put everything still out back into stock?')) {
-                          deleteMutation.mutate(d._id)
-                        }
-                      }}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                    >
-                      <FiTrash2 />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-3 border-t pt-2 space-y-1">
-                {d.items.map((i) => (
-                  <div key={String(i.product_id) + (i.variant_sku || '')} className="flex justify-between text-xs">
-                    <span className="text-gray-700 truncate pr-2">
-                      {i.variant_name ? `${i.product_name} (${i.variant_name})` : i.product_name}
-                    </span>
-                    <span className="text-gray-500 flex-shrink-0">
-                      out {i.quantity_issued} · sold {i.quantity_sold || 0} ·
-                      {' '}back {i.quantity_returned || 0} · with agent {stillOut(i)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )
-        })}
+        {agents.map((a) => (
+          <AgentCard
+            key={a.agent_key}
+            agent={a}
+            staleAfter={staleAfter}
+            showMoney={showMoney}
+            canTakeMoney={canTakeMoney}
+            isAgent={isAgent}
+            owner={owner}
+            closing={closeMutation.isPending}
+            onPay={setPaying}
+            onReturn={setReturning}
+            onClose={(d) => {
+              if (window.confirm('Close this sheet? Anything still out stays off the shelf as sold on the field.')) {
+                closeMutation.mutate(d._id)
+              }
+            }}
+            onDelete={(d) => {
+              if (window.confirm('Cancel this sheet and put everything still out back into stock?')) {
+                deleteMutation.mutate(d._id)
+              }
+            }}
+          />
+        ))}
       </div>
 
       {showNew && <NewDispatchModal onClose={() => setShowNew(false)} />}
