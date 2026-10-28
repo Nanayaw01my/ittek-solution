@@ -4271,6 +4271,60 @@ const generateEstimate = async (quote = {}, options = {}) => {
       y += 6;
       money('TOTAL', gh(total), true);
 
+      /**
+       * Paying for it over time.
+       *
+       * Printed as all three rhythms at once rather than as the one the
+       * shop guessed at. A customer who balks at GHC900 a month will often
+       * take GHC30 a day without blinking, and the sheet should let them
+       * find that out themselves rather than need a second visit.
+       */
+      const plan = quote.installment || {};
+      if (plan.enabled && total > 0) {
+        const { breakdown } = require('./installments');
+        const b = breakdown({ total, downPayment: plan.down_payment, months: plan.months });
+
+        y += 10;
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(ORANGE)
+          .text('OR PAY OVER TIME', ML, y, { width: W });
+        y += 12;
+
+        // What they put down, and what is left to spread.
+        doc.rect(ML, y, W, 26).fillColor('#f8fafc').fill();
+        doc.fontSize(8.5).font('Helvetica').fillColor('#475569')
+          .text('Pay today', ML + 10, y + 8, { width: 120, lineBreak: false });
+        doc.font('Helvetica-Bold').fillColor('#111111')
+          .text(gh(b.down), ML + 130, y + 8, { width: 90, align: 'right', lineBreak: false });
+        doc.font('Helvetica').fillColor('#475569')
+          .text(`then clear ${gh(b.balance)} over ${b.months} month${b.months === 1 ? '' : 's'}`,
+            ML + 240, y + 8, { width: W - 250, align: 'right', lineBreak: false });
+        reset();
+        y += 34;
+
+        // The three ways, side by side, so the choice is the customer's.
+        const third = (W - 16) / 3;
+        b.options.forEach((o, idx) => {
+          const x = ML + idx * (third + 8);
+          doc.rect(x, y, third, 44).lineWidth(0.8).strokeColor('#fdba74').stroke();
+          doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
+            .text(o.each.toUpperCase(), x, y + 6, { width: third, align: 'center', lineBreak: false });
+          doc.fontSize(12).font('Helvetica-Bold').fillColor(ORANGE)
+            .text(gh(o.amount), x, y + 16, { width: third, align: 'center', lineBreak: false });
+          doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
+            .text(`${o.unit} × ${o.periods}${o.approx ? ' (approx.)' : ''}`,
+              x, y + 32, { width: third, align: 'center', lineBreak: false });
+          reset();
+        });
+        y += 52;
+
+        doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
+          .text('Take whichever suits you — the three come to the same amount over the same '
+            + 'period. Nothing is agreed until a payment plan is signed.',
+            ML, y, { width: W });
+        y = doc.y + 4;
+        reset();
+      }
+
       // ── Notes ───────────────────────────────────────────────────────────
       if (quote.notes) {
         y += 6;

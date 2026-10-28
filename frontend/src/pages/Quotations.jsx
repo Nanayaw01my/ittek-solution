@@ -19,6 +19,7 @@ import {
   getQuotationPdf,
 } from '../api/quotations'
 import { openPdfInNewTab } from '../utils/openPdf'
+import { breakdown } from '../utils/installments'
 import useAuthStore from '../store/authStore'
 
 const STATUS_STYLES = {
@@ -45,6 +46,19 @@ function QuoteModal({ quote, onClose }) {
     valid_until: quote?.valid_until ? format(new Date(quote.valid_until), 'yyyy-MM-dd') : '',
     notes: quote?.notes || '',
   })
+  /**
+   * Paying for it over time.
+   *
+   * A customer asks what it comes to, then whether they can manage it. The
+   * three rhythms are shown at once because GHC900 a month and GHC30 a day
+   * are the same plan, and only one of them closes the sale.
+   */
+  const [plan, setPlan] = useState({
+    enabled: !!quote?.installment?.enabled,
+    down_payment: quote?.installment?.down_payment ? String(quote.installment.down_payment) : '',
+    months: String(quote?.installment?.months ?? 3),
+  })
+
   const [lines, setLines] = useState(
     quote?.items?.map((i) => ({ ...i, quantity: String(i.quantity), unit_price: String(i.unit_price) }))
     || []
@@ -86,9 +100,18 @@ function QuoteModal({ quote, onClose }) {
   const discount = Number(form.discount) || 0
   const total = Math.max(0, subtotal - discount)
 
+  // Worked out here as well as on the sheet, so the figures quoted at the
+  // counter are the figures that print.
+  const split = breakdown({ total, downPayment: Number(plan.down_payment) || 0, months: Number(plan.months) || 3 })
+
   const payload = (status) => ({
     ...form,
     discount,
+    installment: {
+      enabled: !!plan.enabled,
+      down_payment: Number(plan.down_payment) || 0,
+      months: Math.max(1, Math.min(60, Number(plan.months) || 3)),
+    },
     valid_until: form.valid_until || undefined,
     status,
     items: lines
@@ -252,6 +275,72 @@ function QuoteModal({ quote, onClose }) {
             {discount > 0 && <p>Less discount {formatCurrency(discount)}</p>}
           </div>
           <p className="text-xl font-black text-gray-900">{formatCurrency(total)}</p>
+        </div>
+
+        {/* Paying for it over time. Optional — most quotes are for cash, and
+            an empty plan prints nothing on the sheet. */}
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <label className="flex items-start gap-2.5 p-3 cursor-pointer bg-gray-50">
+            <input type="checkbox" checked={plan.enabled}
+              onChange={(e) => setPlan((p) => ({ ...p, enabled: e.target.checked }))}
+              className="mt-0.5 w-4 h-4 accent-orange-500" />
+            <span>
+              <span className="block text-sm font-bold text-gray-800">Offer a payment plan</span>
+              <span className="block text-xs text-gray-500">
+                A deposit today, the rest spread out. The sheet shows it daily, weekly and
+                monthly so the customer picks what suits them.
+              </span>
+            </span>
+          </label>
+
+          {plan.enabled && (
+            <div className="p-3 space-y-3 border-t border-gray-100">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Pay today</label>
+                  <input type="number" min="0" step="0.01" value={plan.down_payment}
+                    onChange={(e) => setPlan((p) => ({ ...p, down_payment: e.target.value }))}
+                    placeholder="0.00" className={field} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Clear it over</label>
+                  <select value={plan.months}
+                    onChange={(e) => setPlan((p) => ({ ...p, months: e.target.value }))}
+                    className={field}>
+                    {[1, 2, 3, 4, 6, 9, 12, 18, 24].map((m) => (
+                      <option key={m} value={m}>{m} month{m === 1 ? '' : 's'}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {total > 0 ? (
+                <>
+                  <p className="text-xs text-gray-600">
+                    {formatCurrency(split.down)} today, then {formatCurrency(split.balance)} over
+                    {' '}{split.months} month{split.months === 1 ? '' : 's'}:
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {split.options.map((o) => (
+                      <div key={o.key} className="border border-orange-200 bg-orange-50 rounded-xl p-2 text-center">
+                        <p className="text-[10px] font-black uppercase tracking-wide text-orange-900/60">
+                          {o.each}
+                        </p>
+                        <p className="text-sm font-black text-orange-900 tabular-nums leading-tight">
+                          {formatCurrency(o.amount)}
+                        </p>
+                        <p className="text-[10px] text-gray-500">
+                          {o.unit} × {o.periods}{o.approx ? ' ≈' : ''}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-gray-400">Add items first and the plan works itself out.</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2">
