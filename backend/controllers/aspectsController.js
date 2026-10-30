@@ -16,6 +16,13 @@ const { ASPECTS, ASPECT_KEYS, classify } = require('../config/aspects');
  * Owners only, because it carries cost and profit.
  */
 
+/** The date a sale belongs to, or null when it has none worth using. */
+const dayKey = (value) => {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+};
+
 /** The window being asked about. Defaults to today. */
 const range = (q) => {
   const to = q.to ? new Date(q.to) : new Date();
@@ -38,6 +45,15 @@ const salesByAspect = async (req, res) => {
       // sold. Counting it again here would put the same panel in Solar twice.
       payment_status: { $ne: 'debt_payment' },
     }).select('invoice_no sale_date items').lean();
+
+    /**
+     * The same money, day by day.
+     *
+     * A range tells an owner what a week came to; it does not tell them
+     * which day was good. Both are wanted and they are the same arithmetic,
+     * so the day is kept as the sale is read rather than queried again.
+     */
+    const byDay = new Map();
 
     // Every product that was actually sold, with its category — rather than
     // the whole catalogue, which on a big shop is most of a megabyte to
@@ -86,6 +102,23 @@ const salesByAspect = async (req, res) => {
         line.pieces += qty;
         line.revenue = Number((line.revenue + revenue).toFixed(2));
         row.products.set(key, line);
+
+        /**
+         * Same figures, gathered by the day the sale was made.
+         *
+         * A sale with no usable date — an old record, a bad import — is
+         * left out of the day-by-day list rather than allowed to throw.
+         * One unreadable date must not cost an owner the whole report, and
+         * the line still counts towards its business line and the totals.
+         */
+        const day = dayKey(sale.sale_date);
+        if (!day) continue;
+        const d = byDay.get(day) || { date: day, revenue: 0, cost: 0, pieces: 0, sales: new Set() };
+        d.revenue += revenue;
+        d.cost += cost;
+        d.pieces += qty;
+        d.sales.add(String(sale._id));
+        byDay.set(day, d);
       }
     }
 
@@ -113,10 +146,34 @@ const salesByAspect = async (req, res) => {
         to,
         total: {
           revenue,
+          cost: Number(lines.reduce((n, l) => n + l.cost, 0).toFixed(2)),
+          // What the shop kept, as a share of what it took. The figure an
+          // owner judges a day by once they have seen the cedis.
+          margin: revenue > 0
+            ? Number(((lines.reduce((n, l) => n + l.profit, 0) / revenue) * 100).toFixed(1))
+            : 0,
           profit: Number(lines.reduce((n, l) => n + l.profit, 0).toFixed(2)),
           pieces: lines.reduce((n, l) => n + l.pieces, 0),
           sales: new Set(sales.map((s) => String(s._id))).size,
         },
+        /**
+         * Newest day first, so the day being asked about is at the top.
+         *
+         * The cost and the takings are both carried rather than only the
+         * difference: an owner checking a day's profit wants to see the two
+         * figures it came from, not be asked to trust one.
+         */
+        days: [...byDay.values()]
+          .map((d) => ({
+            date: d.date,
+            revenue: Number(d.revenue.toFixed(2)),
+            cost: Number(d.cost.toFixed(2)),
+            profit: Number((d.revenue - d.cost).toFixed(2)),
+            margin: d.revenue > 0 ? Number((((d.revenue - d.cost) / d.revenue) * 100).toFixed(1)) : 0,
+            pieces: d.pieces,
+            sales: d.sales.size,
+          }))
+          .sort((a, b) => b.date.localeCompare(a.date)),
         lines: lines.map((l) => ({
           ...l,
           // What share of the day each side of the business was.
