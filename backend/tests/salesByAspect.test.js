@@ -15,7 +15,14 @@ let sales = [];
 let products = [];
 let categories = [];
 
-const chain = (rows) => ({ select: () => ({ lean: async () => rows }) });
+/** select / sort / lean, in any order, as mongoose allows. */
+const chain = (rows) => {
+  const c = {};
+  c.select = () => c;
+  c.sort = () => c;
+  c.lean = async () => rows;
+  return c;
+};
 
 const orig = Module._load;
 Module._load = function (req) {
@@ -225,5 +232,110 @@ test('cost, takings and profit, day by day', async (t) => {
     assert.strictEqual(r.body.data.total.revenue, 5800);
     assert.strictEqual(r.body.data.days.length, 1);
     assert.strictEqual(r.body.data.days[0].revenue, 100);
+  });
+});
+
+/**
+ * Sorting the catalogue itself.
+ *
+ * The report works a product's department out as it runs, which answers the
+ * question but leaves nothing behind. Writing the guesses down turns them
+ * into something an owner can see and correct — and it must never overwrite
+ * what a person has already decided.
+ */
+test('sorting the catalogue into departments', async (t) => {
+  let written = [];
+  const Module2 = require('module');
+  const o = Module2._load;
+  Module2._load = function (req) {
+    if (req.includes('models/Product')) return {
+      find: () => chain(products),
+      bulkWrite: async (ops) => { written = ops; return { modifiedCount: ops.length }; },
+      findByIdAndUpdate: async () => null,
+    };
+    if (req.includes('models/Category')) return { find: () => chain(categories) };
+    if (req.includes('models/Sale')) return { find: () => chain(sales) };
+    return o.apply(this, arguments);
+  };
+  delete require.cache[require.resolve(path.join(B, 'controllers/aspectsController.js'))];
+  const ctl = require(path.join(B, 'controllers/aspectsController.js'));
+  Module2._load = o;
+
+  const sortNow = async () => {
+    written = [];
+    const r = res();
+    await ctl.autoSort({ body: {} }, r);
+    return r;
+  };
+  const lookAt = async () => { const r = res(); await ctl.catalogue({}, r); return r; };
+
+  t.beforeEach(() => {
+    categories = [{ _id: 'c1', name: 'Accessories', aspect: '' }];
+    products = [
+      { _id: 'p1', name: 'Solar Panel 400W', aspect: '', category_id: 'c1' },
+      { _id: 'p2', name: 'CAT6 Cable 305m', aspect: '', category_id: 'c1' },
+      { _id: 'p3', name: 'Masking Tape', aspect: '', category_id: 'c1' },
+    ];
+  });
+
+  await t.test('a guess becomes a department written down', async () => {
+    const r = await sortNow();
+    assert.strictEqual(r.body.data.updated, 2);
+    const set = Object.fromEntries(written.map((w) => [String(w.updateOne.filter._id), w.updateOne.update.$set.aspect]));
+    assert.deepStrictEqual(set, { p1: 'solar', p2: 'networking' });
+  });
+
+  await t.test('what it cannot read is left alone, not guessed at', async () => {
+    await sortNow();
+    assert.ok(!written.some((w) => String(w.updateOne.filter._id) === 'p3'));
+  });
+
+  await t.test("a person's decision is never overwritten", async () => {
+    // The whole risk of a button that edits five hundred products at once.
+    products[0].aspect = 'electrical';
+    await sortNow();
+    assert.ok(!written.some((w) => String(w.updateOne.filter._id) === 'p1'));
+  });
+
+  await t.test('a category that has a department settles its products', async () => {
+    categories[0].aspect = 'electrical';
+    const r = await sortNow();
+    assert.strictEqual(r.body.data.updated, 0,
+      'nothing to write: the category already answers for all of them');
+  });
+
+  await t.test('the result reaches the screen, not just the server log', async () => {
+    // The browser's axios layer keeps only `data` and drops every sibling,
+    // so a sentence sent beside it never arrives — and the owner who just
+    // edited five hundred products is told "Sorted." and nothing else.
+    const r = await sortNow();
+    assert.match(r.body.data.message, /Sorted 2 products/);
+    assert.match(r.body.data.message, /to Solar/);
+  });
+
+  await t.test('sorting twice changes nothing the second time', async () => {
+    await sortNow();
+    products[0].aspect = 'solar';
+    products[1].aspect = 'networking';
+    const again = await sortNow();
+    assert.strictEqual(again.body.data.updated, 0);
+    assert.match(again.body.message, /Nothing to sort/);
+  });
+
+  await t.test('the view says what is certain and what is guessed', async () => {
+    const r = await lookAt();
+    const by = Object.fromEntries(r.body.data.counts.map((c) => [c.key, c]));
+    assert.strictEqual(by.solar.guessed, 1);
+    assert.strictEqual(by.solar.certain, 0);
+    assert.strictEqual(r.body.data.guessed_total, 2);
+    assert.strictEqual(r.body.data.unplaced_total, 1);
+    assert.strictEqual(r.body.data.unplaced[0].name, 'Masking Tape');
+  });
+
+  await t.test('once written down they count as certain', async () => {
+    products[0].aspect = 'solar';
+    const by = Object.fromEntries((await lookAt()).body.data.counts.map((c) => [c.key, c]));
+    assert.strictEqual(by.solar.certain, 1);
+    assert.strictEqual(by.solar.guessed, 0);
   });
 });
