@@ -43,6 +43,7 @@ export default function BusinessLines() {
   const total = data?.total || {}
   const sold = lines.filter((l) => l.pieces > 0)
   const unsorted = lines.find((l) => l.key === 'other')
+  const days = data?.days || []
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto">
@@ -74,22 +75,38 @@ export default function BusinessLines() {
         </div>
       </div>
 
-      {/* The day as a whole, so a line's share has something to be read
-          against. */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mb-5">
-        {[
-          { label: 'Taken', value: formatCurrency(total.revenue || 0) },
-          { label: 'Profit', value: formatCurrency(total.profit || 0), good: true },
-          { label: 'Sales', value: (total.sales ?? 0).toLocaleString() },
-        ].map((s) => (
-          <div key={s.label}
-            className="rounded-2xl border border-gray-200 bg-white px-4 py-3 flex items-center justify-between sm:block">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">{s.label}</p>
-            <p className={`text-lg sm:text-xl font-black tabular-nums ${s.good ? 'text-green-700' : 'text-gray-900'}`}>
-              {s.value}
+      {/*
+        The sum done where it can be seen.
+        Sold, less what the goods cost, is the profit — three figures rather
+        than one, because an owner checking a day's profit wants to see the
+        two it came from instead of being asked to trust it.
+      */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden mb-5">
+        <div className="grid grid-cols-3 divide-x divide-gray-100">
+          <div className="px-3 py-3 text-center">
+            <p className="text-[10px] font-black uppercase tracking-wide text-gray-500">Sold for</p>
+            <p className="text-base sm:text-xl font-black text-gray-900 tabular-nums">
+              {formatCurrency(total.revenue || 0)}
             </p>
           </div>
-        ))}
+          <div className="px-3 py-3 text-center">
+            <p className="text-[10px] font-black uppercase tracking-wide text-gray-500">Goods cost</p>
+            <p className="text-base sm:text-xl font-black text-red-700 tabular-nums">
+              −{formatCurrency(total.cost || 0)}
+            </p>
+          </div>
+          <div className="px-3 py-3 text-center bg-green-50">
+            <p className="text-[10px] font-black uppercase tracking-wide text-green-800/70">Profit</p>
+            <p className="text-base sm:text-xl font-black text-green-700 tabular-nums">
+              {formatCurrency(total.profit || 0)}
+            </p>
+          </div>
+        </div>
+        <p className="border-t border-gray-100 px-4 py-2 text-[11px] text-gray-500">
+          {(total.sales ?? 0).toLocaleString()} sale{total.sales === 1 ? '' : 's'}
+          {' · '}{(total.pieces ?? 0).toLocaleString()} piece{total.pieces === 1 ? '' : 's'}
+          {total.revenue > 0 && ` · ${total.margin}% kept`}
+        </p>
       </div>
 
       {isLoading ? (
@@ -130,6 +147,9 @@ export default function BusinessLines() {
                   <div className="text-right flex-shrink-0">
                     <p className="font-black text-gray-900 tabular-nums">{formatCurrency(l.revenue)}</p>
                     <p className="text-[11px] text-gray-500 tabular-nums">{l.share}% of the day</p>
+                    <p className="text-[11px] text-gray-400 tabular-nums">
+                      cost {formatCurrency(l.cost)}
+                    </p>
                     <p className="text-[11px] font-bold text-green-700 tabular-nums">
                       {formatCurrency(l.profit)} profit
                     </p>
@@ -159,6 +179,42 @@ export default function BusinessLines() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/*
+        Day by day.
+        A range says what the week came to; it does not say which day was
+        good. Shown only when there is more than one day in it — a single
+        day repeated underneath itself is noise.
+      */}
+      {days.length > 1 && (
+        <div className="mt-5 bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h3 className="font-bold text-gray-900">Day by day</h3>
+            <p className="text-[11px] text-gray-500">Sold, less what the goods cost</p>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {days.map((d) => (
+              <div key={d.date} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-gray-800">
+                    {new Date(`${d.date}T00:00:00`).toLocaleDateString('en-GH', {
+                      weekday: 'short', day: 'numeric', month: 'short',
+                    })}
+                  </p>
+                  <p className="text-[11px] text-gray-400 tabular-nums">
+                    {formatCurrency(d.revenue)} − {formatCurrency(d.cost)}
+                    {' · '}{d.sales} sale{d.sales === 1 ? '' : 's'}
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="font-black text-green-700 tabular-nums">{formatCurrency(d.profit)}</p>
+                  <p className="text-[11px] text-gray-400 tabular-nums">{d.margin}% kept</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

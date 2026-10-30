@@ -131,3 +131,99 @@ test("a day's sales, split three ways", async (t) => {
     assert.ok(r.body.data.lines.every((x) => x.share === 0));
   });
 });
+
+/**
+ * The sum done where it can be seen.
+ *
+ * Sold, less what the goods cost, is the profit. An owner checking a day's
+ * profit wants the two figures it came from, not to be asked to trust the
+ * difference — and a range tells them what a week came to without telling
+ * them which day was good.
+ */
+test('cost, takings and profit, day by day', async (t) => {
+  t.beforeEach(() => {
+    categories = [];
+    products = [];
+    sales = [
+      { _id: 's1', sale_date: '2026-10-28T10:00:00Z', items: [line('Solar Panel 400W', 2, 4800, 3600)] },
+      { _id: 's2', sale_date: '2026-10-28T16:00:00Z', items: [line('MCB 32A Breaker', 4, 50, 30)] },
+      { _id: 's3', sale_date: '2026-10-30T09:00:00Z', items: [line('CAT6 Cable', 1, 900, 600)] },
+    ];
+  });
+
+  await t.test('the cost of the goods is reported, not only the profit', async () => {
+    const r = await ask();
+    assert.strictEqual(r.body.data.total.revenue, 10700);
+    assert.strictEqual(r.body.data.total.cost, 7920);
+    assert.strictEqual(r.body.data.total.profit, 2780);
+  });
+
+  await t.test('and the three figures are consistent with each other', async () => {
+    // Sold minus cost is profit. If this ever drifts, every figure on the
+    // screen is suspect.
+    const tl = (await ask()).body.data.total;
+    assert.strictEqual(Number((tl.revenue - tl.cost).toFixed(2)), tl.profit);
+  });
+
+  await t.test('the share kept is profit against takings', async () => {
+    assert.strictEqual((await ask()).body.data.total.margin, 26);
+  });
+
+  await t.test('each day is reported on its own', async () => {
+    const days = (await ask()).body.data.days;
+    assert.strictEqual(days.length, 2);
+    const oct28 = days.find((d) => d.date === '2026-10-28');
+    assert.strictEqual(oct28.revenue, 9800);
+    assert.strictEqual(oct28.cost, 7320);
+    assert.strictEqual(oct28.profit, 2480);
+    assert.strictEqual(oct28.sales, 2);
+  });
+
+  await t.test('the days add back up to the range', async () => {
+    const { days, total } = (await ask()).body.data;
+    assert.strictEqual(Number(days.reduce((n, d) => n + d.revenue, 0).toFixed(2)), total.revenue);
+    assert.strictEqual(Number(days.reduce((n, d) => n + d.profit, 0).toFixed(2)), total.profit);
+  });
+
+  await t.test('newest day first, because that is the one being asked about', async () => {
+    const days = (await ask()).body.data.days;
+    assert.strictEqual(days[0].date, '2026-10-30');
+  });
+
+  await t.test('a day with no sales is absent rather than a row of zeroes', async () => {
+    // 29 October had nothing. A row of zeroes for every quiet day turns a
+    // month into a wall of nothing.
+    const days = (await ask()).body.data.days;
+    assert.ok(!days.some((d) => d.date === '2026-10-29'));
+  });
+
+  await t.test('goods sold at cost show no profit rather than a negative share', async () => {
+    sales = [{ _id: 's1', sale_date: '2026-10-30T09:00:00Z', items: [line('Solar Panel 400W', 1, 3600, 3600)] }];
+    const r = await ask();
+    assert.strictEqual(r.body.data.total.profit, 0);
+    assert.strictEqual(r.body.data.total.margin, 0);
+  });
+
+  await t.test('no sales at all leaves no days and no division by zero', async () => {
+    sales = [];
+    const r = await ask();
+    assert.deepStrictEqual(r.body.data.days, []);
+    assert.strictEqual(r.body.data.total.margin, 0);
+  });
+
+  await t.test('a sale with an unreadable date costs its day, not the report', async () => {
+    // An old record or a bad import. One unusable date must not take an
+    // owner's whole screen down with it — the line still counts towards its
+    // business line and the totals.
+    sales = [
+      { _id: 's1', sale_date: null, items: [line('Solar Panel 400W', 1, 4800, 3600)] },
+      { _id: 's2', sale_date: 'not a date', items: [line('CAT6 Cable', 1, 900, 600)] },
+      { _id: 's3', sale_date: '2026-10-30T09:00:00Z', items: [line('MCB 32A Breaker', 2, 50, 30)] },
+    ];
+    const r = await ask();
+    assert.strictEqual(r.code, 200);
+    assert.strictEqual(r.body.data.total.revenue, 5800);
+    assert.strictEqual(r.body.data.days.length, 1);
+    assert.strictEqual(r.body.data.days[0].revenue, 100);
+  });
+});
