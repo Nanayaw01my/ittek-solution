@@ -207,10 +207,12 @@ const setProductAspect = async (req, res) => {
     ).select('name aspect');
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
 
+    const said = `${product.name} is ${aspect || 'back to following its category'}.`;
     return res.status(200).json({
       success: true,
-      message: `${product.name} is ${aspect || 'back to following its category'}.`,
-      data: product,
+      message: said,
+      // Inside `data` too — see the note in autoSort.
+      data: { ...(product.toObject ? product.toObject() : product), message: said },
     });
   } catch (err) {
     console.error('Set product aspect error:', err.message);
@@ -218,4 +220,136 @@ const setProductAspect = async (req, res) => {
   }
 };
 
-module.exports = { salesByAspect, setProductAspect };
+/**
+ * GET /api/aspects/catalogue
+ *
+ * Every product, and which department it would fall into.
+ *
+ * The report works a product's department out as it runs, which answers the
+ * question but leaves nothing behind — an owner cannot see what the system
+ * thinks of the catalogue until a thing is sold. This is that view: how many
+ * products sit in each department, how many were placed by reading a name
+ * rather than by somebody saying so, and exactly which ones it could not
+ * place at all.
+ */
+const catalogue = async (req, res) => {
+  try {
+    const [products, categories] = await Promise.all([
+      Product.find({ is_active: { $ne: false } })
+        .select('name aspect category_id')
+        .sort({ name: 1 })
+        .lean(),
+      Category.find({}).select('name aspect').lean(),
+    ]);
+
+    const catById = new Map(categories.map((c) => [String(c._id), c]));
+    const counts = Object.fromEntries(ASPECT_KEYS.map((k) => [k, { certain: 0, guessed: 0 }]));
+    const unplaced = [];
+    const guesses = [];
+
+    for (const p of products) {
+      const category = p.category_id ? catById.get(String(p.category_id)) : null;
+      const { aspect, source } = classify(p, category);
+      const row = counts[aspect];
+      if (source === 'guess') {
+        row.guessed += 1;
+        guesses.push({ _id: p._id, name: p.name, aspect, category: category?.name || null });
+      } else if (source === 'none') {
+        unplaced.push({ _id: p._id, name: p.name, category: category?.name || null });
+      } else {
+        row.certain += 1;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        total: products.length,
+        counts: ASPECTS.map(({ key, label }) => ({
+          key, label, ...counts[key], total: counts[key].certain + counts[key].guessed,
+        })),
+        // Capped: an owner wants to see what is stuck, not scroll a
+        // catalogue. The count above is the honest total.
+        unplaced: unplaced.slice(0, 100),
+        unplaced_total: unplaced.length,
+        guessed_total: guesses.length,
+      },
+    });
+  } catch (err) {
+    console.error('Catalogue aspects error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not read it: ${err.message}` });
+  }
+};
+
+/**
+ * POST /api/aspects/auto-sort
+ *
+ * Write the guesses down, so they stop being guesses.
+ *
+ * Only where nobody has said otherwise: a product with a department set by
+ * hand, or sitting in a category that has one, is left exactly as it is.
+ * This fills in the ones the system was going to work out every time anyway
+ * — and once written they can be corrected on the Products screen, which a
+ * guess made afresh on every report could not be.
+ *
+ * Deliberately not run on its own. Sorting a shop's whole catalogue is the
+ * kind of thing an owner should press a button for and be told the result
+ * of, not find already done.
+ */
+const autoSort = async (req, res) => {
+  try {
+    const [products, categories] = await Promise.all([
+      Product.find({ is_active: { $ne: false } }).select('name aspect category_id').lean(),
+      Category.find({}).select('name aspect').lean(),
+    ]);
+
+    const catById = new Map(categories.map((c) => [String(c._id), c]));
+    const writes = [];
+    const placed = Object.fromEntries(ASPECT_KEYS.map((k) => [k, 0]));
+
+    for (const p of products) {
+      // Already decided by a person, here or on its category: leave it be.
+      if (p.aspect) continue;
+      const category = p.category_id ? catById.get(String(p.category_id)) : null;
+      if (category?.aspect) continue;
+
+      const { aspect, source } = classify(p, category);
+      if (source !== 'guess') continue;
+
+      placed[aspect] += 1;
+      writes.push({
+        updateOne: { filter: { _id: p._id }, update: { $set: { aspect } } },
+      });
+    }
+
+    if (writes.length) await Product.bulkWrite(writes);
+
+    const parts = ASPECTS
+      .filter(({ key }) => placed[key] > 0)
+      .map(({ key, label }) => `${placed[key]} to ${label}`);
+
+    const said = writes.length
+      ? `Sorted ${writes.length} product${writes.length === 1 ? '' : 's'} — ${parts.join(', ')}.`
+      : 'Nothing to sort — every product already has a department or cannot be read from its name.';
+
+    return res.status(200).json({
+      success: true,
+      message: said,
+      /**
+       * The sentence goes inside `data` as well as beside it.
+       *
+       * The browser's axios layer unwraps {success, data} and keeps only
+       * `data`; every sibling is dropped on the way through. A message sent
+       * only alongside never reaches the screen, and the owner who just
+       * pressed a button that edited five hundred products is told
+       * "Sorted." with no idea what moved where.
+       */
+      data: { updated: writes.length, placed, message: said },
+    });
+  } catch (err) {
+    console.error('Auto-sort aspects error:', err.stack || err.message);
+    return res.status(500).json({ success: false, message: `Could not sort them: ${err.message}` });
+  }
+};
+
+module.exports = { salesByAspect, setProductAspect, catalogue, autoSort };

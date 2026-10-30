@@ -10,3 +10,9 @@ export const getSalesByAspect = (params) => api.get('/aspects/sales', { params }
 
 /** Correct a guess, from the screen that showed it. */
 export const setProductAspect = (id, aspect) => api.put(`/aspects/product/${id}`, { aspect })
+
+/** What the system makes of the whole catalogue, before anything is sold. */
+export const getCatalogueAspects = () => api.get('/aspects/catalogue')
+
+/** Write the guesses down, so they stop being guesses. */
+export const autoSortAspects = () => api.post('/aspects/auto-sort', {}, { timeout: 0 })
