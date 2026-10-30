@@ -281,6 +281,8 @@ app.use('/api/search', require('./routes/search'));
 app.use('/api/backup', require('./routes/backup'));
 // Who sold what, to whom, at what discount. Owners only.
 app.use('/api/staff-sales', require('./routes/staffSales'));
+// Which side of the business the day's money came from. Owners only.
+app.use('/api/aspects', require('./routes/aspects'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/audit-logs', require('./routes/auditLogs'));

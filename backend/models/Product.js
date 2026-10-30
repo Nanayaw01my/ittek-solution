@@ -36,6 +36,17 @@ const ProductSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
+    /**
+     * Overrides the category's side of the business for this one product.
+     *
+     * Rarely needed — a solar shop's exceptions are things like a router
+     * filed under Accessories. Left blank, the category decides.
+     */
+    aspect: {
+      type: String,
+      enum: ['solar', 'networking', 'electrical', 'other', ''],
+      default: '',
+    },
     category_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Category',
