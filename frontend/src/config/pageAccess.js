@@ -29,6 +29,7 @@ export const GRANTABLE_PAGES = {
   // Who sold what, to whom, at what discount. Owners by default; a CEO can
   // grant it to a manager who is chasing something specific.
   'staff-sales': { label: 'Who Sold What', defaultLevel: 3, modes: ['view'] },
+  'business-lines': { label: 'Business Lines', defaultLevel: 3, modes: ['view'] },
   reports: { label: 'Reports', defaultLevel: 3, modes: ['view'] },
   financial: { label: 'Financial', defaultLevel: 3, modes: ['view'] },
   search: { label: 'Search', defaultLevel: 3, modes: ['view'] },

@@ -23,6 +23,26 @@ function CategoryForm({ category, onSubmit, loading }) {
         />
         {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name.message}</p>}
       </div>
+      {/* Which side of the business this category belongs to.
+          Set once here and every product under it is placed — far better
+          than tagging five hundred products, and it is what makes the
+          Business Lines figures certain rather than guessed. */}
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">Business line</label>
+        <select {...register('aspect')}
+          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500">
+          <option value="">Work it out from the names</option>
+          <option value="solar">Solar</option>
+          <option value="networking">Networking</option>
+          <option value="electrical">Electricals</option>
+          <option value="other">Neither — leave it unsorted</option>
+        </select>
+        <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+          Used by Business Lines to say where the day's money came from. Left as it is, the
+          system reads the product names and guesses.
+        </p>
+      </div>
+
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1">Description</label>
         <textarea
@@ -108,6 +128,11 @@ export default function Categories() {
                 </div>
               </div>
               <h3 className="font-bold text-gray-900">{cat.name}</h3>
+              {cat.aspect && (
+                <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[10px] font-bold uppercase tracking-wide">
+                  {cat.aspect === 'electrical' ? 'Electricals' : cat.aspect}
+                </span>
+              )}
               {cat.description && <p className="text-sm text-gray-500 mt-1 line-clamp-2">{cat.description}</p>}
               {cat.productCount !== undefined && (
                 <p className="text-xs text-orange-600 font-semibold mt-2">{cat.productCount} products</p>

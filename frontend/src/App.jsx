@@ -26,6 +26,7 @@ import Users from './pages/Users'
 import AuditLogs from './pages/AuditLogs'
 import Backup from './pages/Backup'
 import StaffSales from './pages/StaffSales'
+import BusinessLines from './pages/BusinessLines'
 import Settings from './pages/Settings'
 import Notifications from './pages/Notifications'
 import Search from './pages/Search'
@@ -307,6 +308,15 @@ export default function App() {
           element={
             <ProtectedRoute minLevel={3}>
               <StaffSales />
+            </ProtectedRoute>
+          }
+        />
+        {/* Which side of the business the day's money came from. */}
+        <Route
+          path="business-lines"
+          element={
+            <ProtectedRoute minLevel={3}>
+              <BusinessLines />
             </ProtectedRoute>
           }
         />
