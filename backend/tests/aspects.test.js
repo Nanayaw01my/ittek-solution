@@ -78,6 +78,29 @@ test('IT covers more than networking', async (t) => {
     assert.strictEqual(guessFromName('Dahua 4MP Dome'), 'networking');
   });
 
+  await t.test('what goes on the wall beside a camera', () => {
+    // A camera is never sold alone: the coax, the baluns, the connectors,
+    // the bracket and the recorder's drive all go out with it, and almost
+    // none of them carry a word that says "camera". Split across three
+    // departments, a single install reads as three unrelated sales.
+    for (const name of [
+      'PTZ Camera 5MP', 'Hikvision 4MP Dome Camera', 'IP Camera 8MP',
+      'Video Balun Pair', 'BNC Connector 20pcs', 'RG59 Siamese Cable 100m',
+      'POE Injector 48V', 'Camera Bracket Metal', '1TB Surveillance Hard Disk',
+      'Doorbell Intercom',
+    ]) {
+      assert.strictEqual(guessFromName(name), 'networking', name);
+    }
+  });
+
+  await t.test('a Hikvision junction box is IT, a plain one is electrical', () => {
+    // The brand is read before the electrical words are reached, so the
+    // same two words land in different departments depending on whose box
+    // it is — which is right.
+    assert.strictEqual(guessFromName('Hikvision Junction Box'), 'networking');
+    assert.strictEqual(guessFromName('Junction Box 4x4'), 'electrical');
+  });
+
   await t.test('phones and what is sold beside them', () => {
     assert.strictEqual(guessFromName('Tecno Spark 20'), 'networking');
     assert.strictEqual(guessFromName('iPhone 13 Pro'), 'networking');

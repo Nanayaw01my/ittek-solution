@@ -63,6 +63,19 @@ const KEYWORDS = {
     // all, so the brand and its DS- prefix are listed outright.
     'cctv', 'camera', 'dvr', 'nvr', 'hikvision', 'hik ', 'dahua', 'ds-2', 'ds2',
     'network switch', 'poe switch',
+    /**
+     * What goes on the wall beside a camera.
+     *
+     * A camera is never sold on its own: it goes out with the coax, the
+     * baluns, the connectors, the bracket and a drive for the recorder. All
+     * of it is IT, and most of it carries no word that says "camera" —
+     * which is how a GHC900 install ended up split across three
+     * departments.
+     */
+    'ptz', 'dome', 'turret', 'bullet camera', 'ip camera', 'surveillance',
+    'bnc', 'rg59', 'rg 59', 'rg6', 'rg 6', 'coaxial', 'siamese', 'balun',
+    'poe injector', 'patch cord', 'camera bracket', 'camera mount',
+    'hard disk', 'hdd', 'intercom', 'doorbell', 'access control', 'monitor',
     // Phones and the things sold beside them.
     'phone', 'iphone', 'samsung', 'tecno', 'infinix', 'itel', 'redmi', 'xiaomi',
     'nokia', 'huawei', 'android', 'smartphone', 'tablet', 'ipad',
