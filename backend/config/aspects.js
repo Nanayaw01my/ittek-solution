@@ -21,7 +21,10 @@
 
 const ASPECTS = [
   { key: 'solar', label: 'Solar' },
-  { key: 'networking', label: 'Networking' },
+  // Stored as 'networking' because that is what is already written against
+  // categories and products; the shop calls it IT, which covers the
+  // networking gear, the phones and the cameras alike.
+  { key: 'networking', label: 'IT' },
   { key: 'electrical', label: 'Electricals' },
   { key: 'other', label: 'Unsorted' },
 ];
@@ -38,15 +41,35 @@ const ASPECT_KEYS = ASPECTS.map((a) => a.key);
  */
 const KEYWORDS = {
   solar: [
+    /**
+     * The shop's own code for its solar range.
+     *
+     * NV-K52, NV-E954, NV-T226 and the rest are all solar, and no word in
+     * them says so — they were the largest group the list could not read.
+     * First in the list because the shop's own naming beats any guess from
+     * an English word elsewhere in the name.
+     */
+    'nv-',
     'solar', 'panel', 'inverter', 'mppt', 'pwm', 'charge controller', 'controller',
     'battery', 'batteries', 'lithium', 'tubular', 'photovoltaic', 'pv ',
     'mounting rail', 'solar cable', 'street light', 'floodlight', 'flood light',
   ],
   networking: [
+    // Networking
     'starlink', 'router', 'modem', 'access point', 'repeater', 'extender',
-    'antenna', 'cat6', 'cat 6', 'cat5', 'cat 5', 'rj45', 'poe', 'network',
-    'wifi', 'wi-fi', 'hotspot', 'fibre', 'fiber', 'patch', 'lan ',
-    'cctv', 'camera', 'dvr', 'nvr', 'network switch',
+    'antenna', 'cat6', 'cat 6', 'cat5', 'cat 5', 'rj45', 'rj 45', 'poe', 'network',
+    'wifi', 'wi-fi', 'hotspot', 'fibre', 'fiber', 'patch', 'lan ', 'ethernet',
+    // Cameras and recorders. Hikvision's own codes carry no English word at
+    // all, so the brand and its DS- prefix are listed outright.
+    'cctv', 'camera', 'dvr', 'nvr', 'hikvision', 'hik ', 'dahua', 'ds-2', 'ds2',
+    'network switch', 'poe switch',
+    // Phones and the things sold beside them.
+    'phone', 'iphone', 'samsung', 'tecno', 'infinix', 'itel', 'redmi', 'xiaomi',
+    'nokia', 'huawei', 'android', 'smartphone', 'tablet', 'ipad',
+    'power bank', 'powerbank', 'earbud', 'earphone', 'headset', 'airpod',
+    'memory card', 'sd card', 'flash drive', 'pendrive', 'usb ',
+    'laptop', 'desktop', 'printer', 'toner', 'cartridge', 'keyboard', 'mouse',
+    'ups ', 'projector', 'scanner',
   ],
   electrical: [
     'breaker', 'mcb', 'fuse', 'distribution board', 'db box', 'conduit',

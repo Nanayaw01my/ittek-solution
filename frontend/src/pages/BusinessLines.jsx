@@ -53,7 +53,7 @@ export default function BusinessLines() {
     <div className="p-4 sm:p-6 max-w-4xl mx-auto">
       <PageHeader
         title="Business Lines"
-        subtitle="Where the day's money came from — solar, networking, electricals"
+        subtitle="Where the day's money came from — solar, IT, electricals"
       >
         <RefreshButton keys={['sales-by-aspect']} />
       </PageHeader>
@@ -378,7 +378,7 @@ function Catalogue() {
                 >
                   <option value="">Put it in…</option>
                   <option value="solar">Solar</option>
-                  <option value="networking">Networking</option>
+                  <option value="networking">IT</option>
                   <option value="electrical">Electricals</option>
                 </select>
               </div>
