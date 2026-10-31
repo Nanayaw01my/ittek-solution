@@ -54,6 +54,32 @@ test('what the name says', async (t) => {
   });
 });
 
+test('a brand beats any word in the rest of the name', async (t) => {
+  await t.test('Night Angel is electricals, however it is spelt', () => {
+    // Both spellings are on the shelf and on the invoice.
+    for (const name of [
+      'Night Angel Socket 13A', 'NIGHT ENGEL Switch 2 Gang',
+      'Nightangel Ceiling Lamp', 'Nite Angel Socket',
+    ]) {
+      assert.strictEqual(guessFromName(name), 'electrical', name);
+    }
+  });
+
+  await t.test('and a Night Angel flood light is still electricals', () => {
+    // The reason brands are read first. "Flood light" says solar, and a
+    // Night Angel fitting is not solar — the brand settles it before the
+    // generic word is ever reached.
+    assert.strictEqual(guessFromName('Night Angel Flood Light'), 'electrical');
+    // While a flood light with no brand on it still reads as solar.
+    assert.strictEqual(guessFromName('Solar Flood Light 100W'), 'solar');
+  });
+
+  await t.test('the same rule carries the camera and phone brands', () => {
+    assert.strictEqual(guessFromName('Hikvision DS-2CD1043G2'), 'networking');
+    assert.strictEqual(guessFromName('Tecno Spark 20'), 'networking');
+  });
+});
+
 test("the shop's own product codes", async (t) => {
   await t.test('NV- is the solar range, whatever follows it', () => {
     // The largest group the word list could not read: NV-K52, NV-E954,

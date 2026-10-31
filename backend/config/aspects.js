@@ -32,6 +32,35 @@ const ASPECTS = [
 const ASPECT_KEYS = ASPECTS.map((a) => a.key);
 
 /**
+ * Brands and product codes, which beat any generic word in the name.
+ *
+ * A shop knows its own ranges, and that knowledge outranks guessing from
+ * English. "Night Angel Flood Light" is an electrical fitting whatever the
+ * word "flood light" suggests, and every NV- code is solar whatever else
+ * is printed on the box.
+ *
+ * Checked before the word lists below, so adding a brand can never be
+ * undone by an unlucky word somewhere else in the name.
+ */
+const BRANDS = {
+  solar: [
+    // The shop's own solar range: NV-K52, NV-E954, NV-T226 and the rest.
+    // The hyphen is deliberate — "NVR" is a recorder, not a panel.
+    'nv-',
+  ],
+  networking: [
+    'hikvision', 'hik ', 'dahua', 'ds-2', 'ds2',
+    'tecno', 'infinix', 'itel', 'redmi', 'xiaomi', 'samsung', 'iphone',
+    'ipad', 'nokia', 'huawei', 'oppo', 'vivo', 'airpod',
+  ],
+  electrical: [
+    // Fittings brands. Spelt both ways on the shelf and on the invoice.
+    'night angel', 'night engel', 'nightangel', 'nite angel',
+    'schneider', 'clipsal', 'legrand', 'abb ',
+  ],
+};
+
+/**
  * Words that place a product, most specific first.
  *
  * Order matters and the ambiguous words are why. "Switch" is a network
@@ -49,7 +78,6 @@ const KEYWORDS = {
      * First in the list because the shop's own naming beats any guess from
      * an English word elsewhere in the name.
      */
-    'nv-',
     'solar', 'panel', 'inverter', 'mppt', 'pwm', 'charge controller', 'controller',
     'battery', 'batteries', 'lithium', 'tubular', 'photovoltaic', 'pv ',
     'mounting rail', 'solar cable', 'street light', 'floodlight', 'flood light',
@@ -61,8 +89,7 @@ const KEYWORDS = {
     'wifi', 'wi-fi', 'hotspot', 'fibre', 'fiber', 'patch', 'lan ', 'ethernet',
     // Cameras and recorders. Hikvision's own codes carry no English word at
     // all, so the brand and its DS- prefix are listed outright.
-    'cctv', 'camera', 'dvr', 'nvr', 'hikvision', 'hik ', 'dahua', 'ds-2', 'ds2',
-    'network switch', 'poe switch',
+    'cctv', 'camera', 'dvr', 'nvr', 'network switch', 'poe switch',
     /**
      * What goes on the wall beside a camera.
      *
@@ -77,9 +104,8 @@ const KEYWORDS = {
     'poe injector', 'patch cord', 'camera bracket', 'camera mount',
     'hard disk', 'hdd', 'intercom', 'doorbell', 'access control', 'monitor',
     // Phones and the things sold beside them.
-    'phone', 'iphone', 'samsung', 'tecno', 'infinix', 'itel', 'redmi', 'xiaomi',
-    'nokia', 'huawei', 'android', 'smartphone', 'tablet', 'ipad',
-    'power bank', 'powerbank', 'earbud', 'earphone', 'headset', 'airpod',
+    'phone', 'android', 'smartphone', 'tablet',
+    'power bank', 'powerbank', 'earbud', 'earphone', 'headset',
     'memory card', 'sd card', 'flash drive', 'pendrive', 'usb ',
     /**
      * Phone chargers and their leads.
@@ -113,6 +139,12 @@ const haystack = (...parts) => ` ${parts.filter(Boolean).join(' ').toLowerCase()
  */
 const guessFromName = (...parts) => {
   const text = haystack(...parts);
+
+  // A brand the shop stocks beats any word in the rest of the name.
+  for (const key of ['solar', 'networking', 'electrical']) {
+    if (BRANDS[key].some((word) => text.includes(word))) return key;
+  }
+
   for (const key of ['solar', 'networking', 'electrical']) {
     if (KEYWORDS[key].some((word) => text.includes(word))) return key;
   }
@@ -141,4 +173,4 @@ const classify = (product = {}, category = null) => {
   return { aspect: 'other', source: 'none' };
 };
 
-module.exports = { ASPECTS, ASPECT_KEYS, KEYWORDS, classify, guessFromName };
+module.exports = { ASPECTS, ASPECT_KEYS, BRANDS, KEYWORDS, classify, guessFromName };
