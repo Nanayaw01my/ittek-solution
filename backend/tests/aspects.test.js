@@ -90,10 +90,35 @@ test('IT covers more than networking', async (t) => {
     assert.strictEqual(guessFromName('Starlink Mini Kit'), 'networking');
   });
 
-  await t.test('a charge controller is still solar, not a phone charger', () => {
-    // "charger" sits in IT and "charge controller" in solar; solar is read
-    // first, so the specific one wins.
+  await t.test('phone chargers and their leads', () => {
+    for (const name of [
+      'Type C Charger 65W', 'Type-C Cable 1m', 'USB-C to USB-C 2m',
+      'iPhone Lightning Cable', 'Fast Charger 33W', 'Car Charger Dual USB',
+      'Micro USB Cable',
+    ]) {
+      assert.strictEqual(guessFromName(name), 'networking', name);
+    }
+  });
+
+  await t.test('a charge controller is solar, however the word charger reads', () => {
+    // The pair that has to come out right: "charger" is IT, a charge
+    // controller is solar. Solar is read first, and "charge controller" is
+    // not "charger" in any case — so both are safe to list.
     assert.strictEqual(guessFromName('Charge Controller 60A'), 'solar');
+    assert.strictEqual(guessFromName('MPPT Charge Controller'), 'solar');
+    assert.strictEqual(guessFromName('Solar Charge Controller 40A'), 'solar');
+  });
+
+  await t.test('a solar charger is solar, not a phone accessory', () => {
+    assert.strictEqual(guessFromName('Solar Charger Panel 20W'), 'solar');
+  });
+
+  await t.test('a Type C lead is IT, while house wiring stays electrical', () => {
+    // Three kinds of "cable" in one shop, and each lands where it belongs.
+    assert.strictEqual(guessFromName('Type-C Cable 1m'), 'networking');
+    assert.strictEqual(guessFromName('CAT6 Cable 305m'), 'networking');
+    assert.strictEqual(guessFromName('2.5mm Twin Cable'), 'electrical');
+    assert.strictEqual(guessFromName('Solar Cable 6mm'), 'solar');
   });
 });
 
