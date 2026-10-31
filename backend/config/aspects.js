@@ -68,6 +68,16 @@ const KEYWORDS = {
     'nokia', 'huawei', 'android', 'smartphone', 'tablet', 'ipad',
     'power bank', 'powerbank', 'earbud', 'earphone', 'headset', 'airpod',
     'memory card', 'sd card', 'flash drive', 'pendrive', 'usb ',
+    /**
+     * Phone chargers and their leads.
+     *
+     * "charger" is safe to list here even though solar has a charge
+     * controller: the solar words are read first, and "charge controller"
+     * is not "charger" in any case. A solar charger still says solar, and
+     * that word wins before this list is reached.
+     */
+    'charger', 'charging', 'type c', 'type-c', 'usb-c', 'usb c',
+    'micro usb', 'lightning cable', 'fast charge', 'car charger',
     'laptop', 'desktop', 'printer', 'toner', 'cartridge', 'keyboard', 'mouse',
     'ups ', 'projector', 'scanner',
   ],
