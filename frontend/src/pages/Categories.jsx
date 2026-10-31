@@ -33,7 +33,7 @@ function CategoryForm({ category, onSubmit, loading }) {
           className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500">
           <option value="">Work it out from the names</option>
           <option value="solar">Solar</option>
-          <option value="networking">Networking</option>
+          <option value="networking">IT — networking, phones, cameras</option>
           <option value="electrical">Electricals</option>
           <option value="other">Neither — leave it unsorted</option>
         </select>
