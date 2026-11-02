@@ -1,4 +1,5 @@
 const { validationResult } = require('express-validator');
+const { isOwner } = require('../middleware/rbac');
 const StockRequest = require('../models/StockRequest');
 const Notification = require('../models/Notification');
 const Product = require('../models/Product');
@@ -11,8 +12,20 @@ const getStockRequests = async (req, res) => {
     const { status, page = 1, limit = 50 } = req.query;
     const filter = {};
 
-    // Manager sees only own requests
-    if (req.user.role === 'Manager') {
+    /**
+     * Anybody who is not an owner sees only what they asked for.
+     *
+     * This used to name the Manager role, which was the only role that
+     * could reach the screen. Opening it to sales attendants would have
+     * handed every attendant the whole shop's buying list — what is being
+     * ordered, in what quantity, at what cost — because a rule written
+     * about one role says nothing about the next one to arrive.
+     *
+     * Asked as a question about rank instead: a CEO, COO or Super Admin
+     * sees every request because approving them is their job; everyone
+     * else sees their own.
+     */
+    if (!isOwner(req.user.role)) {
       filter.created_by = req.user._id;
     }
     if (status) filter.status = status;
@@ -161,7 +174,7 @@ const getStockRequest = async (req, res) => {
 
     if (!request) return res.status(404).json({ success: false, message: 'Stock request not found.' });
 
-    if (req.user.role === 'Manager' && String(request.created_by._id) !== String(req.user._id)) {
+    if (!isOwner(req.user.role) && String(request.created_by._id) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
@@ -341,7 +354,7 @@ const deleteStockRequest = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Only pending requests can be deleted.' });
     }
 
-    if (String(request.created_by) !== String(req.user._id) && req.user.role === 'Manager') {
+    if (!isOwner(req.user.role) && String(request.created_by) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 

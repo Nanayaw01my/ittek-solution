@@ -72,7 +72,8 @@ const NAV_ITEMS = [
   { to: '/packages-receipt', label: 'Packages Receipt', icon: FiFileText, minLevel: 2, section: 'selling' },
   // CEO+ only
   { to: '/debts', label: 'Debts', icon: FiAlertCircle, minLevel: 2, section: 'customers' },
-  { to: '/stock-requests', label: 'Stock Requests', icon: FiInbox, minLevel: 2, section: 'stock' },
+  // Any member of staff may ask for stock; approving it stays with the owners.
+  { to: '/stock-requests', label: 'Stock Requests', icon: FiInbox, minLevel: 1, section: 'stock' },
   { to: '/credit-agreements', label: 'Credit Agreements', icon: FiCreditCard, minLevel: 2, section: 'customers' },
   { to: '/layaways', label: 'Layaways', icon: FiArchive, minLevel: 2, section: 'customers' },
   { to: '/documents', label: 'Documents', icon: FiClipboard, minLevel: 2, section: 'admin' },

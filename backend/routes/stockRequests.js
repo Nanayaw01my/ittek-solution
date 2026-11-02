@@ -9,8 +9,20 @@ const {
   approveStockRequest, rejectStockRequest, deleteStockRequest,
 } = require('../controllers/stockRequestsController');
 
-// Manager (2) and above can create and view
-router.use(authenticate, requireLevel(2));
+/**
+ * Any member of staff may ask for stock.
+ *
+ * It was Manager and above. But the person who notices the last 12V
+ * adaptor leaving the shelf is the attendant who just sold it, and making
+ * them find a manager to pass the message on is how a shop runs out of
+ * something it sells every day.
+ *
+ * Asking is not buying: a request is a note to the owners, and nothing is
+ * ordered, priced or added to stock until one of them approves it below.
+ * What an attendant can see is narrowed to their own requests in the
+ * controller, so this opens a door to ask, not to the shop's buying list.
+ */
+router.use(authenticate, requireLevel(1));
 
 router.get('/', getStockRequests);
 

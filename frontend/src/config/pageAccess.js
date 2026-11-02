@@ -34,7 +34,8 @@ export const GRANTABLE_PAGES = {
   financial: { label: 'Financial', defaultLevel: 3, modes: ['view'] },
   search: { label: 'Search', defaultLevel: 3, modes: ['view'] },
   debts: { label: 'Debts', defaultLevel: 2, modes: ['view', 'full'] },
-  'stock-requests': { label: 'Stock Requests', defaultLevel: 2, modes: ['view', 'full'] },
+  // Any member of staff may ask for stock; only an owner may approve it.
+  'stock-requests': { label: 'Stock Requests', defaultLevel: 1, modes: ['view', 'full'] },
   'credit-agreements': { label: 'Credit Agreements', defaultLevel: 2, modes: ['view', 'full'] },
 }
 

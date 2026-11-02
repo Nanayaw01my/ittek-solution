@@ -206,7 +206,7 @@ export default function App() {
 
         {/* CEO+ */}
         <Route path="debts" element={<ProtectedRoute minLevel={2} page="debts"><Debts /></ProtectedRoute>} />
-        <Route path="stock-requests" element={<ProtectedRoute minLevel={2} page="stock-requests"><StockRequests /></ProtectedRoute>} />
+        <Route path="stock-requests" element={<ProtectedRoute minLevel={1} page="stock-requests"><StockRequests /></ProtectedRoute>} />
         <Route path="credit-agreements" element={<ProtectedRoute minLevel={2} page="credit-agreements"><CreditAgreements /></ProtectedRoute>} />
         <Route path="layaways" element={<ProtectedRoute minLevel={2}><Layaways /></ProtectedRoute>} />
         {/* Staff conduct alerts — owners only; they name individual staff */}
