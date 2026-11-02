@@ -11,6 +11,7 @@
  */
 
 const STYLE_ID = 'ittek-receipt-print-size'
+const MEASURE_STYLE_ID = 'ittek-receipt-measure'
 const ROOT_ID = 'ittek-print-root'
 const BASELINE_MM = 80
 
@@ -99,6 +100,132 @@ const unmountPrintCopy = () => document.getElementById(ROOT_ID)?.remove()
  */
 let pendingTeardown = null
 
+/**
+ * Everything that decides how tall the receipt comes out.
+ *
+ * Written once and used twice: to measure the slip, and to print it. That is
+ * the whole point of the function — the page has to be told its own length in
+ * advance, so the length has to be measured against the very rules that will
+ * lay the slip out. When the two drifted apart the measurement came out 45mm
+ * long and the shop fed 45mm of blank roll after every sale.
+ *
+ * `scope` prefixes every selector, so the same text can be dropped inside
+ * `@media print` or into a temporary off-screen probe.
+ *
+ * line-height and the root font size are stated rather than inherited for the
+ * same reason: index.css sets `html { font-size: 12px }` for print, which
+ * quietly rescales every rem-based gap on the slip, and a measurement taken
+ * at the screen's 16px was measuring a different receipt.
+ */
+const receiptRules = (m, scope) => {
+  const a = `${scope} .receipt-print-area`
+  return `
+  ${scope} { line-height: 1.35 !important; }
+  ${a} {
+    width: ${m.contentMm}mm !important;
+    max-width: ${m.contentMm}mm !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: ${m.padY}mm 0 !important;
+    font-size: ${m.fontSize}px !important;
+    line-height: 1.35 !important;
+    /* A sturdy sans, not monospace. Generic monospace resolves to Courier on
+       most systems — thin strokes that a 203dpi thermal head blurs into grey
+       mush. The columns are fixed-width flex boxes, so nothing here depends
+       on character alignment. */
+    font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif !important;
+    /* Thermal output is stronger with weight behind it. */
+    font-weight: 600 !important;
+    /* Digits stay in column despite the proportional face. */
+    font-variant-numeric: tabular-nums !important;
+    /* A hair of tracking stops adjacent letters merging as the dot spreads. */
+    letter-spacing: 0.2px !important;
+  }
+  ${a} * {
+    font-family: inherit !important;
+    font-variant-numeric: tabular-nums !important;
+    /* Nothing may exceed the roll width; a long product name wraps instead
+       of pushing the layout wider than the paper. */
+    max-width: 100% !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
+  }
+  ${a} .font-bold,
+  ${a} .font-semibold,
+  ${a} .font-medium { font-weight: 700 !important; }
+  ${a} .font-black  { font-weight: 800 !important; }
+  /* flex:none, or the row squeezes these below their set width and a price
+     like GHC3500.00 wraps onto a second line. padding-left keeps the price
+     and total columns from touching. */
+  ${a} .w-20 { width: ${m.moneyCol}px !important; flex: none !important; padding-left: 4px !important; }
+  ${a} .w-8  { width: ${m.qtyCol}px !important; flex: none !important; }
+  /* The name column absorbs the difference instead. */
+  ${a} .flex-1 { min-width: 0 !important; }
+  ${a} .text-base { font-size: ${m.headline}px !important; }
+  ${a} .text-sm   { font-size: ${m.small}px !important; }
+  ${a} .text-xs   { font-size: ${m.small}px !important; }
+  ${a} .text-\\[10px\\] { font-size: ${m.small}px !important; }
+
+  /* A thermal printer has no grey — it dithers it into scattered dots, which
+     is what made the address and item lines look faint and mottled.
+     Everything prints pure black. */
+  ${a},
+  ${a} * { color: #000 !important; }
+
+  ${a} img {
+    width: ${m.logoWidth}px !important;
+    max-width: ${m.logoWidth}px !important;
+    height: auto !important;
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  /* The QR has to stay big enough for a phone camera to read it. */
+  ${a} img[alt="Receipt QR code"] {
+    width: ${Math.round(m.logoWidth * 1.3)}px !important;
+    max-width: ${Math.round(m.logoWidth * 1.3)}px !important;
+  }
+`
+}
+
+/** CSS pixels to millimetres, at the 96dpi the browser lays out in. */
+const pxToMm = (px) => (px * 25.4) / 96
+
+/**
+ * How tall the receipt is in millimetres, at the size it will print.
+ *
+ * Measured, because `@page` has to be given a number. The mounted copy is
+ * parked off-screen with the print rules applied and its height read back.
+ *
+ * All of it happens inside one function call with no await and no paint in
+ * between, so the stylesheet is gone again before the screen can show any of
+ * it. It costs one forced layout, once per print.
+ */
+const measureMm = (root, m) => {
+  const probe = document.createElement('style')
+  probe.id = MEASURE_STYLE_ID
+  probe.textContent = `
+    /* index.css does this for print; the slip's rem-based gaps depend on it. */
+    html { font-size: 12px !important; }
+    #${ROOT_ID} {
+      position: absolute !important;
+      left: -10000px !important;
+      top: 0 !important;
+      display: block !important;
+      width: ${m.contentMm}mm !important;
+    }
+    #${ROOT_ID} .receipt-print-area {
+      position: static !important;
+      visibility: visible !important;
+    }
+    ${receiptRules(m, `#${ROOT_ID}`)}
+  `
+  document.head.appendChild(probe)
+  const px = Math.max(root.scrollHeight, root.getBoundingClientRect().height)
+  probe.remove()
+  return pxToMm(px)
+}
+
 export function printReceipt(widthMm = BASELINE_MM) {
   const width = Math.min(82, Math.max(MIN_PRINTABLE_MM, Number(widthMm) || BASELINE_MM))
   const m = metricsFor(width)
@@ -108,12 +235,32 @@ export function printReceipt(widthMm = BASELINE_MM) {
   if (pendingTeardown) { clearTimeout(pendingTeardown); pendingTeardown = null }
 
   document.getElementById(STYLE_ID)?.remove()
+  document.getElementById(MEASURE_STYLE_ID)?.remove()
   const printRoot = mountPrintCopy()
+
+  /**
+   * The page is cut to the receipt, in millimetres.
+   *
+   * It used to say `size: 80mm auto`, which is not valid CSS — `auto` is
+   * only allowed on its own, so the whole declaration was thrown away. The
+   * browser then used the printer driver's own page length, broke the
+   * receipt across however many of those it took, and the printer fed a
+   * full page for each: a one-item sale came out as half a metre of roll
+   * with the logo, the header, the items and the barcode each marooned on
+   * their own sheet.
+   *
+   * So the height is measured and stated. A few millimetres are added for
+   * the tear-off, and the whole thing is capped — a receipt longer than
+   * three metres is a fault somewhere else, and should not become three
+   * metres of the shop's paper.
+   */
+  const measured = printRoot ? measureMm(printRoot, m) : 150
+  const height = Math.min(3000, Math.ceil(measured) + 6)
 
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.textContent = `
-    @page { size: ${width}mm auto; margin: 0; }
+    @page { size: ${width}mm ${height}mm; margin: 0; }
     #${ROOT_ID} { display: none; }
     @media print {
       /* Everything but the receipt is collapsed, not merely hidden, so the
@@ -129,72 +276,24 @@ export function printReceipt(widthMm = BASELINE_MM) {
         position: static !important;
         visibility: visible !important;
         top: auto !important;
+        left: 0 !important;
+        right: 0 !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
       }
       #${ROOT_ID} .receipt-print-area * { visibility: visible !important; }
       /* Nothing should print after the last line of the receipt. */
       #${ROOT_ID} .receipt-print-area > *:last-child { margin-bottom: 0 !important; }
 
-      .receipt-print-area {
-        /* Narrower than the roll, and centred rather than pinned to a fixed
-           left offset — left+right:0 with auto side margins centres an
-           absolutely positioned element inside whatever page box the driver
-           uses. A fixed inset only looked right when the driver honoured the
-           @page size exactly; on a wider page the whole receipt shifted left.
-
-           Still absolutely positioned: the receipt lives inside a modal and
-           the rest of the app is hidden with visibility:hidden, which keeps
-           its layout space, so in normal flow the receipt would print after a
-           stack of blank space. */
-        left: 0 !important;
-        right: 0 !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
-        width: ${m.contentMm}mm !important;
-        max-width: ${m.contentMm}mm !important;
-        padding: ${m.padY}mm 0 !important;
-        font-size: ${m.fontSize}px !important;
-        /* A sturdy sans, not the default monospace. Generic monospace resolves
-           to Courier on most systems — thin strokes that a thermal head blurs
-           into grey mush. The columns are fixed-width flex boxes, so nothing
-           here depends on character alignment. */
-        font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif !important;
-        /* Thermal output is stronger with weight behind it. */
-        font-weight: 600 !important;
-        /* Digits stay in column despite the proportional face. */
-        font-variant-numeric: tabular-nums !important;
-        /* A hair of tracking stops adjacent letters merging as the dot spreads. */
-        letter-spacing: 0.2px !important;
+      /* Nothing is allowed to break across pages. On a roll there is only
+         ever one page, and a stray break is what put each block of the
+         receipt on a sheet of its own. */
+      #${ROOT_ID}, #${ROOT_ID} * {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
       }
-      .receipt-print-area * {
-        font-family: inherit !important;
-        font-variant-numeric: tabular-nums !important;
-      }
-      .receipt-print-area .font-bold,
-      .receipt-print-area .font-semibold,
-      .receipt-print-area .font-medium { font-weight: 700 !important; }
-      .receipt-print-area .font-black  { font-weight: 800 !important; }
-      /* padding-left keeps the price and total columns from touching */
-      .receipt-print-area .w-20 { width: ${m.moneyCol}px !important; padding-left: 4px !important; }
-      .receipt-print-area .w-8  { width: ${m.qtyCol}px !important; }
-      .receipt-print-area .text-base { font-size: ${m.headline}px !important; }
-      .receipt-print-area .text-sm   { font-size: ${m.small}px !important; }
-      .receipt-print-area .text-xs   { font-size: ${m.small}px !important; }
-      .receipt-print-area .text-\\[10px\\] { font-size: ${m.small}px !important; }
 
-      /* A thermal printer has no grey — it dithers it into scattered dots,
-         which is what made the address and item lines look faint and mottled.
-         Everything prints pure black. */
-      .receipt-print-area,
-      .receipt-print-area * { color: #000 !important; }
-
-      .receipt-print-area img {
-        width: ${m.logoWidth}px !important;
-        max-width: ${m.logoWidth}px !important;
-        height: auto !important;
-        display: block !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
-      }
+      ${receiptRules(m, `#${ROOT_ID}`)}
     }
   `
   document.head.appendChild(style)
@@ -216,7 +315,7 @@ export function printReceipt(widthMm = BASELINE_MM) {
   return printRoot
 }
 
-export { metricsFor, BASELINE_MM, MIN_PRINTABLE_MM }
+export { metricsFor, BASELINE_MM, MIN_PRINTABLE_MM, pxToMm }
 
 /**
  * Print as soon as the slip is on screen and its pictures have arrived.

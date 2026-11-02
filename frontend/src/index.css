@@ -47,7 +47,16 @@ body {
    the whole app behind it. Everything is hidden except the receipt, which is
    lifted to the top-left of the page with its height cap removed. */
 @page {
-  size: 80mm auto;   /* thermal roll: fixed width, whatever length it needs */
+  /* No `size` here. It used to read `size: 80mm auto`, which is not valid CSS
+     — `size` takes `auto` on its own, one or two lengths, or a paper-size
+     keyword, so a length followed by `auto` made the browser throw the whole
+     declaration away. The printer then used its driver's page length, broke
+     the receipt across as many of those as it took, and fed a full page for
+     each: a two-item sale came out as half a metre of roll with the logo, the
+     header, the items and the barcode each stranded on a sheet of its own.
+     The real size is written out, in millimetres, by printReceipt() — which
+     is also the only place that knows the shop's roll width and how long this
+     particular slip is. */
   /* Zero margin is what suppresses the browser's own header and footer — the
      date, page title and URL Chrome stamps on every printed page. The receipt
      supplies its own padding below. */
