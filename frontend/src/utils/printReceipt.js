@@ -86,9 +86,26 @@ const mountPrintCopy = () => {
 
 const unmountPrintCopy = () => document.getElementById(ROOT_ID)?.remove()
 
+/**
+ * The teardown waiting to run, so a second print can call it off.
+ *
+ * Each print cleans up a second after it starts, because Safari and some
+ * phones return from window.print() immediately rather than when the dialog
+ * closes. That was safe while printing needed a button press. It stopped
+ * being safe when the receipt began printing itself: the slip prints on
+ * open, and a cashier pressing Print within that second gets the first
+ * print's timer pulling the receipt and its stylesheet out from under the
+ * second one — which prints a blank page, or the whole app.
+ */
+let pendingTeardown = null
+
 export function printReceipt(widthMm = BASELINE_MM) {
   const width = Math.min(82, Math.max(MIN_PRINTABLE_MM, Number(widthMm) || BASELINE_MM))
   const m = metricsFor(width)
+
+  // Any teardown still pending belongs to a print that is finished with.
+  // Letting it run would dismantle this one.
+  if (pendingTeardown) { clearTimeout(pendingTeardown); pendingTeardown = null }
 
   document.getElementById(STYLE_ID)?.remove()
   const printRoot = mountPrintCopy()
@@ -189,7 +206,8 @@ export function printReceipt(widthMm = BASELINE_MM) {
     // but Safari and some mobile browsers return immediately — hence the delay
     // rather than tearing down straight away. The copy must go either way, or
     // a second receipt would print under the first.
-    setTimeout(() => {
+    pendingTeardown = setTimeout(() => {
+      pendingTeardown = null
       document.getElementById(STYLE_ID)?.remove()
       unmountPrintCopy()
     }, 1000)
