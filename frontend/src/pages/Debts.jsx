@@ -14,7 +14,7 @@ import { isPast, parseISO } from 'date-fns'
 import { getSettings } from '../api/settings'
 import { sendReminderSms } from '../api/reminders'
 import { normaliseGhanaPhone } from '../utils/phone'
-import { printReceipt } from '../utils/printReceipt'
+import { printWhenReady } from '../utils/printReceipt'
 import RefreshButton from '../components/RefreshButton'
 
 /**
@@ -106,7 +106,7 @@ function DebtReceiptModal({ receipt, onClose, settings }) {
 
         <div className="flex gap-3 mt-4">
           <button
-            onClick={() => printReceipt(settings?.receipt_width_mm, settings?.receipt_offset_mm)}
+            onClick={() => printWhenReady(settings?.receipt_width_mm, { offsetMm: settings?.receipt_offset_mm })}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
           >
             <FiPrinter size={16} /> Print

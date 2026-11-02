@@ -1,6 +1,6 @@
 import React from 'react'
 import { FiX, FiPrinter } from 'react-icons/fi'
-import { printReceipt, metricsFor } from '../utils/printReceipt'
+import { printWhenReady, metricsFor } from '../utils/printReceipt'
 
 /**
  * A slip for setting up the printer, not for a customer.
@@ -148,7 +148,7 @@ export default function PrintTestSlip({ widthMm = 80, offsetMm = 0, onClose }) {
             </div>
             <button
               type="button"
-              onClick={() => printReceipt(width, offset)}
+              onClick={() => printWhenReady(width, { offsetMm: offset })}
               className="w-full flex items-center justify-center gap-2 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl text-sm"
             >
               <FiPrinter size={16} /> Print test slip

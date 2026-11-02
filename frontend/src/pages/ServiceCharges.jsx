@@ -8,7 +8,7 @@ import Modal from '../components/Modal'
 import LoadingSpinner from '../components/LoadingSpinner'
 import RefreshButton from '../components/RefreshButton'
 import { formatCurrency } from '../utils/helpers'
-import { printReceipt } from '../utils/printReceipt'
+import { printWhenReady } from '../utils/printReceipt'
 import { getSettings } from '../api/settings'
 import {
   getServiceCharges, createServiceCharge, deleteServiceCharge,
@@ -99,7 +99,7 @@ function ReceiptModal({ charge, company, widthMm, offsetMm, onClose }) {
             Close
           </button>
           <button
-            onClick={() => printReceipt(widthMm, offsetMm)}
+            onClick={() => printWhenReady(widthMm, { offsetMm })}
             className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm inline-flex items-center justify-center gap-2"
           >
             <FiPrinter /> Print

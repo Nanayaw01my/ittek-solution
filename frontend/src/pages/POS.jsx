@@ -17,7 +17,7 @@ import {
   cacheLogo, getCachedLogo, nextOfflineInvoiceNo,
 } from '../utils/offlineQueue'
 import { buildWhatsAppReceiptLink } from '../utils/phone'
-import { printReceipt, printWhenReady } from '../utils/printReceipt'
+import { printWhenReady } from '../utils/printReceipt'
 import Modal from '../components/Modal'
 import Ean13 from '../components/Ean13'
 import { mintReceiptBarcode } from '../utils/ean13'
@@ -360,7 +360,7 @@ function ReceiptModal({
 
         <div className="flex gap-3">
           <button
-            onClick={() => printReceipt(receiptWidthMm, receiptOffsetMm)}
+            onClick={() => printWhenReady(receiptWidthMm, { offsetMm: receiptOffsetMm })}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
           >
             <FiPrinter size={16} /> Print
