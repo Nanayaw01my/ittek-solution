@@ -35,6 +35,8 @@ const metricsFor = (widthMm) => {
   const scale = widthMm / BASELINE_MM
   const contentMm = Math.max(30, widthMm - SIDE_MARGIN_MM * 2)
   return {
+    /** The paper. The receipt is centred on it. */
+    pageMm: widthMm,
     contentMm,
     fontSize: Math.max(9, +(13 * scale).toFixed(2)),
     /**
@@ -147,11 +149,9 @@ const receiptRules = (m, scope) => {
     max-width: ${m.contentMm}mm !important;
     max-height: none !important;
     overflow: visible !important;
-    /* A couple of millimetres in from each edge. The page is now exactly the
-       printable strip, so content at the very edge sits on the first and last
-       column of dots the head can reach — which is where the first letter of
-       "Invoice" and "Item" came out clipped. */
-    padding: ${m.padY}mm 2mm !important;
+    /* Vertical only. The side margins come from the page being the full
+       roll while the receipt is contentMm wide and centred in it. */
+    padding: ${m.padY}mm 0 !important;
     font-size: ${m.fontSize}px !important;
     line-height: 1.35 !important;
     /* A sturdy sans, not monospace. Generic monospace resolves to Courier on
@@ -237,11 +237,14 @@ const measureMm = (root, m) => {
       left: -10000px !important;
       top: 0 !important;
       display: block !important;
-      width: ${m.contentMm}mm !important;
+      /* The page, not the receipt: the receipt is centred within it. */
+      width: ${m.pageMm}mm !important;
     }
     #${ROOT_ID} .receipt-print-area {
       position: static !important;
       visibility: visible !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
     }
     ${receiptRules(m, `#${ROOT_ID}`)}
   `
@@ -286,20 +289,22 @@ export function printReceipt(widthMm = BASELINE_MM) {
   style.id = STYLE_ID
   style.textContent = `
     /**
-     * The page is the printable strip, not the roll.
+     * The page is the roll, and the receipt is centred on it.
      *
-     * An "80mm" printer images about 72mm and treats the rest as dead
-     * margin, so a page declared at the full 80mm is wider than anything the
-     * driver can put ink on. Chrome's answer to a page wider than the
-     * printable area is to shrink the whole thing to fit — which is why the
-     * first good print came out small, pale and floating in white space with
-     * a margin down both sides: 72mm of content was scaled down inside an
-     * 80mm page that was itself scaled down into 72mm of paper, twice.
+     * It was briefly the 72mm printable strip instead, on the theory that a
+     * page wider than the strip would be scaled down to fit. That was the
+     * wrong culprit — the shrinking was the driver's stock being set to a
+     * 56mm label — and it cost the thing the shop actually wanted: a page
+     * the width of the strip is placed at the left edge of the roll, so the
+     * slip printed hard against one side with all the dead margin on the
+     * other, instead of sitting square in the middle of the paper.
      *
-     * Declaring the page as the strip itself means nothing is scaled, and
-     * the type prints at the size it was measured at.
+     * So the page is the full roll again and the receipt is centred inside
+     * it by the auto side margins below, with contentMm leaving a few
+     * millimetres clear of each edge. The head cannot reach that margin
+     * anyway, which is the point of it.
      */
-    @page { size: ${m.contentMm}mm ${height}mm; margin: 0; }
+    @page { size: ${width}mm ${height}mm; margin: 0; }
     #${ROOT_ID} { display: none; }
     @media print {
       /* Everything but the receipt is collapsed, not merely hidden, so the
