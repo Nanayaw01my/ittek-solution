@@ -1,6 +1,6 @@
 import React from 'react'
 import { FiX, FiPrinter } from 'react-icons/fi'
-import { printWhenReady, metricsFor } from '../utils/printReceipt'
+import { printWhenReady, metricsFor, LENGTH_SLOT_ID } from '../utils/printReceipt'
 
 /**
  * A slip for setting up the printer, not for a customer.
@@ -128,6 +128,25 @@ export default function PrintTestSlip({ widthMm = 80, offsetMm = 0, textScale = 
               <p className="text-xs">
                 The name may wrap onto a second line. Neither price may — if a price breaks
                 over two lines, the roll width set here is wider than the paper.
+              </p>
+            </div>
+
+            <div className="my-2 border-t border-dashed border-gray-400" />
+
+            {/* Filled in by printReceipt at the moment of printing, because
+                the length is only known once the slip has been laid out.
+                It is the number Windows needs: Chrome cuts a receipt that
+                is longer than the paper chosen in its print dialog, no
+                matter how carefully the app measured it. */}
+            <div>
+              <p className="text-xs font-bold">5. Paper length</p>
+              <p className="text-sm font-bold">
+                This slip needs <span id={LENGTH_SLOT_ID}>…</span>
+              </p>
+              <p className="text-xs">
+                Your Windows paper size must be at least this long, or the receipt is cut
+                in two. A real receipt with a QR code runs longer than this test — set it
+                to 300mm and nothing will ever split.
               </p>
             </div>
 

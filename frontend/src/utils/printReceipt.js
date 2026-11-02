@@ -12,6 +12,8 @@
 
 const STYLE_ID = 'ittek-receipt-print-size'
 const MEASURE_STYLE_ID = 'ittek-receipt-measure'
+/** The test slip's "this receipt needs N mm" placeholder, filled at print time. */
+const LENGTH_SLOT_ID = 'ittek-print-length'
 const ROOT_ID = 'ittek-print-root'
 const BASELINE_MM = 80
 
@@ -384,7 +386,28 @@ export function printReceipt(widthMm = BASELINE_MM, offsetMm = 0, textScale = 10
    * metres of the shop's paper.
    */
   const measured = printRoot ? measureMm(printRoot, m) : 150
-  const height = Math.min(3000, Math.ceil(measured) + 6)
+  let height = Math.min(3000, Math.ceil(measured) + 6)
+
+  /**
+   * Tell the slip how long it is, if it has asked.
+   *
+   * Chrome paginates on the paper size chosen in its print dialog, not on
+   * the page this stylesheet asks for. A receipt longer than that paper is
+   * cut in two however correct the measurement was — which is the split
+   * receipt, arriving by a route no amount of measuring can close. The only
+   * cure is for the Windows paper to be at least as long as the receipt,
+   * and until now nobody could know that number without me guessing it.
+   *
+   * So the test slip carries a placeholder, and it is filled in here with
+   * the length actually required. Writing the number in can push the text
+   * onto another line, so the slip is measured again and the taller of the
+   * two is used.
+   */
+  const lengthSlot = printRoot?.querySelector(`#${LENGTH_SLOT_ID}`)
+  if (lengthSlot) {
+    lengthSlot.textContent = `${height}mm`
+    height = Math.min(3000, Math.max(height, Math.ceil(measureMm(printRoot, m)) + 6))
+  }
 
   const style = document.createElement('style')
   style.id = STYLE_ID
@@ -460,7 +483,7 @@ export function printReceipt(widthMm = BASELINE_MM, offsetMm = 0, textScale = 10
   return printRoot
 }
 
-export { metricsFor, BASELINE_MM, MIN_PRINTABLE_MM, pxToMm }
+export { metricsFor, BASELINE_MM, MIN_PRINTABLE_MM, pxToMm, LENGTH_SLOT_ID }
 
 /**
  * Print as soon as the slip is on screen and its pictures have arrived.
