@@ -145,7 +145,11 @@ body {
   /* Widened along with the larger type: at 13px "GHC3500.00" needs more room
      than 74px, and a money column that is a shade too narrow wraps the price
      onto a second line. */
-  .receipt-print-area .w-20 { width: 86px !important; flex: none !important; padding-left: 4px !important; }
+  /* 94px, not 86: at 13px semi-bold "GHC3500.00" is about 85px wide and the
+     column spends 4 of its own on padding, so every four-figure price wrapped
+     with its last digit on a line of its own. See metricsFor() in
+     printReceipt.js, which is what actually sizes this when the helper runs. */
+  .receipt-print-area .w-20 { width: 94px !important; flex: none !important; padding-left: 4px !important; }
   .receipt-print-area .w-8  { width: 26px !important; flex: none !important; }
   /* Without flex:none these are flex items with flex-shrink:1, so the row
      squeezed them below their set width and "GHC3500.00" wrapped onto a second

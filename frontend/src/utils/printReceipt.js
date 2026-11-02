@@ -37,9 +37,22 @@ const metricsFor = (widthMm) => {
   return {
     contentMm,
     fontSize: Math.max(9, +(13 * scale).toFixed(2)),
-    // Widened with the type: a money column a shade too narrow for
-    // "GHC3500.00" wraps the price onto a second line.
-    moneyCol: Math.max(50, Math.round(86 * scale)),
+    /**
+     * The price and total columns.
+     *
+     * 86px was four pixels too few. "GHC3500.00" at 13px semi-bold measures
+     * about 85px, the column gives up 4 of its 86 to padding, and so every
+     * price from a thousand cedis upwards broke across two lines with the
+     * last digit stranded underneath — on the total, of all places. Caught
+     * by measuring the rendered line boxes rather than by looking at it; at
+     * this size the wrap is a couple of millimetres and reads as a gap.
+     *
+     * 94 leaves the widest realistic price a few pixels of room. The name
+     * column absorbs the difference and wraps instead, which is the right
+     * place for a wrap: a long product name over two lines is still a
+     * product name, a split total is a misread receipt.
+     */
+    moneyCol: Math.max(54, Math.round(94 * scale)),
     qtyCol: Math.max(16, Math.round(26 * scale)),
     padY: Math.max(2, +(4 * scale).toFixed(1)),
     headline: Math.max(13, +(17 * scale).toFixed(2)),

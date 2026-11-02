@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiSettings, FiBell, FiMail, FiSave, FiTrash2, FiAlertTriangle, FiX, FiMessageSquare, FiSend, FiCheckCircle, FiGift,
+import { FiSettings, FiBell, FiMail, FiSave, FiTrash2, FiAlertTriangle, FiX, FiMessageSquare, FiSend, FiCheckCircle, FiGift, FiPrinter,
 } from 'react-icons/fi'
 import { getSettings, updateSettings, updateEmailConfig, testEmail, updateSmsConfig, testSms, getSmsBalance } from '../api/settings'
 import { getProducts } from '../api/products'
@@ -12,6 +12,7 @@ import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ImageUpload from '../components/ImageUpload'
+import PrintTestSlip from '../components/PrintTestSlip'
 
 /**
  * Each tab carries its own icon.
@@ -61,7 +62,8 @@ const toApiPayload = (data, map) =>
 function CompanyTab({ settings, onSave, loading }) {
   const [logoUrl, setLogoUrl] = useState(settings?.logo_url || null)
   const [logoInput, setLogoInput] = useState(settings?.logo_url || '')
-  const { register, handleSubmit } = useForm({
+  const [testSlip, setTestSlip] = useState(false)
+  const { register, handleSubmit, watch } = useForm({
     defaultValues: {
       ...toFormValues(settings, COMPANY_FIELDS),
       receipt_width_mm: settings?.receipt_width_mm ?? 80,
@@ -158,7 +160,31 @@ function CompanyTab({ settings, onSave, loading }) {
           The printed receipt scales to this width. Measure your roll if you are unsure — printing at
           the wrong width slices off the right-hand edge.
         </p>
+
+        {/* Setting a thermal printer up means three settings in three places
+            that have to agree — this width, the stock size in the Windows
+            driver and the scale in Chrome's print box — and the only symptom
+            of a disagreement is a bad receipt. Trying it on real sales costs a
+            real sale, a real stock movement and an invoice number each time. */}
+        <button
+          type="button"
+          onClick={() => setTestSlip(true)}
+          className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 border-2 border-orange-500 text-orange-600 hover:bg-orange-50 font-bold rounded-xl text-sm"
+        >
+          <FiPrinter size={15} /> Print a test slip
+        </button>
+        <p className="text-xs text-gray-400 mt-1">
+          Prints a slip you measure with a ruler, to check the printer is not shrinking or
+          clipping the page. Uses the width selected above, saved or not.
+        </p>
       </div>
+
+      {testSlip && (
+        <PrintTestSlip
+          widthMm={Number(watch('receipt_width_mm')) || 80}
+          onClose={() => setTestSlip(false)}
+        />
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div>
