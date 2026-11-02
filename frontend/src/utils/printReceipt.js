@@ -405,7 +405,10 @@ export function printReceipt(widthMm = BASELINE_MM, offsetMm = 0, textScale = 10
    */
   const lengthSlot = printRoot?.querySelector(`#${LENGTH_SLOT_ID}`)
   if (lengthSlot) {
-    lengthSlot.textContent = `${height}mm`
+    // Inches as well as millimetres: the Windows driver this is read
+    // against states its stock in inches, and a number that has to be
+    // converted by hand before it can be typed in is half a number.
+    lengthSlot.textContent = `${height}mm (${(height / 25.4).toFixed(2)} in)`
     height = Math.min(3000, Math.max(height, Math.ceil(measureMm(printRoot, m)) + 6))
   }
 
