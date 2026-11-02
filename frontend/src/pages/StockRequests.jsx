@@ -16,7 +16,7 @@ import ProductPicker from '../components/ProductPicker'
 /** One empty line of a request. */
 const BLANK_LINE = {
   product: '', productName: '', isNew: false, newName: '',
-  sellingPrice: '', quantity: 1, estimatedCost: '',
+  quantity: 1,
 }
 
 function CreateRequestModal({ isOpen, onClose }) {
@@ -45,7 +45,6 @@ function CreateRequestModal({ isOpen, onClose }) {
   }
   const items = watch('items')
 
-  const total = items.reduce((s, i) => s + (parseFloat(i.estimatedCost || 0) * parseFloat(i.quantity || 0)), 0)
 
   /**
    * The form works in product ids; the server stores a line of a request —
@@ -59,29 +58,17 @@ function CreateRequestModal({ isOpen, onClose }) {
       // one makes the line real.
       .filter((i) => (i.isNew ? String(i.newName || '').trim() : i.product) && Number(i.quantity) > 0)
       .map((i) => {
-        const quantity = Number(i.quantity) || 0
-        const cost = parseFloat(i.estimatedCost) || 0
         const line = {
           product_name: i.isNew ? String(i.newName).trim() : (i.productName || 'Unknown product'),
-          quantity_requested: quantity,
-          estimated_cost: cost,
-          total: Number((quantity * cost).toFixed(2)),
+          quantity_requested: Number(i.quantity) || 0,
           is_new_product: !!i.isNew,
         }
-        if (i.isNew) line.selling_price = parseFloat(i.sellingPrice) || 0
-        else line.product_id = i.product
+        if (!i.isNew) line.product_id = i.product
         return line
       })
 
     if (lines.length === 0) {
       toast.error('Pick a product — or press "Type a new item" and name it — and give a quantity')
-      return
-    }
-    // Said here rather than letting the server bounce the whole request back
-    // with one line's problem.
-    const missing = lines.find((l) => l.is_new_product && (!l.estimated_cost || !l.selling_price))
-    if (missing) {
-      toast.error(`${missing.product_name} is new, so it needs both a cost and a selling price`)
       return
     }
     mutation.mutate({ items: lines, notes: d.notes || undefined })
@@ -146,37 +133,24 @@ function CreateRequestModal({ isOpen, onClose }) {
                   {items?.[index]?.isNew ? '← Pick from our products instead' : '+ Type a new item (not in our products)'}
                 </button>
               </div>
-              <div className="col-span-2">
+              {/* Quantity, and that is the whole of it.
+                  There were two more boxes here: an estimated cost on every
+                  line and a selling price on every new one. They were three
+                  fields of guesswork between noticing an empty shelf and
+                  saying so, and once attendants could raise requests they
+                  were asking people to type figures the system takes care
+                  never to show them. What something costs is looked up from
+                  the shop's own record; what a new item should sell for is
+                  named by the owner at the moment they decide to buy it. */}
+              <div className="col-span-6">
                 <input
                   type="number"
                   min="1"
-                  placeholder="Qty"
+                  placeholder="How many?"
                   {...register(`items.${index}.quantity`, { required: true, min: 1 })}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
-              <div className="col-span-4">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Est. cost/unit (GH₵)"
-                  {...register(`items.${index}.estimatedCost`)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
-              </div>
-              {items?.[index]?.isNew && (
-                <div className="col-span-11 sm:col-span-4 col-start-1 sm:col-start-8">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="Selling price (GH₵)"
-                    {...register(`items.${index}.sellingPrice`)}
-                    className="w-full px-3 py-2 border border-amber-300 bg-amber-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
-              )}
               <div className="col-span-1 flex justify-center">
                 {/* Always offered, including on the only line. It used to be
                     hidden whenever one line was left, so a request begun by
@@ -215,12 +189,6 @@ function CreateRequestModal({ isOpen, onClose }) {
           />
         </div>
 
-        {total > 0 && (
-          <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex justify-between items-center">
-            <span className="font-semibold text-orange-800">Estimated Total:</span>
-            <span className="text-xl font-black text-orange-600">{formatCurrency(total)}</span>
-          </div>
-        )}
 
         <div className="flex gap-3 pt-2">
           <button type="button" onClick={onClose} className="flex-1 py-3 border border-gray-200 text-gray-700 rounded-xl font-semibold text-sm">
@@ -257,8 +225,22 @@ export default function StockRequests() {
    * that. A step nobody knows is there is a step that does not exist.
    */
   const [viewQty, setViewQty] = useState([])
+  /**
+   * The money, which is the owner's to decide and nobody else's.
+   *
+   * The requester no longer types a cost or a selling price — a sales
+   * attendant is shown no cost price anywhere else in the system, and
+   * asking them to invent one here was both a leak and a guess. For
+   * something already stocked the cost comes from the shop's own record
+   * and is prefilled below; for a new item there is nothing to prefill,
+   * and the owner names both figures at the moment they decide to buy.
+   */
+  const [viewCost, setViewCost] = useState([])
+  const [viewPrice, setViewPrice] = useState([])
   const openView = (row) => {
     setViewQty((row.items || []).map(i => String(i.quantity_requested ?? '')))
+    setViewCost((row.items || []).map(i => (i.estimated_cost ? String(i.estimated_cost) : '')))
+    setViewPrice((row.items || []).map(i => (i.selling_price ? String(i.selling_price) : '')))
     setViewing(row)
   }
   const [page, setPage] = useState(1)
@@ -339,7 +321,11 @@ export default function StockRequests() {
         </div>
       ),
     },
-    { header: 'Est. Total', key: 'total_amount', render: v => formatCurrency(v || 0) },
+    // The server sends no figures to anyone but an owner, so the column
+    // would be a row of GH0.00 for everybody else.
+    ...(canApprove
+      ? [{ header: 'Est. Total', key: 'total_amount', render: (v) => formatCurrency(v || 0) }]
+      : []),
     { header: 'Created By', key: 'created_by', render: v => v?.username || '—' },
     { header: 'Date', key: 'request_date', render: (v, row) => formatDate(v || row.createdAt) },
     { header: 'Status', key: 'status', render: v => <Badge status={v} /> },
@@ -449,7 +435,9 @@ export default function StockRequests() {
                   {canApprove && viewing.status === 'pending' ? 'APPROVE' : 'QTY'}
                 </span>
                 <span className="col-span-2 text-right">EACH</span>
-                <span className="col-span-2 text-right">TOTAL</span>
+                <span className="col-span-2 text-right">
+                  {canApprove && viewing.status === 'pending' ? 'SELLS / TOTAL' : 'TOTAL'}
+                </span>
               </div>
               {(viewing.items || []).map((i, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2 px-3 py-2 border-t text-sm">
@@ -502,14 +490,55 @@ export default function StockRequests() {
                     )}
                   </span>
                   <span className="col-span-2 text-right text-gray-600">
-                    {i.estimated_cost ? formatCurrency(i.estimated_cost) : '—'}
+                    {canApprove && viewing.status === 'pending' ? (
+                      <input
+                        type="number" min="0" step="0.01" inputMode="decimal"
+                        aria-label={`Cost per unit for ${i.product_name}`}
+                        placeholder={i.is_new_product ? 'cost' : '—'}
+                        value={viewCost[idx] ?? ''}
+                        onChange={e => setViewCost(c => {
+                          const next = [...c]; next[idx] = e.target.value; return next
+                        })}
+                        className="w-full px-1.5 py-1.5 border border-gray-300 rounded-lg text-sm
+                                   text-right focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                    ) : (i.estimated_cost ? formatCurrency(i.estimated_cost) : '—')}
                   </span>
                   <span className="col-span-2 text-right font-semibold">
-                    {i.total ? formatCurrency(i.total) : '—'}
+                    {canApprove && viewing.status === 'pending' ? (
+                      i.is_new_product ? (
+                        /* A new item cannot go on the shelf without a price
+                           to sell it at, and this is the moment it is being
+                           put there. */
+                        <input
+                          type="number" min="0" step="0.01" inputMode="decimal"
+                          aria-label={`Selling price for ${i.product_name}`}
+                          placeholder="sells for"
+                          value={viewPrice[idx] ?? ''}
+                          onChange={e => setViewPrice(pr => {
+                            const next = [...pr]; next[idx] = e.target.value; return next
+                          })}
+                          className="w-full px-1.5 py-1.5 border border-amber-300 bg-amber-50 rounded-lg
+                                     text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                      ) : (
+                        <span className="text-gray-500">
+                          {formatCurrency((Number(viewCost[idx]) || 0) * (Number(viewQty[idx]) || 0))}
+                        </span>
+                      )
+                    ) : (i.total ? formatCurrency(i.total) : '—')}
                   </span>
                 </div>
               ))}
             </div>
+
+            {canApprove && viewing.status === 'pending'
+              && (viewing.items || []).some((i, idx) => i.is_new_product && !Number(viewPrice[idx])) && (
+              <p className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800">
+                Give every NEW item a selling price before approving, or it goes onto the shelf
+                priced at nothing.
+              </p>
+            )}
 
             {viewing.status === 'pending' && (viewing.items || []).some(i => i.is_new_product) && (
               <p className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
@@ -559,6 +588,16 @@ export default function StockRequests() {
                     // sent as 0 would quietly approve nothing.
                     quantities: (viewing.items || []).map((i, idx) => {
                       const v = viewQty[idx]
+                      return v === '' || v === undefined ? null : Number(v)
+                    }),
+                    // Blank means "leave it as it is", the same as a blank
+                    // quantity does — not zero.
+                    costs: (viewing.items || []).map((i, idx) => {
+                      const v = viewCost[idx]
+                      return v === '' || v === undefined ? null : Number(v)
+                    }),
+                    prices: (viewing.items || []).map((i, idx) => {
+                      const v = viewPrice[idx]
                       return v === '' || v === undefined ? null : Number(v)
                     }),
                   })}

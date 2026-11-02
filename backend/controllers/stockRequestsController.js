@@ -4,6 +4,26 @@ const StockRequest = require('../models/StockRequest');
 const Notification = require('../models/Notification');
 const Product = require('../models/Product');
 
+
+/**
+ * A request as somebody who is not an owner may see it.
+ *
+ * The cost is filled in by the server now, from the shop's own record, so
+ * it would travel back to whoever asked for the stock — and a sales
+ * attendant is shown no cost price anywhere else in the system. Taking the
+ * fields out on the way out keeps that true of this screen too, without
+ * making the owners' view any poorer.
+ */
+const withoutMoney = (request) => {
+  const plain = typeof request?.toObject === 'function' ? request.toObject() : { ...request };
+  delete plain.total_amount;
+  plain.items = (plain.items || []).map((line) => {
+    const { estimated_cost, total, selling_price, ...rest } = line;
+    return rest;
+  });
+  return plain;
+};
+
 /**
  * GET /api/stock-requests
  */
@@ -41,9 +61,10 @@ const getStockRequests = async (req, res) => {
       StockRequest.countDocuments(filter),
     ]);
 
+    const owner = isOwner(req.user.role);
     return res.status(200).json({
       success: true,
-      data: requests,
+      data: owner ? requests : requests.map(withoutMoney),
       pagination: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / Number(limit)) },
     });
   } catch (err) {
@@ -75,30 +96,13 @@ const createStockRequest = async (req, res) => {
     for (const raw of items) {
       const name = String(raw.product_name || raw.name || '').trim();
       const quantity = Number(raw.quantity_requested ?? raw.quantity);
-      const cost = Number(raw.estimated_cost ?? raw.estimatedCost) || 0;
       // A line with no product behind it is a new item being asked for.
       const isNew = !!(raw.is_new_product ?? raw.isNew) || !(raw.product_id || raw.product);
-      const sellingPrice = Number(raw.selling_price ?? raw.sellingPrice);
 
       if (!name) {
         return res.status(400).json({
           success: false,
           message: 'Every line needs a product — pick one, or type the name of a new one.',
-        });
-      }
-      // The two prices are what a product cannot exist without, so they are
-      // asked for here rather than leaving the owner to guess them at the
-      // moment of approval.
-      if (isNew && (!Number.isFinite(cost) || cost <= 0)) {
-        return res.status(400).json({
-          success: false,
-          message: `What does ${name} cost to buy? A new item needs its cost.`,
-        });
-      }
-      if (isNew && (!Number.isFinite(sellingPrice) || sellingPrice <= 0)) {
-        return res.status(400).json({
-          success: false,
-          message: `What should ${name} sell for? A new item needs a selling price.`,
         });
       }
       if (!Number.isFinite(quantity) || quantity < 1) {
@@ -108,14 +112,36 @@ const createStockRequest = async (req, res) => {
         });
       }
 
+      /**
+       * What it costs is not the requester's business, and not their job.
+       *
+       * The form used to ask for an estimated cost on every line and a
+       * selling price on every new one. That was three fields of guesswork
+       * standing between somebody noticing an empty shelf and saying so —
+       * and once sales attendants could raise requests, it was also asking
+       * them to type numbers they are deliberately never shown anywhere
+       * else in the system.
+       *
+       * So nothing about money is read from the request. For something
+       * already stocked the cost is looked up here, from the shop's own
+       * record, so the owner still sees what approving will cost. For a new
+       * item there is nothing to look up and the owner names the price when
+       * they approve it, which is the moment they decide to buy.
+       */
+      const stocked = (raw.product_id || raw.product)
+        ? await Product.findById(raw.product_id || raw.product).select('cost_price')
+        : null;
+      const cost = Number(stocked?.cost_price) || 0;
+
       lines.push({
         product_id: raw.product_id || raw.product || undefined,
         product_name: name,
         quantity_requested: quantity,
         estimated_cost: cost,
-        total: Number((raw.total ?? quantity * cost).toFixed(2)),
+        total: Number((quantity * cost).toFixed(2)),
         is_new_product: isNew,
-        selling_price: isNew ? Number(sellingPrice.toFixed(2)) : undefined,
+        // Named by the owner at approval; see the note above.
+        selling_price: undefined,
         category_id: raw.category_id || raw.category || undefined,
       });
     }
@@ -178,7 +204,10 @@ const getStockRequest = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
-    return res.status(200).json({ success: true, data: request });
+    return res.status(200).json({
+      success: true,
+      data: isOwner(req.user.role) ? request : withoutMoney(request),
+    });
   } catch (err) {
     console.error('Get stock request error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
@@ -206,6 +235,23 @@ const approveStockRequest = async (req, res) => {
      * exactly as it always did.
      */
     const asked = Array.isArray(req.body?.quantities) ? req.body.quantities : null;
+    /**
+     * The prices, which only an owner ever sees or sets.
+     *
+     * The requester no longer types a cost — for something already stocked
+     * it comes from the shop's own record, and for a new item nobody knows
+     * it until somebody decides to buy. Both arrive here aligned to the
+     * request's lines, the same way the quantities do, and both are
+     * optional: leaving them alone keeps whatever the line already had.
+     */
+    const costs = Array.isArray(req.body?.costs) ? req.body.costs : null;
+    const prices = Array.isArray(req.body?.prices) ? req.body.prices : null;
+    const given = (list, i) => {
+      if (!list || list[i] === undefined || list[i] === null || list[i] === '') return null;
+      const n = Number(list[i]);
+      return Number.isFinite(n) && n >= 0 ? n : null;
+    };
+
     const changes = [];
     request.items.forEach((line, i) => {
       let qty = line.quantity_requested;
@@ -213,6 +259,11 @@ const approveStockRequest = async (req, res) => {
         const n = Number(asked[i]);
         if (Number.isFinite(n) && n >= 0) qty = Math.floor(n);
       }
+      const cost = given(costs, i);
+      if (cost !== null) line.estimated_cost = Number(cost.toFixed(2));
+      const price = given(prices, i);
+      if (price !== null) line.selling_price = Number(price.toFixed(2));
+
       line.quantity_approved = qty;
       line.total = Number((qty * (line.estimated_cost || 0)).toFixed(2));
       if (qty !== line.quantity_requested) {

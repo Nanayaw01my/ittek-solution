@@ -105,3 +105,39 @@ test('the owner approves the quantity, not just the request', async (t) => {
     assert.strictEqual(doc.total_amount, 10800);
   });
 });
+
+test('the money is the owner\'s to set, at the moment they approve', async (t) => {
+  await t.test('a cost sent with the approval is what the line is costed at', async () => {
+    doc = mk([{ product_name: 'Battery', quantity_requested: 4, estimated_cost: 0, total: 0 }]);
+    const r = await approve({ quantities: [4], costs: [1200] });
+    assert.strictEqual(r.code, 200);
+    assert.strictEqual(doc.items[0].estimated_cost, 1200);
+    assert.strictEqual(doc.items[0].total, 4800);
+    assert.strictEqual(doc.total_amount, 4800);
+  });
+
+  await t.test('a new item takes the selling price the owner names', async () => {
+    products.length = 0;
+    doc = mk([{ product_name: 'Inverter 3kVA', quantity_requested: 2, is_new_product: true, estimated_cost: 0, total: 0 }]);
+    const r = await approve({ quantities: [2], costs: [4000], prices: [5500] });
+    assert.strictEqual(r.code, 200);
+    const made = products.find((p) => p.name === 'Inverter 3kVA');
+    assert.ok(made, 'the product is created on approval');
+    assert.strictEqual(made.cost_price, 4000);
+    assert.strictEqual(made.selling_price, 5500);
+    assert.strictEqual(made.quantity, 0, 'nothing has arrived yet');
+  });
+
+  await t.test('a blank price leaves the line alone rather than zeroing it', async () => {
+    doc = mk([{ product_name: 'Battery', quantity_requested: 3, estimated_cost: 900, total: 2700 }]);
+    await approve({ quantities: [3], costs: [''], prices: [null] });
+    assert.strictEqual(doc.items[0].estimated_cost, 900, 'the looked-up cost survives');
+    assert.strictEqual(doc.items[0].total, 2700);
+  });
+
+  await t.test('rubbish in a cost is ignored, not stored', async () => {
+    doc = mk([{ product_name: 'Battery', quantity_requested: 2, estimated_cost: 500, total: 1000 }]);
+    await approve({ quantities: [2], costs: ['abc'] });
+    assert.strictEqual(doc.items[0].estimated_cost, 500);
+  });
+});
