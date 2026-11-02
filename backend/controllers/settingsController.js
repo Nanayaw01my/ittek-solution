@@ -65,7 +65,7 @@ const updateSettings = async (req, res) => {
       tax_rate, low_stock_alert, receipt_header, receipt_footer,
       currency_symbol, notification_settings, logo_url,
       base_currency, currencies, loyalty_settings, fraud_settings, layaway_settings,
-      receipt_width_mm, receipt_offset_mm, gift_promo, auto_print_receipt,
+      receipt_width_mm, receipt_offset_mm, receipt_text_scale, gift_promo, auto_print_receipt,
     } = req.body;
 
     let settings = await Settings.findOne();
@@ -124,6 +124,10 @@ const updateSettings = async (req, res) => {
       // throwing the receipt off the paper entirely.
       const n = Number(receipt_offset_mm);
       settings.receipt_offset_mm = Math.min(20, Math.max(-20, Number.isFinite(n) ? n : 0));
+    }
+    if (receipt_text_scale !== undefined) {
+      const n = Number(receipt_text_scale);
+      settings.receipt_text_scale = Math.min(160, Math.max(80, Number.isFinite(n) ? n : 110));
     }
     if (layaway_settings !== undefined) {
       settings.layaway_settings = { ...(settings.layaway_settings || {}), ...layaway_settings };

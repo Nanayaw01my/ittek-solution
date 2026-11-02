@@ -23,17 +23,54 @@ const BASELINE_MM = 80
  * out muddy — the first real print at 9px was hard to read.
  */
 /**
- * A thermal printer's head is narrower than its roll: an "80mm" printer
- * typically images about 72mm, centred, with the rest as dead margin. Laying
- * content out across the full roll width pushes the left column under that
- * margin, which is why the first letter of every label came out faint or
- * clipped. Reserve a side margin and centre what is left.
+ * How much paper is given up at each edge.
+ *
+ * It was 4mm, on the reasoning that an "80mm" head images only about 72mm.
+ * On this shop's printer that was simply wasteful: the test slip's ruler
+ * prints all seventy of its millimetres, so the head reaches further than
+ * 4mm of insurance assumed, and the receipt sat in the middle of a strip of
+ * unused paper down one side.
+ *
+ * 1.5mm is a hair, enough that the first column of dots is not asked to
+ * land exactly on the paper's edge. If a receipt ever does come out with a
+ * letter clipped off one side, the roll width setting is the number to
+ * lower — that is what the test slip's edge markers are for.
  */
-const SIDE_MARGIN_MM = 4
+const SIDE_MARGIN_MM = 1.5
 
-const metricsFor = (widthMm, offsetMm = 0) => {
+const metricsFor = (widthMm, offsetMm = 0, textScale = 100) => {
   const scale = widthMm / BASELINE_MM
   const contentMm = Math.max(30, widthMm - SIDE_MARGIN_MM * 2)
+  /**
+   * The shop's own say over how big the print is.
+   *
+   * Thermal type that is comfortable at a counter under a bright light is
+   * not the same size as type that is comfortable to somebody reading a
+   * receipt later, and neither is a number I can settle from here. So it is
+   * a percentage the shop sets, clamped either side of legible: below about
+   * 80% a 203dpi head starts losing the thin strokes, and above about 160%
+   * the money columns stop fitting beside each other.
+   */
+  const askedScale = Math.min(160, Math.max(80, Number(textScale) || 100)) / 100
+  /**
+   * …but not so big that the figures stop fitting side by side.
+   *
+   * The quantity and the two money columns are fixed widths that grow with
+   * the type. On a 58mm roll at 160% they come to 248px of columns in
+   * 208px of paper, and the prices would have collided or wrapped — a split
+   * total on a customer's receipt, caused by a setting that looked harmless
+   * on the screen where it was typed.
+   *
+   * So the width has the final say: the shop asks, and the paper grants as
+   * much of it as the columns leave room for. On a wide roll that is the
+   * whole request; on a narrow one it quietly stops short.
+   */
+  const contentPx = (contentMm / 25.4) * 96
+  const columnsAtFullSize = (26 + 94 * 2) * scale
+  // 96%, not 100%: filling the line exactly leaves the figures touching,
+  // and each column is rounded to a whole pixel afterwards, which can tip
+  // an exact fit one pixel over into a wrap.
+  const type = Math.min(askedScale, (contentPx * 0.96) / columnsAtFullSize)
   /**
    * Where the receipt sits across the paper.
    *
@@ -62,7 +99,7 @@ const metricsFor = (widthMm, offsetMm = 0) => {
     pageMm: widthMm,
     marginLeftMm: +marginLeftMm.toFixed(2),
     contentMm,
-    fontSize: Math.max(9, +(13 * scale).toFixed(2)),
+    fontSize: Math.max(9, +(13 * scale * type).toFixed(2)),
     /**
      * The price and total columns.
      *
@@ -78,11 +115,11 @@ const metricsFor = (widthMm, offsetMm = 0) => {
      * place for a wrap: a long product name over two lines is still a
      * product name, a split total is a misread receipt.
      */
-    moneyCol: Math.max(54, Math.round(94 * scale)),
-    qtyCol: Math.max(16, Math.round(26 * scale)),
+    moneyCol: Math.max(54, Math.round(94 * scale * type)),
+    qtyCol: Math.max(16, Math.round(26 * scale * type)),
     padY: Math.max(2, +(4 * scale).toFixed(1)),
-    headline: Math.max(13, +(17 * scale).toFixed(2)),
-    small: Math.max(9, +(12 * scale).toFixed(2)),
+    headline: Math.max(13, +(17 * scale * type).toFixed(2)),
+    small: Math.max(9, +(12 * scale * type).toFixed(2)),
     /**
      * The logo, in CSS pixels.
      *
@@ -318,9 +355,9 @@ const measureMm = (root, m) => {
   return pxToMm(px)
 }
 
-export function printReceipt(widthMm = BASELINE_MM, offsetMm = 0) {
+export function printReceipt(widthMm = BASELINE_MM, offsetMm = 0, textScale = 100) {
   const width = Math.min(82, Math.max(MIN_PRINTABLE_MM, Number(widthMm) || BASELINE_MM))
-  const m = metricsFor(width, offsetMm)
+  const m = metricsFor(width, offsetMm, textScale)
 
   // Any teardown still pending belongs to a print that is finished with.
   // Letting it run would dismantle this one.
@@ -440,13 +477,13 @@ export { metricsFor, BASELINE_MM, MIN_PRINTABLE_MM, pxToMm }
  * prompt on its own, and pretending otherwise would be a promise this code
  * cannot keep.
  */
-export function printWhenReady(widthMm, { timeout = 2500, offsetMm = 0 } = {}) {
+export function printWhenReady(widthMm, { timeout = 2500, offsetMm = 0, textScale = 100 } = {}) {
   const area = document.querySelector('.receipt-print-area')
   if (!area) return Promise.resolve(false)
 
   const images = [...area.querySelectorAll('img')].filter((i) => !i.complete)
   if (images.length === 0) {
-    printReceipt(widthMm, offsetMm)
+    printReceipt(widthMm, offsetMm, textScale)
     return Promise.resolve(true)
   }
 
@@ -456,7 +493,7 @@ export function printWhenReady(widthMm, { timeout = 2500, offsetMm = 0 } = {}) {
       if (done) return
       done = true
       clearTimeout(timer)
-      printReceipt(widthMm, offsetMm)
+      printReceipt(widthMm, offsetMm, textScale)
       resolve(true)
     }
     let left = images.length

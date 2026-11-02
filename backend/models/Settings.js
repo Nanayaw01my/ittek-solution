@@ -208,6 +208,16 @@ const SettingsSchema = new mongoose.Schema(
      */
     receipt_offset_mm: { type: Number, default: 0, min: -20, max: 20 },
 
+    /**
+     * How big the receipt prints, as a percentage.
+     *
+     * Type that reads comfortably at a counter is not the size that reads
+     * comfortably on a slip somebody has folded into a pocket, and it is
+     * not a number anybody can settle without holding the paper. So the
+     * shop sets it. 100 is the size the receipt was designed at.
+     */
+    receipt_text_scale: { type: Number, default: 110, min: 80, max: 160 },
+
     // ─── Pay & Pick Later (layaway) terms ──────────────────────────────────
     // Printed on the agreement, so they are shop policy rather than a hardcoded
     // number buried in the PDF generator.

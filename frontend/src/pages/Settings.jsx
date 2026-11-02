@@ -68,6 +68,7 @@ function CompanyTab({ settings, onSave, loading }) {
       ...toFormValues(settings, COMPANY_FIELDS),
       receipt_width_mm: settings?.receipt_width_mm ?? 80,
       receipt_offset_mm: settings?.receipt_offset_mm ?? 0,
+      receipt_text_scale: settings?.receipt_text_scale ?? 110,
       auto_print_receipt: settings?.auto_print_receipt !== false,
     },
   })
@@ -86,6 +87,7 @@ function CompanyTab({ settings, onSave, loading }) {
         low_stock_alert: data.lowStockThreshold === '' ? undefined : Number(data.lowStockThreshold),
         receipt_width_mm: Number(data.receipt_width_mm) || 80,
         receipt_offset_mm: Number(data.receipt_offset_mm) || 0,
+        receipt_text_scale: Number(data.receipt_text_scale) || 110,
         auto_print_receipt: !!data.auto_print_receipt,
         logo_url: logoUrl,
       }))}
@@ -160,6 +162,24 @@ function CompanyTab({ settings, onSave, loading }) {
           rolls are 58mm and 80mm, but use your measurement, not the nearest common size.
         </p>
 
+        <label className="block text-sm font-semibold text-gray-700 mt-4 mb-1">Receipt text size</label>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={80}
+            max={160}
+            step={5}
+            {...register('receipt_text_scale')}
+            className="w-32 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+          <span className="text-sm text-gray-500">%</span>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">
+          100% is the size the receipt was drawn at. Raise it until the slip reads easily at
+          arm&rsquo;s length; much past 130% the price columns start to crowd, which the test
+          slip will show you before a customer does.
+        </p>
+
         <label className="block text-sm font-semibold text-gray-700 mt-4 mb-1">
           Nudge the printing left or right
         </label>
@@ -226,6 +246,7 @@ function CompanyTab({ settings, onSave, loading }) {
         <PrintTestSlip
           widthMm={Number(watch('receipt_width_mm')) || 80}
           offsetMm={Number(watch('receipt_offset_mm')) || 0}
+          textScale={Number(watch('receipt_text_scale')) || 110}
           onClose={() => setTestSlip(false)}
         />
       )}

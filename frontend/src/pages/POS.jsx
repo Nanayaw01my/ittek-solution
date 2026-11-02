@@ -102,7 +102,7 @@ function CartItem({ item, onUpdateQty, onRemove }) {
 
 function ReceiptModal({
   isOpen, onClose, saleData, logoUrl, companyName, companyAddress, companyPhone,
-  receiptWidthMm, receiptOffsetMm, autoPrint,
+  receiptWidthMm, receiptOffsetMm, receiptTextScale, autoPrint,
 }) {
   const receiptRef = useRef(null)
   // Which slip has already been sent to the printer. A sale prints once,
@@ -128,9 +128,9 @@ function ReceiptModal({
 
     // One frame for the window to render its contents, then print once the
     // logo and barcode have arrived.
-    const t = setTimeout(() => { printWhenReady(receiptWidthMm, { offsetMm: receiptOffsetMm }) }, 120)
+    const t = setTimeout(() => { printWhenReady(receiptWidthMm, { offsetMm: receiptOffsetMm, textScale: receiptTextScale }) }, 120)
     return () => clearTimeout(t)
-  }, [isOpen, autoPrint, saleData, receiptWidthMm, receiptOffsetMm])
+  }, [isOpen, autoPrint, saleData, receiptWidthMm, receiptOffsetMm, receiptTextScale])
 
   if (!saleData) return null
 
@@ -1562,6 +1562,7 @@ export default function POS() {
         logoUrl={receiptLogo}
         receiptWidthMm={settings.receipt_width_mm}
         receiptOffsetMm={settings.receipt_offset_mm}
+        receiptTextScale={settings.receipt_text_scale}
         // Default on: a shop that fits a thermal printer wants the slip.
         autoPrint={settings.auto_print_receipt !== false}
         companyName={settings.company_name}
