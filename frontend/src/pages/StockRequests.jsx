@@ -4,7 +4,6 @@ import { useForm, useFieldArray } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { FiPlus, FiTrash2, FiCheck, FiX, FiEye } from 'react-icons/fi'
 import { getStockRequests, createStockRequest, approveStockRequest, rejectStockRequest } from '../api/stockRequests'
-import { getProducts } from '../api/products'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
@@ -12,20 +11,38 @@ import Modal from '../components/Modal'
 import Table from '../components/Table'
 import Badge from '../components/Badge'
 import ConfirmDialog from '../components/ConfirmDialog'
+import ProductPicker from '../components/ProductPicker'
+
+/** One empty line of a request. */
+const BLANK_LINE = {
+  product: '', productName: '', isNew: false, newName: '',
+  sellingPrice: '', quantity: 1, estimatedCost: '',
+}
 
 function CreateRequestModal({ isOpen, onClose }) {
   const queryClient = useQueryClient()
-  const { data: productsData } = useQuery({
-    queryKey: ['products-for-request'],
-    queryFn: () => getProducts({ limit: 200 }).then(r => r.data),
-  })
-  const products = Array.isArray(productsData?.products) ? productsData.products
-    : (Array.isArray(productsData) ? productsData : [])
+  /**
+   * No list of products is fetched here any more.
+   *
+   * It used to ask for `{ limit: 200 }` and fill a dropdown from the
+   * result. The server honours that limit and sorts by name, so in a shop
+   * with more than two hundred products everything after the two hundredth
+   * was simply absent from the dropdown — present in the catalogue, missing
+   * from the one screen where somebody is trying to reorder it. ProductPicker
+   * searches the server instead, which has no such edge.
+   */
 
-  const { register, handleSubmit, control, watch, formState: { errors } } = useForm({
-    defaultValues: { items: [{ product: '', isNew: false, newName: '', sellingPrice: '', quantity: 1, estimatedCost: '' }], notes: '' }
+  const { register, handleSubmit, control, watch, setValue, formState: { errors } } = useForm({
+    defaultValues: { items: [BLANK_LINE], notes: '' }
   })
   const { fields, append, remove } = useFieldArray({ control, name: 'items' })
+  // The picker hands back a whole product; the form holds its id and its
+  // name, so nothing downstream has to look the name up in a list that is
+  // no longer fetched.
+  const choose = (index, product) => {
+    setValue(`items.${index}.product`, product?._id || '')
+    setValue(`items.${index}.productName`, product?.name || '')
+  }
   const items = watch('items')
 
   const total = items.reduce((s, i) => s + (parseFloat(i.estimatedCost || 0) * parseFloat(i.quantity || 0)), 0)
@@ -42,11 +59,10 @@ function CreateRequestModal({ isOpen, onClose }) {
       // one makes the line real.
       .filter((i) => (i.isNew ? String(i.newName || '').trim() : i.product) && Number(i.quantity) > 0)
       .map((i) => {
-        const product = products.find((p) => String(p._id) === String(i.product))
         const quantity = Number(i.quantity) || 0
         const cost = parseFloat(i.estimatedCost) || 0
         const line = {
-          product_name: i.isNew ? String(i.newName).trim() : (product?.name || 'Unknown product'),
+          product_name: i.isNew ? String(i.newName).trim() : (i.productName || 'Unknown product'),
           quantity_requested: quantity,
           estimated_cost: cost,
           total: Number((quantity * cost).toFixed(2)),
@@ -58,7 +74,7 @@ function CreateRequestModal({ isOpen, onClose }) {
       })
 
     if (lines.length === 0) {
-      toast.error('Pick a product — or tick "New item" and type its name — and a quantity')
+      toast.error('Pick a product — or press "Type a new item" and name it — and give a quantity')
       return
     }
     // Said here rather than letting the server bounce the whole request back
@@ -96,21 +112,39 @@ function CreateRequestModal({ isOpen, onClose }) {
                     className="w-full px-3 py-2 border border-amber-300 bg-amber-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                 ) : (
-                  <select
-                    {...register(`items.${index}.product`)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
-                  >
-                    <option value="">Select Product</option>
-                    {products.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
-                  </select>
+                  <ProductPicker
+                    value={items?.[index]?.product
+                      ? { _id: items[index].product, name: items[index].productName }
+                      : null}
+                    onChange={(p) => choose(index, p)}
+                  />
                 )}
                 {/* Something the shop has never sold still has to be askable
                     for. Only an owner can create a product, so approving the
-                    request is what adds it. */}
-                <label className="flex items-center gap-1.5 mt-1 text-[11px] text-gray-500 cursor-pointer">
-                  <input type="checkbox" {...register(`items.${index}.isNew`)} className="rounded" />
-                  New item — not in the list yet
-                </label>
+                    request is what adds it.
+
+                    A button, not the tick-box this used to be: the box was
+                    small, grey and below the field, and the people who need
+                    it are the ones who have just failed to find their item
+                    in the list. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const on = !items?.[index]?.isNew
+                    setValue(`items.${index}.isNew`, on)
+                    // Leaving the old choice behind would submit a line that
+                    // is both a product and a new item.
+                    if (on) choose(index, null)
+                    else setValue(`items.${index}.newName`, '')
+                  }}
+                  className={`mt-1 text-[11px] font-semibold rounded-lg px-2 py-1 border ${
+                    items?.[index]?.isNew
+                      ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {items?.[index]?.isNew ? '← Pick from our products instead' : '+ Type a new item (not in our products)'}
+                </button>
               </div>
               <div className="col-span-2">
                 <input
@@ -144,18 +178,27 @@ function CreateRequestModal({ isOpen, onClose }) {
                 </div>
               )}
               <div className="col-span-1 flex justify-center">
-                {fields.length > 1 && (
-                  <button type="button" onClick={() => remove(index)} className="text-red-400 hover:text-red-600 p-1">
-                    <FiTrash2 size={14} />
-                  </button>
-                )}
+                {/* Always offered, including on the only line. It used to be
+                    hidden whenever one line was left, so a request begun by
+                    mistake could not be cleared without closing the whole
+                    window; now the last line empties itself instead. */}
+                <button
+                  type="button"
+                  title="Remove this line"
+                  onClick={() => (fields.length > 1
+                    ? remove(index)
+                    : (Object.entries(BLANK_LINE).forEach(([k, v]) => setValue(`items.0.${k}`, v))))}
+                  className="text-red-400 hover:text-red-600 p-1"
+                >
+                  <FiTrash2 size={14} />
+                </button>
               </div>
             </div>
           ))}
 
           <button
             type="button"
-            onClick={() => append({ product: '', isNew: false, newName: '', sellingPrice: '', quantity: 1, estimatedCost: '' })}
+            onClick={() => append(BLANK_LINE)}
             className="flex items-center gap-2 text-sm text-orange-600 hover:text-orange-700 font-semibold"
           >
             <FiPlus size={14} /> Add Item
