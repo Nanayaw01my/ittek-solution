@@ -136,13 +136,27 @@ function CompanyTab({ settings, onSave, loading }) {
       </div>
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1">Receipt Paper Width</label>
-        <select {...register('receipt_width_mm')}
-          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
-          <option value={80}>80mm — standard thermal roll</option>
-          <option value={58}>58mm — narrow thermal roll</option>
-          <option value={76}>76mm</option>
-          <option value={82}>82mm — widest this printer takes</option>
-        </select>
+        {/* A number, not a list of four sizes.
+            A roll measured with a ruler is whatever it is — 78mm, in this
+            shop — and the list did not have 78 on it, so the choice was
+            between two wrong answers. 82 was picked, which is wider than
+            the paper: the page then asks for more width than the printer
+            has, and the driver either clips it or shrinks the lot to fit. */}
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={20}
+            max={82}
+            step={1}
+            {...register('receipt_width_mm')}
+            className="w-32 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+          <span className="text-sm text-gray-500">mm wide</span>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">
+          Measure the paper itself with a ruler and type what it says. 7.8cm is 78. Common
+          rolls are 58mm and 80mm, but use your measurement, not the nearest common size.
+        </p>
 
         <label className="mt-3 flex items-start gap-2.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3 cursor-pointer">
           <input type="checkbox" {...register('auto_print_receipt')}
