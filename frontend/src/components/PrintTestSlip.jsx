@@ -96,20 +96,29 @@ export default function PrintTestSlip({ widthMm = 80, onClose }) {
               <p className="text-base font-bold">Headline {m.headline}px</p>
               <p className="text-sm">Body text {m.fontSize}px — abcdefghijklmnop</p>
               <p className="text-xs">Small print {m.small}px — 0123456789</p>
-              {/* Formatted exactly as the real receipt formats money —
-                  toFixed(2), no thousands separator. A comma makes it one
-                  character wider, which wraps at 72mm and would have had
-                  anybody testing their printer chasing a fault that only
-                  existed on this slip. */}
-              <div className="flex">
-                <span className="flex-1">A deliberately long product name</span>
-                <span className="w-8 text-right">99</span>
-                <span className="w-20 text-right">GH&#8373;3500.00</span>
-                <span className="w-20 text-right font-bold">GH&#8373;3500.00</span>
+              {/* Laid out exactly as a real item row is: the product name on
+                  a full-width line of its own, then an empty spacer, the
+                  quantity and the two money columns. The first version of
+                  this slip put the name in the row beside the prices, which
+                  squeezed it into a column five characters wide and printed
+                  "A / deliber / ately / long" down the slip — a fault that
+                  existed only on the test, and exactly the sort of false
+                  alarm a diagnostic must not raise.
+
+                  Money is formatted the way the receipt formats it:
+                  toFixed(2), no thousands separator. */}
+              <div className="text-xs mb-1">
+                <p className="font-medium">A deliberately long product name</p>
+                <div className="flex">
+                  <span className="flex-1" />
+                  <span className="w-8 text-center">99</span>
+                  <span className="w-20 text-right">GH&#8373;3500.00</span>
+                  <span className="w-20 text-right font-bold">GH&#8373;3500.00</span>
+                </div>
               </div>
               <p className="text-xs">
-                The name may wrap. Neither price may — if a price breaks over two lines, the
-                roll width here is wider than the paper.
+                The name may wrap onto a second line. Neither price may — if a price breaks
+                over two lines, the roll width set here is wider than the paper.
               </p>
             </div>
 
