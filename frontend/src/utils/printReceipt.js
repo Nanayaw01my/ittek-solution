@@ -120,6 +120,39 @@ const MIN_PRINTABLE_MM = 40
  * out from under it invites React to trip over the missing child when the
  * modal closes.
  */
+/**
+ * Tell the copy's pictures how tall they are before they have loaded.
+ *
+ * Cloning an <img> gives a fresh element that has to fetch its source all
+ * over again, and until it does the browser lays it out as nothing at all —
+ * `complete: false`, `naturalWidth: 0`, height 0. The receipt is measured
+ * the instant the copy is mounted, so the logo and the QR code were counted
+ * as zero and the page was cut about 60mm shorter than the slip. Everything
+ * past that fell onto a second page, and the printer fed the tail of the
+ * first one blank: a receipt with the footer and the barcode stranded after
+ * a hand's width of empty paper.
+ *
+ * The originals are on screen and have loaded, so their proportions are
+ * known. Handing each copy an `aspect-ratio` lets the browser work out the
+ * height from the width the print rules give it, with nothing to wait for.
+ *
+ * Pictures that have not loaded on screen either are left alone — there is
+ * nothing to copy — but printWhenReady() waits for them first, so by the
+ * time anything is printed they are there.
+ */
+const matchImageShapes = (source, copy) => {
+  const originals = source.querySelectorAll('img')
+  const copies = copy.querySelectorAll('img')
+  originals.forEach((original, i) => {
+    const clone = copies[i]
+    if (!clone) return
+    const box = original.getBoundingClientRect()
+    const w = original.naturalWidth || box.width
+    const h = original.naturalHeight || box.height
+    if (w > 0 && h > 0) clone.style.aspectRatio = `${w} / ${h}`
+  })
+}
+
 const mountPrintCopy = () => {
   const source = document.querySelector('.receipt-print-area')
   if (!source) return null
@@ -127,8 +160,10 @@ const mountPrintCopy = () => {
   document.getElementById(ROOT_ID)?.remove()
   const root = document.createElement('div')
   root.id = ROOT_ID
-  root.appendChild(source.cloneNode(true))
+  const copy = source.cloneNode(true)
+  root.appendChild(copy)
   document.body.appendChild(root)
+  matchImageShapes(source, copy)
   return root
 }
 
