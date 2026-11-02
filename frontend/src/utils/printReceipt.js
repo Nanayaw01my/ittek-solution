@@ -44,8 +44,16 @@ const metricsFor = (widthMm) => {
     padY: Math.max(2, +(4 * scale).toFixed(1)),
     headline: Math.max(13, +(17 * scale).toFixed(2)),
     small: Math.max(9, +(12 * scale).toFixed(2)),
-    // The logo printed nearly the full width of the roll. A third is plenty.
-    logoWidth: Math.round((contentMm / 25.4) * 96 * 0.34),
+    /**
+     * The logo, in CSS pixels.
+     *
+     * A third of the roll came out of the Xprinter as an unreadable smudge
+     * a few millimetres across: a 203dpi head renders a small logo as a
+     * handful of scattered dots, and under a third of a 72mm roll there are
+     * not enough dots left to make a shape. Half the width is the smallest
+     * that prints as a mark somebody recognises.
+     */
+    logoWidth: Math.round((contentMm / 25.4) * 96 * 0.5),
   }
 }
 
@@ -126,7 +134,11 @@ const receiptRules = (m, scope) => {
     max-width: ${m.contentMm}mm !important;
     max-height: none !important;
     overflow: visible !important;
-    padding: ${m.padY}mm 0 !important;
+    /* A couple of millimetres in from each edge. The page is now exactly the
+       printable strip, so content at the very edge sits on the first and last
+       column of dots the head can reach — which is where the first letter of
+       "Invoice" and "Item" came out clipped. */
+    padding: ${m.padY}mm 2mm !important;
     font-size: ${m.fontSize}px !important;
     line-height: 1.35 !important;
     /* A sturdy sans, not monospace. Generic monospace resolves to Courier on
@@ -260,7 +272,21 @@ export function printReceipt(widthMm = BASELINE_MM) {
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.textContent = `
-    @page { size: ${width}mm ${height}mm; margin: 0; }
+    /**
+     * The page is the printable strip, not the roll.
+     *
+     * An "80mm" printer images about 72mm and treats the rest as dead
+     * margin, so a page declared at the full 80mm is wider than anything the
+     * driver can put ink on. Chrome's answer to a page wider than the
+     * printable area is to shrink the whole thing to fit — which is why the
+     * first good print came out small, pale and floating in white space with
+     * a margin down both sides: 72mm of content was scaled down inside an
+     * 80mm page that was itself scaled down into 72mm of paper, twice.
+     *
+     * Declaring the page as the strip itself means nothing is scaled, and
+     * the type prints at the size it was measured at.
+     */
+    @page { size: ${m.contentMm}mm ${height}mm; margin: 0; }
     #${ROOT_ID} { display: none; }
     @media print {
       /* Everything but the receipt is collapsed, not merely hidden, so the
