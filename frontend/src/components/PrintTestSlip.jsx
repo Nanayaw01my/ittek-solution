@@ -24,9 +24,10 @@ import { printReceipt, metricsFor } from '../utils/printReceipt'
  *   - every type size and the money column the item rows use, so a wrapped
  *     price shows up here rather than on a customer's receipt
  */
-export default function PrintTestSlip({ widthMm = 80, onClose }) {
+export default function PrintTestSlip({ widthMm = 80, offsetMm = 0, onClose }) {
   const width = Number(widthMm) || 80
-  const m = metricsFor(width)
+  const offset = Number(offsetMm) || 0
+  const m = metricsFor(width, offset)
 
   // Ticks every 10mm across the printable width, numbered.
   const ticks = Array.from({ length: Math.floor(m.contentMm / 10) + 1 }, (_, i) => i * 10)
@@ -73,7 +74,14 @@ export default function PrintTestSlip({ widthMm = 80, onClose }) {
                   </div>
                 ))}
               </div>
-              <p className="text-xs">Set to {width}mm roll, printing {m.contentMm}mm wide.</p>
+              <p className="text-xs">
+                Set to {width}mm roll, printing {m.contentMm}mm wide
+                {offset ? `, nudged ${offset > 0 ? '+' : ''}${offset}mm` : ''}.
+              </p>
+              <p className="text-xs">
+                Measure the white margin on each side. If they differ, put half the
+                difference in &ldquo;Nudge the printing&rdquo; — leaning right means a minus.
+              </p>
             </div>
 
             <div className="my-2 border-t border-dashed border-gray-400" />
@@ -140,7 +148,7 @@ export default function PrintTestSlip({ widthMm = 80, onClose }) {
             </div>
             <button
               type="button"
-              onClick={() => printReceipt(width)}
+              onClick={() => printReceipt(width, offset)}
               className="w-full flex items-center justify-center gap-2 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl text-sm"
             >
               <FiPrinter size={16} /> Print test slip

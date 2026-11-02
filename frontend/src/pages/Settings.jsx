@@ -67,6 +67,7 @@ function CompanyTab({ settings, onSave, loading }) {
     defaultValues: {
       ...toFormValues(settings, COMPANY_FIELDS),
       receipt_width_mm: settings?.receipt_width_mm ?? 80,
+      receipt_offset_mm: settings?.receipt_offset_mm ?? 0,
       auto_print_receipt: settings?.auto_print_receipt !== false,
     },
   })
@@ -84,6 +85,7 @@ function CompanyTab({ settings, onSave, loading }) {
         tax_rate: data.taxRate === '' ? undefined : Number(data.taxRate),
         low_stock_alert: data.lowStockThreshold === '' ? undefined : Number(data.lowStockThreshold),
         receipt_width_mm: Number(data.receipt_width_mm) || 80,
+        receipt_offset_mm: Number(data.receipt_offset_mm) || 0,
         auto_print_receipt: !!data.auto_print_receipt,
         logo_url: logoUrl,
       }))}
@@ -158,6 +160,33 @@ function CompanyTab({ settings, onSave, loading }) {
           rolls are 58mm and 80mm, but use your measurement, not the nearest common size.
         </p>
 
+        <label className="block text-sm font-semibold text-gray-700 mt-4 mb-1">
+          Nudge the printing left or right
+        </label>
+        {/* A print head does not always start where the paper does. This
+            shop's starts about 6mm in, so a receipt centred on the page
+            printed hard against the right edge with its last column sliced
+            off and a centimetre of paper wasted on the left. Nothing in a
+            browser can measure that — it is a property of the machine — so
+            the shop prints the test slip, sees which way it leans and
+            corrects it here. */}
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={-20}
+            max={20}
+            step={1}
+            {...register('receipt_offset_mm')}
+            className="w-32 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+          <span className="text-sm text-gray-500">mm</span>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">
+          Leave at 0 unless the printing sits off to one side. Minus moves it left, plus moves
+          it right. Print the test slip, measure the white margin on each side, and put half
+          the difference here — leaning right by 12mm means <span className="font-semibold">-6</span>.
+        </p>
+
         <label className="mt-3 flex items-start gap-2.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3 cursor-pointer">
           <input type="checkbox" {...register('auto_print_receipt')}
             className="mt-0.5 w-4 h-4 accent-orange-500" />
@@ -196,6 +225,7 @@ function CompanyTab({ settings, onSave, loading }) {
       {testSlip && (
         <PrintTestSlip
           widthMm={Number(watch('receipt_width_mm')) || 80}
+          offsetMm={Number(watch('receipt_offset_mm')) || 0}
           onClose={() => setTestSlip(false)}
         />
       )}

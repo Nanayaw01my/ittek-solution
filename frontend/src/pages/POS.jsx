@@ -102,7 +102,7 @@ function CartItem({ item, onUpdateQty, onRemove }) {
 
 function ReceiptModal({
   isOpen, onClose, saleData, logoUrl, companyName, companyAddress, companyPhone,
-  receiptWidthMm, autoPrint,
+  receiptWidthMm, receiptOffsetMm, autoPrint,
 }) {
   const receiptRef = useRef(null)
   // Which slip has already been sent to the printer. A sale prints once,
@@ -128,9 +128,9 @@ function ReceiptModal({
 
     // One frame for the window to render its contents, then print once the
     // logo and barcode have arrived.
-    const t = setTimeout(() => { printWhenReady(receiptWidthMm) }, 120)
+    const t = setTimeout(() => { printWhenReady(receiptWidthMm, { offsetMm: receiptOffsetMm }) }, 120)
     return () => clearTimeout(t)
-  }, [isOpen, autoPrint, saleData, receiptWidthMm])
+  }, [isOpen, autoPrint, saleData, receiptWidthMm, receiptOffsetMm])
 
   if (!saleData) return null
 
@@ -360,7 +360,7 @@ function ReceiptModal({
 
         <div className="flex gap-3">
           <button
-            onClick={() => printReceipt(receiptWidthMm)}
+            onClick={() => printReceipt(receiptWidthMm, receiptOffsetMm)}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
           >
             <FiPrinter size={16} /> Print
@@ -1561,6 +1561,7 @@ export default function POS() {
         saleData={lastSale}
         logoUrl={receiptLogo}
         receiptWidthMm={settings.receipt_width_mm}
+        receiptOffsetMm={settings.receipt_offset_mm}
         // Default on: a shop that fits a thermal printer wants the slip.
         autoPrint={settings.auto_print_receipt !== false}
         companyName={settings.company_name}

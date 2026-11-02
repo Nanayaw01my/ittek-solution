@@ -106,7 +106,7 @@ function DebtReceiptModal({ receipt, onClose, settings }) {
 
         <div className="flex gap-3 mt-4">
           <button
-            onClick={() => printReceipt(settings?.receipt_width_mm)}
+            onClick={() => printReceipt(settings?.receipt_width_mm, settings?.receipt_offset_mm)}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
           >
             <FiPrinter size={16} /> Print

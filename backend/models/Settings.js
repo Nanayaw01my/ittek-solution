@@ -192,6 +192,22 @@ const SettingsSchema = new mongoose.Schema(
     // this one accepts 20–82mm. The printed receipt scales to whatever is set.
     receipt_width_mm: { type: Number, default: 80, min: 20, max: 82 },
 
+    /**
+     * Nudge the printout left or right, in millimetres.
+     *
+     * A thermal head does not necessarily start where the paper does. This
+     * shop's Xprinter begins printing about 6mm in from the left edge of
+     * the roll, so a receipt centred on the page came out hard against the
+     * right-hand side with its last column sliced off — while a centimetre
+     * of paper sat unused on the left.
+     *
+     * Nothing in a web page can discover that offset; it is a property of
+     * the machine. So it is a number the shop sets once, by printing the
+     * test slip and seeing which way the slip is leaning. Negative moves
+     * the printing left, positive moves it right.
+     */
+    receipt_offset_mm: { type: Number, default: 0, min: -20, max: 20 },
+
     // ─── Pay & Pick Later (layaway) terms ──────────────────────────────────
     // Printed on the agreement, so they are shop policy rather than a hardcoded
     // number buried in the PDF generator.

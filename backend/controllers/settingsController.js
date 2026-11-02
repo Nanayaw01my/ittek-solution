@@ -65,7 +65,7 @@ const updateSettings = async (req, res) => {
       tax_rate, low_stock_alert, receipt_header, receipt_footer,
       currency_symbol, notification_settings, logo_url,
       base_currency, currencies, loyalty_settings, fraud_settings, layaway_settings,
-      receipt_width_mm, gift_promo, auto_print_receipt,
+      receipt_width_mm, receipt_offset_mm, gift_promo, auto_print_receipt,
     } = req.body;
 
     let settings = await Settings.findOne();
@@ -118,6 +118,12 @@ const updateSettings = async (req, res) => {
     if (receipt_width_mm !== undefined) {
       // Clamp rather than reject: a bad value here would break every receipt.
       settings.receipt_width_mm = Math.min(82, Math.max(20, Number(receipt_width_mm) || 80));
+    }
+    if (receipt_offset_mm !== undefined) {
+      // Clamped, and a nonsense value reads as no nudge at all rather than
+      // throwing the receipt off the paper entirely.
+      const n = Number(receipt_offset_mm);
+      settings.receipt_offset_mm = Math.min(20, Math.max(-20, Number.isFinite(n) ? n : 0));
     }
     if (layaway_settings !== undefined) {
       settings.layaway_settings = { ...(settings.layaway_settings || {}), ...layaway_settings };

@@ -87,7 +87,7 @@ function ServiceReceipt({ charge, company }) {
   )
 }
 
-function ReceiptModal({ charge, company, widthMm, onClose }) {
+function ReceiptModal({ charge, company, widthMm, offsetMm, onClose }) {
   const ref = useRef(null)
   return (
     <Modal isOpen onClose={onClose} title="Service Receipt" size="sm">
@@ -99,7 +99,7 @@ function ReceiptModal({ charge, company, widthMm, onClose }) {
             Close
           </button>
           <button
-            onClick={() => printReceipt(widthMm)}
+            onClick={() => printReceipt(widthMm, offsetMm)}
             className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm inline-flex items-center justify-center gap-2"
           >
             <FiPrinter /> Print
@@ -333,6 +333,7 @@ export default function ServiceCharges() {
           charge={printing}
           company={settings}
           widthMm={settings?.receipt_width_mm}
+          offsetMm={settings?.receipt_offset_mm}
           onClose={() => setPrinting(null)}
         />
       )}

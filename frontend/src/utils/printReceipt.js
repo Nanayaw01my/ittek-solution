@@ -31,12 +31,36 @@ const BASELINE_MM = 80
  */
 const SIDE_MARGIN_MM = 4
 
-const metricsFor = (widthMm) => {
+const metricsFor = (widthMm, offsetMm = 0) => {
   const scale = widthMm / BASELINE_MM
   const contentMm = Math.max(30, widthMm - SIDE_MARGIN_MM * 2)
+  /**
+   * Where the receipt sits across the paper.
+   *
+   * Centred, then nudged by whatever the shop has measured. A thermal head
+   * does not always start where the paper does — this shop's begins about
+   * 6mm in — and no web page can discover that, so the shop prints the test
+   * slip, sees which way it leans and types the correction. Clamped so a
+   * typo cannot push the slip clean off the roll.
+   */
+  const slack = Math.max(0, widthMm - contentMm)
+  /**
+   * The nudge moves the receipt within the slack, and no further.
+   *
+   * Pushing it past either end would put part of the slip outside the page
+   * box, and a browser does not print what falls outside the page — it
+   * clips it. So an over-large nudge pins the receipt to that edge instead
+   * of quietly cutting a column off, which is the fault it was added to
+   * cure. With a 78mm roll the slack is 8mm, so the nudge is worth at most
+   * 4mm either way; if the slip is still off the paper at the limit, the
+   * roll width is set too wide and that is the number to change.
+   */
+  const asked = Number(offsetMm) || 0
+  const marginLeftMm = Math.max(0, Math.min(slack, slack / 2 + asked))
   return {
-    /** The paper. The receipt is centred on it. */
+    /** The paper. The receipt is centred on it, then nudged. */
     pageMm: widthMm,
+    marginLeftMm: +marginLeftMm.toFixed(2),
     contentMm,
     fontSize: Math.max(9, +(13 * scale).toFixed(2)),
     /**
@@ -147,6 +171,11 @@ const receiptRules = (m, scope) => {
   ${a} {
     width: ${m.contentMm}mm !important;
     max-width: ${m.contentMm}mm !important;
+    /* Centred on the paper and then nudged, rather than auto margins:
+       auto centres on the page, which is only the middle of the paper
+       when the print head starts where the paper does. */
+    margin-left: ${m.marginLeftMm}mm !important;
+    margin-right: 0 !important;
     max-height: none !important;
     overflow: visible !important;
     /* Vertical only. The side margins come from the page being the full
@@ -254,9 +283,9 @@ const measureMm = (root, m) => {
   return pxToMm(px)
 }
 
-export function printReceipt(widthMm = BASELINE_MM) {
+export function printReceipt(widthMm = BASELINE_MM, offsetMm = 0) {
   const width = Math.min(82, Math.max(MIN_PRINTABLE_MM, Number(widthMm) || BASELINE_MM))
-  const m = metricsFor(width)
+  const m = metricsFor(width, offsetMm)
 
   // Any teardown still pending belongs to a print that is finished with.
   // Letting it run would dismantle this one.
@@ -376,13 +405,13 @@ export { metricsFor, BASELINE_MM, MIN_PRINTABLE_MM, pxToMm }
  * prompt on its own, and pretending otherwise would be a promise this code
  * cannot keep.
  */
-export function printWhenReady(widthMm, { timeout = 2500 } = {}) {
+export function printWhenReady(widthMm, { timeout = 2500, offsetMm = 0 } = {}) {
   const area = document.querySelector('.receipt-print-area')
   if (!area) return Promise.resolve(false)
 
   const images = [...area.querySelectorAll('img')].filter((i) => !i.complete)
   if (images.length === 0) {
-    printReceipt(widthMm)
+    printReceipt(widthMm, offsetMm)
     return Promise.resolve(true)
   }
 
@@ -392,7 +421,7 @@ export function printWhenReady(widthMm, { timeout = 2500 } = {}) {
       if (done) return
       done = true
       clearTimeout(timer)
-      printReceipt(widthMm)
+      printReceipt(widthMm, offsetMm)
       resolve(true)
     }
     let left = images.length
