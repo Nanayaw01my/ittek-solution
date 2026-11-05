@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
-  FiPackage, FiPlus, FiSearch, FiCheckCircle, FiSlash, FiClock,
+  FiPackage, FiPlus, FiSearch, FiCheckCircle, FiSlash, FiClock, FiTrash2,
 } from 'react-icons/fi'
 import PageHeader from '../components/PageHeader'
 import Modal from '../components/Modal'
@@ -10,6 +10,7 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import RefreshButton from '../components/RefreshButton'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
+import ProductPicker from '../components/ProductPicker'
 import {
   getPackagePlans, createPackagePlan,
   recordPackagePayment, cancelPackagePlan,
@@ -215,6 +216,24 @@ function NewPlanModal({ onClose }) {
   })
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
+  /**
+   * What is in the package.
+   *
+   * Each line is either picked from the catalogue — which is what lets it
+   * come off the shelf — or typed, for the things a package includes that
+   * the shop does not stock as products: labour, delivery, a fitting
+   * somebody buys in for the job.
+   *
+   * Picking fills the price in from the shelf and then leaves it alone. A
+   * package is negotiated, so the price here is the one agreed with this
+   * customer, not the one on the product record.
+   */
+  const [items, setItems] = useState([{ product_id: '', name: '', quantity: 1, unit_price: '', typed: false }])
+  const line = (i, patch) => setItems((rows) => rows.map((r, n) => (n === i ? { ...r, ...patch } : r)))
+  const goodsTotal = items.reduce(
+    (sum, r) => sum + (Number(r.unit_price) || 0) * (Number(r.quantity) || 0), 0
+  )
+
   const mutation = useMutation({
     mutationFn: createPackagePlan,
     onSuccess: () => {
@@ -228,6 +247,98 @@ function NewPlanModal({ onClose }) {
   return (
     <Modal isOpen onClose={onClose} title="New package plan" size="lg">
       <div className="p-5 space-y-4">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-semibold text-gray-700">What&rsquo;s in the package</p>
+            <span className="text-xs text-gray-500">
+              Goods come to <span className="font-bold text-gray-800">{formatCurrency(goodsTotal)}</span>
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {items.map((row, i) => (
+              <div key={i} className="grid grid-cols-12 gap-2 items-start">
+                <div className="col-span-6">
+                  {row.typed ? (
+                    <input
+                      value={row.name}
+                      onChange={(e) => line(i, { name: e.target.value })}
+                      aria-label={`Item ${i + 1} name`}
+                      placeholder="Name it — e.g. installation labour"
+                      className="w-full px-3 py-2 border border-amber-300 bg-amber-50 rounded-xl text-sm
+                                 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                  ) : (
+                    <ProductPicker
+                      value={row.product_id ? { _id: row.product_id, name: row.name } : null}
+                      onChange={(p) => line(i, {
+                        product_id: p?._id || '',
+                        name: p?.name || '',
+                        // The shelf price, as a starting point to edit.
+                        unit_price: p ? String(p.selling_price ?? '') : '',
+                      })}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => line(i, {
+                      typed: !row.typed, product_id: '', name: '', unit_price: '',
+                    })}
+                    className={`mt-1 text-[11px] font-semibold rounded-lg px-2 py-1 border ${
+                      row.typed
+                        ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {row.typed ? '← Pick from our products' : '+ Type it instead (comes off no shelf)'}
+                  </button>
+                </div>
+                <input
+                  type="number" min="1" step="1"
+                  value={row.quantity}
+                  onChange={(e) => line(i, { quantity: e.target.value })}
+                  aria-label={`Item ${i + 1} quantity`}
+                  placeholder="Qty"
+                  className="col-span-2 px-2 py-2 border border-gray-200 rounded-xl text-sm text-center
+                             focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+                <input
+                  type="number" min="0" step="0.01"
+                  value={row.unit_price}
+                  onChange={(e) => line(i, { unit_price: e.target.value })}
+                  aria-label={`Item ${i + 1} price`}
+                  placeholder="Price each"
+                  className="col-span-3 px-2 py-2 border border-gray-200 rounded-xl text-sm text-right
+                             focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+                <button
+                  type="button"
+                  title="Remove this line"
+                  onClick={() => setItems((rows) => (rows.length > 1
+                    ? rows.filter((_, n) => n !== i)
+                    : [{ product_id: '', name: '', quantity: 1, unit_price: '', typed: false }]))}
+                  className="col-span-1 py-2 text-red-400 hover:text-red-600"
+                >
+                  <FiTrash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setItems((rows) => [...rows, { product_id: '', name: '', quantity: 1, unit_price: '', typed: false }])}
+            className="mt-2 flex items-center gap-2 text-sm text-orange-600 hover:text-orange-700 font-semibold"
+          >
+            <FiPlus size={14} /> Add item
+          </button>
+
+          <p className="mt-2 text-[11px] text-gray-500">
+            Anything picked from the products list comes off stock when the plan is started.
+            A typed line is listed and priced but deducts nothing — there is no product behind it.
+          </p>
+        </div>
+
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Customer *</label>
@@ -246,7 +357,9 @@ function NewPlanModal({ onClose }) {
               className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Package total *</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Package total {goodsTotal > 0 && !form.total_amount ? '(the goods, unless you change it)' : '*'}
+            </label>
             <input type="number" min="0" step="0.01" value={form.total_amount} onChange={set('total_amount')} aria-label="Package total"
               className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
           </div>
@@ -294,6 +407,15 @@ function NewPlanModal({ onClose }) {
             disabled={mutation.isPending}
             onClick={() => mutation.mutate({
               ...form,
+              items: items
+                // A line with no name is an empty row somebody added and left.
+                .filter((r) => String(r.name || '').trim())
+                .map((r) => ({
+                  product_id: r.typed ? undefined : (r.product_id || undefined),
+                  name: r.name,
+                  quantity: Number(r.quantity) || 1,
+                  unit_price: Number(r.unit_price) || 0,
+                })),
               total_amount: Number(form.total_amount) || 0,
               installment_amount: Number(form.installment_amount) || 0,
               installments_count: Number(form.installments_count) || undefined,

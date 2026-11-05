@@ -2,6 +2,7 @@ const PackagePlan = require('../models/PackagePlan');
 const Sale = require('../models/Sale');
 const Notification = require('../models/Notification');
 const { isOwner } = require('../middleware/rbac');
+const { deductStock } = require('../utils/saleHelpers');
 
 /**
  * Packages bought on instalments, and the money paid against them.
@@ -28,6 +29,41 @@ const amountFor = (plan, portion, typed) => {
   if (portion === 'full') return money(scheduled);
   if (portion === 'half') return money(scheduled / 2);
   return money(typed);
+};
+
+
+/**
+ * The goods in the package, cleaned up.
+ *
+ * A line is either picked from the catalogue — in which case it has a
+ * product behind it and can come off the shelf — or typed by hand, which
+ * can be priced and listed but not deducted, because there is nothing in
+ * the catalogue to deduct it from.
+ *
+ * Prices are whatever was agreed with this customer. A package is a
+ * negotiated thing; insisting on the shelf price would make the plan
+ * disagree with what the customer was told.
+ */
+const readItems = (raw) => {
+  if (!Array.isArray(raw)) return { items: [], error: null };
+  const items = [];
+  for (const line of raw) {
+    const name = String(line?.name || line?.product_name || '').trim();
+    if (!name) continue;
+    const quantity = Math.max(1, Math.floor(Number(line?.quantity) || 1));
+    const unitPrice = money(line?.unit_price ?? line?.price);
+    if (unitPrice < 0) {
+      return { items: [], error: `${name} cannot have a price below nothing.` };
+    }
+    items.push({
+      product_id: line?.product_id || line?.product || undefined,
+      name,
+      quantity,
+      unit_price: unitPrice,
+      total: money(unitPrice * quantity),
+    });
+  }
+  return { items, error: null };
 };
 
 /**
@@ -131,7 +167,19 @@ const createPackagePlan = async (req, res) => {
     if (!String(package_name || '').trim()) {
       return res.status(400).json({ success: false, message: 'Which package? Pick one or type its name.' });
     }
-    const total = money(total_amount);
+    const listed = money((Array.isArray(req.body.items) ? req.body.items : []).reduce(
+      (sum, l) => sum + (Number(l?.unit_price ?? l?.price) || 0) * Math.max(1, Math.floor(Number(l?.quantity) || 1)),
+      0
+    ));
+    /**
+     * The agreed total wins over what the goods add up to.
+     *
+     * A package is usually sold for less than the sum of its parts — that
+     * is what makes it a package — so the figure typed into the form is the
+     * one the instalments are worked out from. The goods only supply a
+     * total when nobody typed one, which saves adding six lines up by hand.
+     */
+    const total = money(total_amount) > 0 ? money(total_amount) : listed;
     if (!(total > 0)) {
       return res.status(400).json({ success: false, message: 'What does the package come to in total?' });
     }
@@ -145,6 +193,9 @@ const createPackagePlan = async (req, res) => {
       return res.status(400).json({ success: false, message: 'The deposit is more than the package costs.' });
     }
 
+    const { items, error: itemError } = readItems(req.body.items);
+    if (itemError) return res.status(400).json({ success: false, message: itemError });
+
     const plan = new PackagePlan({
       customer_name: String(customer_name).trim(),
       customer_phone: String(customer_phone || '').trim(),
@@ -155,6 +206,7 @@ const createPackagePlan = async (req, res) => {
       frequency: frequency === 'weekly' ? 'weekly' : 'monthly',
       installments_count: Number(installments_count) || undefined,
       notes: String(notes || '').trim(),
+      items,
       created_by: req.user._id,
       payments: [],
     });
@@ -169,6 +221,28 @@ const createPackagePlan = async (req, res) => {
       });
     }
     await plan.save();
+
+    /**
+     * The goods leave the shelf now, once.
+     *
+     * A package is paid for over months but the stock moves on one day —
+     * the day the customer takes it home, which at this counter is the day
+     * the plan is written. Deducting per payment would take one freezer off
+     * the shelf four times; deducting never, which is what this did at
+     * first, leaves the shop believing it still has goods that are in
+     * somebody's kitchen.
+     *
+     * Only lines picked from the catalogue move: a typed line names nothing
+     * the system knows. deductStock is the till's own, which floors at zero
+     * and avoids a full document validation that an unrelated bad field on
+     * some other product could fail.
+     */
+    const stocked = items.filter((i) => i.product_id);
+    if (stocked.length > 0) {
+      await deductStock(stocked.map((i) => ({ product_id: i.product_id, quantity: i.quantity })));
+      plan.stock_taken_at = new Date();
+      await plan.save();
+    }
 
     // The deposit is money taken today, so it goes into today, exactly as
     // every instalment after it will.

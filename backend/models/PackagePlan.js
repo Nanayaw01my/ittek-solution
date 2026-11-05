@@ -45,6 +45,27 @@ const PaymentSchema = new mongoose.Schema(
   { _id: true }
 );
 
+/**
+ * What is actually in the package.
+ *
+ * A line is either something the shop stocks — picked from the catalogue,
+ * at whatever price was agreed for this customer rather than the shelf
+ * price — or something typed in by hand. Only a picked line has a product
+ * behind it, and only a picked line can come off the shelf: there is
+ * nothing to deduct for a name somebody typed.
+ */
+const ItemSchema = new mongoose.Schema(
+  {
+    product_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+    name: { type: String, required: true, trim: true },
+    quantity: { type: Number, default: 1, min: 1 },
+    /** The price agreed here, which is not always the shelf price. */
+    unit_price: { type: Number, default: 0, min: 0 },
+    total: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false }
+);
+
 const PackagePlanSchema = new mongoose.Schema(
   {
     customer_name: { type: String, required: true, trim: true },
@@ -74,6 +95,19 @@ const PackagePlanSchema = new mongoose.Schema(
       default: 'active',
     },
     notes: { type: String, trim: true },
+
+    /** The goods that make up the package. */
+    items: [ItemSchema],
+
+    /**
+     * When the goods came off the shelf.
+     *
+     * Recorded so it can only happen once. A package is paid for over
+     * months and the stock moves on one day — the day it is handed over —
+     * and deducting again on any later edit would walk the shelf down to
+     * nothing for goods that left the shop once.
+     */
+    stock_taken_at: { type: Date },
 
     created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     payments: [PaymentSchema],

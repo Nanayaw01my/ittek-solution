@@ -13,16 +13,30 @@ const Module = require('module');
 const B = path.join(__dirname, '..');
 
 const sales = [];
+const deducted = [];
 const notes = [];
 let plan = null;
 
 const orig = Module._load;
 Module._load = function (req) {
-  if (req.includes('models/PackagePlan')) return {
-    findById: async () => plan,
-    find: () => ({ populate() { return this; }, sort() { return this; }, skip() { return this; }, limit: async () => [] }),
-    countDocuments: async () => 0,
-  };
+  if (req.includes('models/PackagePlan')) {
+    const Real = orig.call(this, path.join(B, 'models/PackagePlan.js'), module, false);
+    // `new PackagePlan(...)` in the controller must give a real document, so
+    // the schema's own validation and pre-save hook are what run.
+    const Stub = function (...args) {
+      const doc = new Real(...args);
+      doc.save = async () => new Promise((resolve, reject) => {
+        doc.schema.s.hooks.execPre('save', doc, [], (e) => (e ? reject(e) : resolve()));
+      });
+      return doc;
+    };
+    Stub.findById = async () => plan;
+    return Object.assign(Stub, {
+      find: () => ({ populate() { return this; }, sort() { return this; }, skip() { return this; }, limit: async () => [] }),
+      countDocuments: async () => 0,
+      findById: async () => plan,
+    });
+  }
   if (req.includes('models/Sale')) return {
     // A real id, because the plan stores it and the schema casts it.
     create: async (d) => {
@@ -32,6 +46,9 @@ Module._load = function (req) {
     },
   };
   if (req.includes('models/Notification')) return { create: async (d) => { notes.push(d); return d; } };
+  if (req.includes('utils/saleHelpers')) return {
+    deductStock: async (lines) => { deducted.push(...lines); },
+  };
   return orig.apply(this, arguments);
 };
 const c = require(path.join(B, 'controllers/packagePlansController.js'));
@@ -202,4 +219,78 @@ test('a plan cannot be started without the figures the payments depend on', asyn
     'no instalment, so full and half would both be nothing');
   assert.strictEqual((await attempt({ ...good, deposit: 30000 })).code, 400,
     'a deposit bigger than the package');
+});
+
+/**
+ * The goods in the package.
+ *
+ * A package is paid for over months but the stock moves once, on the day
+ * the customer takes it home. Deducting per payment would take one freezer
+ * off the shelf four times; deducting never leaves the shop believing it
+ * still has goods that are in somebody's kitchen.
+ */
+test('the goods come off the shelf, once, and only the ones we stock', async (t) => {
+  const panel = new Types.ObjectId();
+  const battery = new Types.ObjectId();
+
+  const start = async (items, extra = {}) => {
+    deducted.length = 0;
+    const r = res();
+    await c.createPackagePlan({
+      user,
+      body: {
+        customer_name: 'KWESI MENSAH',
+        package_name: '3 Battery Solar Kit',
+        installment_amount: 3500,
+        items,
+        ...extra,
+      },
+    }, r);
+    return r;
+  };
+
+  await t.test('a picked product is deducted at the quantity on the line', async () => {
+    const r = await start([
+      { product_id: panel, name: '570W Panel', quantity: 2, unit_price: 2200 },
+      { product_id: battery, name: '100AH Battery', quantity: 3, unit_price: 1800 },
+    ], { total_amount: 28500 });
+
+    assert.strictEqual(r.code, 201);
+    assert.deepStrictEqual(
+      deducted.map((d) => [String(d.product_id), d.quantity]),
+      [[String(panel), 2], [String(battery), 3]]
+    );
+  });
+
+  await t.test('a typed line is listed and priced but deducts nothing', async () => {
+    const r = await start([
+      { product_id: panel, name: '570W Panel', quantity: 1, unit_price: 2200 },
+      { name: 'Installation labour', quantity: 1, unit_price: 500 },
+    ], { total_amount: 5000 });
+
+    assert.strictEqual(r.code, 201);
+    assert.strictEqual(deducted.length, 1, 'only the catalogue line moves');
+    assert.strictEqual(r.body.data.items.length, 2, 'but both are on the plan');
+  });
+
+  await t.test('the agreed total beats what the goods add up to', async () => {
+    // Six thousand of parts, sold as a package for five.
+    const r = await start([{ product_id: panel, name: '570W Panel', quantity: 3, unit_price: 2000 }],
+      { total_amount: 5000 });
+    assert.strictEqual(r.body.data.total_amount, 5000);
+  });
+
+  await t.test('with no total typed, the goods supply one', async () => {
+    const r = await start([
+      { product_id: panel, name: '570W Panel', quantity: 2, unit_price: 2200 },
+      { name: 'Cable', quantity: 1, unit_price: 300 },
+    ]);
+    assert.strictEqual(r.body.data.total_amount, 4700);
+  });
+
+  await t.test('a plan with no goods at all is still a plan', async () => {
+    const r = await start([], { total_amount: 9000 });
+    assert.strictEqual(r.code, 201);
+    assert.strictEqual(deducted.length, 0);
+  });
 });
