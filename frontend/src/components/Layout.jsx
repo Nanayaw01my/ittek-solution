@@ -76,6 +76,8 @@ const NAV_ITEMS = [
   { to: '/stock-requests', label: 'Stock Requests', icon: FiInbox, minLevel: 1, section: 'stock' },
   { to: '/credit-agreements', label: 'Credit Agreements', icon: FiCreditCard, minLevel: 2, section: 'customers' },
   { to: '/layaways', label: 'Layaways', icon: FiArchive, minLevel: 2, section: 'customers' },
+  // Freezers and kits paid for over months. Any attendant may take a payment.
+  { to: '/package-plans', label: 'Package Plans', icon: FiPackage, minLevel: 1, section: 'customers' },
   { to: '/documents', label: 'Documents', icon: FiClipboard, minLevel: 2, section: 'admin' },
   { to: '/fraud-alerts', label: 'Fraud Alerts', icon: FiShield, minLevel: 3, section: 'admin' },
   { to: '/products', label: 'Products', icon: FiPackage, minLevel: 3, section: 'stock' },

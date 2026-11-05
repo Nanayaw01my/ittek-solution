@@ -159,6 +159,21 @@ const SaleSchema = new mongoose.Schema(
       index: true,
       sparse: true,
     },
+    /**
+     * Set when the sale is an instalment paid against a package plan.
+     *
+     * The money is counted on the day it was handed over, which is what puts
+     * a month of instalments into that month's takings instead of nowhere.
+     * The marker is here so a report can tell instalment money apart from
+     * goods sold over the counter without having to guess from an invoice
+     * number.
+     */
+    package_ref: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PackagePlan',
+      index: true,
+      sparse: true,
+    },
     customer_phone: {
       type: String,
       trim: true,

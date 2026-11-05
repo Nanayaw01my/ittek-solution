@@ -46,6 +46,9 @@ const GRANTABLE_PAGES = {
   debts: { label: 'Debts', defaultLevel: 2, modes: ['view', 'full'] },
   // Any member of staff may ask for stock; only an owner may approve it.
   'stock-requests': { label: 'Stock Requests', defaultLevel: 1, modes: ['view', 'full'] },
+  // Instalments on a package: any attendant may take one, because the
+  // person the customer hands the money to is whoever is on the counter.
+  'package-plans': { label: 'Package Plans', defaultLevel: 1, modes: ['view', 'full'] },
   'credit-agreements': { label: 'Credit Agreements', defaultLevel: 2, modes: ['view', 'full'] },
 };
 

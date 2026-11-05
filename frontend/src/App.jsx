@@ -34,6 +34,7 @@ import Refunds from './pages/Refunds'
 import SalesHistory from './pages/SalesHistory'
 import PublicReceipt from './pages/PublicReceipt'
 import Layaways from './pages/Layaways'
+import PackagePlans from './pages/PackagePlans'
 import FieldDispatch from './pages/FieldDispatch'
 import PhoneSales from './pages/PhoneSales'
 import ServiceCharges from './pages/ServiceCharges'
@@ -209,6 +210,8 @@ export default function App() {
         <Route path="stock-requests" element={<ProtectedRoute minLevel={1} page="stock-requests"><StockRequests /></ProtectedRoute>} />
         <Route path="credit-agreements" element={<ProtectedRoute minLevel={2} page="credit-agreements"><CreditAgreements /></ProtectedRoute>} />
         <Route path="layaways" element={<ProtectedRoute minLevel={2}><Layaways /></ProtectedRoute>} />
+        {/* Any member of staff can take an instalment over the counter. */}
+        <Route path="package-plans" element={<ProtectedRoute minLevel={1} page="package-plans"><PackagePlans /></ProtectedRoute>} />
         {/* Staff conduct alerts — owners only; they name individual staff */}
         <Route path="fraud-alerts" element={<ProtectedRoute minLevel={3}><FraudAlerts /></ProtectedRoute>} />
 
