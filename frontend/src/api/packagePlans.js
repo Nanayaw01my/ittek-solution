@@ -1,7 +1,6 @@
 import api from './axios'
 
 export const getPackagePlans = (params) => api.get('/package-plans', { params })
-export const getPackageCatalogue = () => api.get('/package-plans/catalogue')
 export const createPackagePlan = (data) => api.post('/package-plans', data)
 export const getPackagePlan = (id) => api.get(`/package-plans/${id}`)
 

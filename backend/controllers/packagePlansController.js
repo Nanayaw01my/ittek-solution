@@ -2,7 +2,6 @@ const PackagePlan = require('../models/PackagePlan');
 const Sale = require('../models/Sale');
 const Notification = require('../models/Notification');
 const { isOwner } = require('../middleware/rbac');
-const { PLAN_SETS } = require('../config/installmentPlans');
 
 /**
  * Packages bought on instalments, and the money paid against them.
@@ -107,35 +106,6 @@ const getPackagePlans = async (req, res) => {
     });
   } catch (err) {
     console.error('Get package plans error:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error.' });
-  }
-};
-
-/**
- * GET /api/package-plans/catalogue
- *
- * The printed offers, so the counter picks a package instead of copying four
- * figures off a sheet and getting one of them wrong.
- */
-const getCatalogue = async (_req, res) => {
-  try {
-    const sets = Object.entries(PLAN_SETS).map(([key, set]) => ({
-      key,
-      title: set.title,
-      packages: (set.packages || []).map((p) => ({
-        name: p.name,
-        total: p.total,
-        deposit: p.deposit,
-        months: p.months,
-        monthly: p.monthly,
-        weeks: p.weeks,
-        weekly: p.weekly,
-        cashPrice: p.cashPrice,
-      })),
-    }));
-    return res.status(200).json({ success: true, data: sets });
-  } catch (err) {
-    console.error('Package catalogue error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -340,7 +310,7 @@ const cancelPackagePlan = async (req, res) => {
 };
 
 module.exports = {
-  getPackagePlans, getCatalogue, createPackagePlan, getPackagePlan,
+  getPackagePlans, createPackagePlan, getPackagePlan,
   recordPayment, cancelPackagePlan,
   // exported for tests
   amountFor, withTotals,

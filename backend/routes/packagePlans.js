@@ -4,7 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
-  getPackagePlans, getCatalogue, createPackagePlan, getPackagePlan,
+  getPackagePlans, createPackagePlan, getPackagePlan,
   recordPayment, cancelPackagePlan,
 } = require('../controllers/packagePlansController');
 
@@ -20,7 +20,6 @@ const {
 router.use(authenticate, requireLevel(1));
 
 router.get('/', getPackagePlans);
-router.get('/catalogue', getCatalogue);
 router.post('/', auditLog('CREATE_PACKAGE_PLAN'), createPackagePlan);
 router.get('/:id', getPackagePlan);
 router.post('/:id/payments', auditLog('PACKAGE_PLAN_PAYMENT'), recordPayment);

@@ -11,7 +11,7 @@ import RefreshButton from '../components/RefreshButton'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
 import {
-  getPackagePlans, getPackageCatalogue, createPackagePlan,
+  getPackagePlans, createPackagePlan,
   recordPackagePayment, cancelPackagePlan,
 } from '../api/packagePlans'
 
@@ -195,6 +195,12 @@ function PaymentModal({ plan, onClose }) {
 /**
  * Starting a plan, and taking the deposit in the same breath.
  *
+ * The package is typed, not picked. There was a list of the advertised
+ * offers here that filled the four figures in, but the shop writes its own
+ * packages — a plan is whatever was agreed with the customer in front of
+ * them, which is rarely one of three printed sheets — so the list was a
+ * screenful of someone else's prices standing in front of the form.
+ *
  * The fields carry aria-labels because the labels above them are not
  * attached to anything — a screen reader announces an unnamed box, and
  * nothing can find the field by the name a person sees. On a screen that
@@ -209,29 +215,6 @@ function NewPlanModal({ onClose }) {
   })
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
-  const { data: catalogue } = useQuery({
-    queryKey: ['package-catalogue'],
-    queryFn: () => getPackageCatalogue().then((r) => r.data),
-  })
-  const sets = Array.isArray(catalogue) ? catalogue : []
-
-  /**
-   * Picking an advertised package fills the figures in.
-   *
-   * There are four of them — the total, the deposit, the instalment and how
-   * many — and copying them off a printed sheet by hand is how a customer
-   * ends up on a plan the shop never offered.
-   */
-  const choose = (setKey, pkg) => setForm((f) => ({
-    ...f,
-    package_set: setKey,
-    package_name: pkg.name,
-    total_amount: String(pkg.total ?? ''),
-    deposit: String(pkg.deposit ?? ''),
-    installment_amount: String(f.frequency === 'weekly' ? (pkg.weekly ?? '') : (pkg.monthly ?? '')),
-    installments_count: String(f.frequency === 'weekly' ? (pkg.weeks ?? '') : (pkg.months ?? '')),
-  }))
-
   const mutation = useMutation({
     mutationFn: createPackagePlan,
     onSuccess: () => {
@@ -245,39 +228,6 @@ function NewPlanModal({ onClose }) {
   return (
     <Modal isOpen onClose={onClose} title="New package plan" size="lg">
       <div className="p-5 space-y-4">
-        {sets.length > 0 && (
-          <div>
-            <p className="text-sm font-semibold text-gray-700 mb-2">Pick the package</p>
-            <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
-              {sets.map((s) => (
-                <div key={s.key}>
-                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1">{s.title}</p>
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    {s.packages.map((p) => (
-                      <button
-                        key={p.name}
-                        type="button"
-                        onClick={() => choose(s.key, p)}
-                        className={`text-left px-3 py-2 rounded-xl border text-sm ${
-                          form.package_name === p.name
-                            ? 'border-orange-500 bg-orange-50'
-                            : 'border-gray-200 hover:bg-gray-50'
-                        }`}
-                      >
-                        <span className="block font-semibold text-gray-800">{p.name}</span>
-                        <span className="block text-[11px] text-gray-500">
-                          {formatCurrency(p.total)} · {formatCurrency(p.deposit)} down ·{' '}
-                          {formatCurrency(p.monthly)}/month
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Customer *</label>
@@ -292,7 +242,7 @@ function NewPlanModal({ onClose }) {
           <div className="sm:col-span-2">
             <label className="block text-xs font-semibold text-gray-600 mb-1">Package *</label>
             <input value={form.package_name} onChange={set('package_name')} aria-label="Package"
-              placeholder="e.g. 218L DC Freezer"
+              placeholder="e.g. 218L DC Freezer, or whatever you agreed"
               className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
           </div>
           <div>
