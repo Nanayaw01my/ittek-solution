@@ -28,6 +28,39 @@ const FIELD_AGENT_ALLOWED = [
 // shop. The goods are chosen for them at the counter.
 
 
+/**
+ * What a Managing Director's account may reach.
+ *
+ * The MD ranks beside the CEO but does not do the CEO's job: their remit
+ * is the business's own figures, what it is owed, who it buys from, and
+ * what the shop floor is asking for. Everything else — the till, the
+ * catalogue, the staff screens, the settings — is somebody else's work.
+ *
+ * An allowlist rather than a level, for the same reason the field agent
+ * has one: a level says how senior somebody is, and this is not about
+ * seniority. Hiding the menu alone would not do it either — the screens
+ * would be gone and the API still open, which is a locked door beside an
+ * open window.
+ */
+const MANAGING_DIRECTOR_ALLOWED = [
+  '/api/auth',            // sign in, sign out, /me
+  '/api/director',        // their own portal
+  '/api/debts',           // what the shop is owed
+  '/api/reminders',       // chasing it, which the Debts screen does
+  '/api/suppliers',       // who the shop buys from
+  '/api/stock-requests',  // and approving what the floor asks for
+  '/api/products',        // the picker inside a stock request, and supplier lookups
+  '/api/notifications',
+  '/api/settings',        // company name, currency, the shop's own thresholds
+];
+
+const reaches = (req, allowed) => {
+  const path = (req.originalUrl || req.url || '').split('?')[0];
+  return allowed.some((prefix) => path === prefix || path.startsWith(prefix + '/'));
+};
+
+const managingDirectorMayReach = (req) => reaches(req, MANAGING_DIRECTOR_ALLOWED);
+
 const fieldAgentMayReach = (req) => {
   const path = (req.originalUrl || req.url || '').split('?')[0];
   return FIELD_AGENT_ALLOWED.some(
@@ -94,6 +127,13 @@ const authenticate = async (req, res, next) => {
       });
     }
 
+    if (user.role === 'Managing Director' && !managingDirectorMayReach(req)) {
+      return res.status(403).json({
+        success: false,
+        message: 'That screen is not part of the Managing Director\'s remit.',
+      });
+    }
+
     next();
   } catch (error) {
     console.error('Auth middleware error:', error.message);
@@ -104,4 +144,5 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-module.exports = { authenticate };
+module.exports = {
+  MANAGING_DIRECTOR_ALLOWED, authenticate };

@@ -58,6 +58,24 @@ const seesOwnRecordsOnly = (role) => SELF_ONLY_ROLES.includes(role);
 const STAFF_ROLES = ['Manager', 'Sales', 'Engineer', 'Field Agent'];
 
 /**
+ * Who may ring up a sale.
+ *
+ * Selling is not a rank, so it is not a level. A Manager outranks a sales
+ * attendant and still has no business at the till; the Managing Director
+ * outranks everybody and runs the business rather than the counter. Only
+ * the people who actually serve customers, and the owners who stand in for
+ * them, take money.
+ *
+ * A Field Agent is absent on purpose and was already barred: their sales go
+ * through a dispatch sheet, which is a different thing with different
+ * stock. An Engineer is absent because the shop said so — the role was
+ * created as "the same as Sales", and this list is the one place that is no
+ * longer true.
+ */
+const SELLING_ROLES = ['Sales', 'CEO', 'COO', 'Super Admin'];
+const maySell = (role) => SELLING_ROLES.includes(role);
+
+/**
  * requireRoles(...roles)
  * Returns middleware that checks req.user.role is in the allowed roles list.
  *
@@ -163,5 +181,5 @@ const ownerBelowAdmin = (role) => isOwner(role) && role !== 'Super Admin';
 
 module.exports = {
   requireRoles, requireLevel, requirePage, ROLE_LEVELS, OWNER_ROLES, isOwner, ownerBelowAdmin,
-  SELF_ONLY_ROLES, seesOwnRecordsOnly, STAFF_ROLES,
+  SELF_ONLY_ROLES, seesOwnRecordsOnly, STAFF_ROLES, SELLING_ROLES, maySell,
 };

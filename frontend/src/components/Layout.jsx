@@ -22,6 +22,27 @@ import InstallAppButton from './InstallAppButton'
 /** The only screens a DSR out on the field ever sees. */
 export const FIELD_AGENT_PAGES = ['/field-dispatch', '/phone-sales', '/notifications']
 
+/**
+ * The Managing Director's screens.
+ *
+ * Beside the CEO in rank, but a narrower job: the business's figures, what
+ * it is owed, who it buys from, and what the floor is asking for. The same
+ * list is enforced on the API in middleware/auth.js — this one only decides
+ * what the menu shows, and a menu is not a lock.
+ */
+export const MANAGING_DIRECTOR_PAGES = [
+  '/director', '/debts', '/suppliers', '/stock-requests', '/notifications',
+]
+
+/**
+ * Who may ring up a sale, mirroring SELLING_ROLES on the server.
+ *
+ * Selling is a job, not a rank, so it is not a level: a Manager outranks a
+ * sales attendant and still has no business at the till.
+ */
+export const SELLING_ROLES = ['Sales', 'CEO', 'COO', 'Super Admin']
+export const maySell = (role) => SELLING_ROLES.includes(role)
+
 /** Where a field agent lands after signing in, instead of the dashboard. */
 export const FIELD_AGENT_HOME = '/field-dispatch'
 
@@ -167,9 +188,13 @@ export default function Layout() {
   // on a rep's phone. The server enforces the same list.
   const visibleNavItems = user?.role === 'Field Agent'
     ? NAV_ITEMS.filter(item => FIELD_AGENT_PAGES.includes(item.to))
-    : NAV_ITEMS.filter(item =>
-      userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1))
-    )
+    : user?.role === 'Managing Director'
+      ? NAV_ITEMS.filter(item => MANAGING_DIRECTOR_PAGES.includes(item.to))
+      : NAV_ITEMS.filter(item =>
+        (userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1)))
+        // The till is a job rather than a rank, so a level does not open it.
+        && (item.to !== '/pos' || maySell(user?.role))
+      )
 
   useEffect(() => { if (!sidebarOpen) setNavFilter('') }, [sidebarOpen])
 

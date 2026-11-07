@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import useAuthStore from './store/authStore'
 import useDocumentTitle from './hooks/useDocumentTitle'
 import { canAccessPage, ROLE_LEVELS } from './config/pageAccess'
-import Layout, { FIELD_AGENT_PAGES, FIELD_AGENT_HOME, homeFor } from './components/Layout'
+import Layout, { FIELD_AGENT_PAGES, FIELD_AGENT_HOME, MANAGING_DIRECTOR_PAGES, SELLING_ROLES, homeFor } from './components/Layout'
 import LoadingSpinner from './components/LoadingSpinner'
 
 // Pages
@@ -79,6 +79,17 @@ function ProtectedRoute({ children, minLevel = 1, allowedRoles = null, page = nu
     const here = path || location.pathname
     if (!FIELD_AGENT_PAGES.some(p => here === p || here.startsWith(p + '/'))) {
       return <Navigate to="/field-dispatch" replace />
+    }
+  }
+
+  // The Managing Director's remit is four screens, and typing a fifth into
+  // the address bar lands them back on their portal. The same list is
+  // enforced on the API, so this is the tidy half of the answer rather than
+  // the whole of it.
+  if (user?.role === 'Managing Director') {
+    const here = path || location.pathname
+    if (!MANAGING_DIRECTOR_PAGES.some(p => here === p || here.startsWith(p + '/'))) {
+      return <Navigate to="/director" replace />
     }
   }
 
@@ -165,7 +176,9 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="expenses" element={<Expenses />} />
         <Route path="notifications" element={<Notifications />} />
-        <Route path="pos" element={<ProtectedRoute minLevel={1}><POS /></ProtectedRoute>} />
+        {/* The till is a job, not a rank: a Manager outranks a sales
+            attendant and still does not serve customers. */}
+        <Route path="pos" element={<ProtectedRoute allowedRoles={SELLING_ROLES}><POS /></ProtectedRoute>} />
         <Route path="refunds" element={<ProtectedRoute minLevel={1}><Refunds /></ProtectedRoute>} />
         {/* Field dispatch is open to every signed-in user. */}
         <Route path="field-dispatch" element={<ProtectedRoute minLevel={1}><FieldDispatch /></ProtectedRoute>} />
