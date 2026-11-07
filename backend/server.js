@@ -259,6 +259,7 @@ app.use('/api/workers', require('./routes/workers'));
 app.use('/api/purchases', require('./routes/purchases'));
 app.use('/api/stock-requests', require('./routes/stockRequests'));
 app.use('/api/package-plans', require('./routes/packagePlans'));
+app.use('/api/director', require('./routes/director'));
 app.use('/api/dispatches', require('./routes/dispatches'));
 app.use('/api/phone-sales', require('./routes/phoneSales'));
 app.use('/api/service-charges', require('./routes/serviceCharges'));

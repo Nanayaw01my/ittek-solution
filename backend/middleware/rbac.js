@@ -12,6 +12,13 @@
 const ROLE_LEVELS = {
   'Super Admin': 4,
   CEO: 3,
+  /**
+   * The MD sits beside the CEO rather than above them: same level, same
+   * reach, a different title and a different landing screen. Nothing is
+   * gated on the name — everything an owner may do is gated on being in
+   * OWNER_ROLES below, which is why adding a title costs one line here.
+   */
+  'Managing Director': 3,
   // The COO runs the operation, so they reach everything the CEO reaches.
   // Only the Super Admin sits above, and only for the things that destroy
   // data — clearing records and restoring backups — which are gated by role
@@ -139,10 +146,22 @@ const requirePage = (page, ...modes) => {
  * to those lists exists everywhere except the places that actually decide
  * what somebody can do. Which is how a new role half-works.
  */
-const OWNER_ROLES = ['CEO', 'COO', 'Super Admin'];
+const OWNER_ROLES = ['CEO', 'COO', 'Managing Director', 'Super Admin'];
 const isOwner = (role) => OWNER_ROLES.includes(role);
 
+/**
+ * An owner who is not the Super Admin.
+ *
+ * Several screens carried their own ['CEO', 'COO'] to mean "runs the
+ * business, but does not appoint its officers". Spelled as a list of
+ * names, each one silently excluded the next title the shop invented —
+ * a Managing Director added to the levels would have been able to see
+ * the users screen and found the other owners missing from it. Asked as
+ * a question about rank, a new owner role needs no edit here.
+ */
+const ownerBelowAdmin = (role) => isOwner(role) && role !== 'Super Admin';
+
 module.exports = {
-  requireRoles, requireLevel, requirePage, ROLE_LEVELS, OWNER_ROLES, isOwner,
+  requireRoles, requireLevel, requirePage, ROLE_LEVELS, OWNER_ROLES, isOwner, ownerBelowAdmin,
   SELF_ONLY_ROLES, seesOwnRecordsOnly, STAFF_ROLES,
 };

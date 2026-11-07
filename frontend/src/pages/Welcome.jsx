@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FiUser, FiArrowRight } from 'react-icons/fi'
 import useAuthStore from '../store/authStore'
-import { FIELD_AGENT_HOME } from '../components/Layout'
+import { homeFor } from '../components/Layout'
 import { getMe } from '../api/auth'
 import { getRoleLabel } from '../utils/helpers'
 
@@ -51,8 +51,9 @@ export default function Welcome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // A field agent has no dashboard — their one screen is where they land.
-  const home = user?.role === 'Field Agent' ? FIELD_AGENT_HOME : '/dashboard'
+  // Shared with App, so there is one answer to "where does this person
+  // land" rather than two that drift apart.
+  const home = homeFor(user)
 
   const go = () => {
     setLeaving(true)

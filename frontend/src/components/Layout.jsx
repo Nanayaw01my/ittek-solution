@@ -6,7 +6,7 @@ import { getMe } from '../api/auth'
 import useNotificationStore from '../store/notificationStore'
 import { getRoleLabel, getRoleLevel } from '../utils/helpers'
 import {
-  FiHome, FiShoppingCart, FiPackage, FiTag, FiTruck, FiDollarSign,
+  FiHome, FiShoppingCart, FiPackage, FiTag, FiTruck, FiDollarSign, FiBriefcase,
   FiAlertCircle, FiUsers, FiShoppingBag, FiInbox, FiFileText,
   FiBarChart2, FiSettings, FiDatabase, FiBell, FiSearch, FiLogOut,
   FiMenu, FiX, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
@@ -24,6 +24,25 @@ export const FIELD_AGENT_PAGES = ['/field-dispatch', '/phone-sales', '/notificat
 
 /** Where a field agent lands after signing in, instead of the dashboard. */
 export const FIELD_AGENT_HOME = '/field-dispatch'
+
+/**
+ * Where a signed-in user belongs when no particular page was asked for.
+ *
+ * One rule, here, because there were two: App.jsx had it and Welcome.jsx
+ * had its own copy, so giving the Managing Director a different landing
+ * screen worked everywhere except after signing in — which is the only
+ * time it matters. A rule written twice is a rule that will be changed
+ * once.
+ */
+export function homeFor(user) {
+  if (user?.role === 'Field Agent') return FIELD_AGENT_HOME
+  // The Dashboard answers "how is the shop". The portal answers "is
+  // anything waiting for me", which is the question an owner opens the
+  // system to ask. The other owners keep the Dashboard and reach the
+  // portal from the menu.
+  if (user?.role === 'Managing Director') return '/director'
+  return '/dashboard'
+}
 
 /**
  * The sidebar, in groups.
@@ -47,6 +66,9 @@ const SECTIONS = [
 
 const NAV_ITEMS = [
   // All logged-in users
+  // First in the list for the people who can open it: it is the screen
+  // that says whether anything needs them.
+  { to: '/director', label: "Director's Portal", icon: FiBriefcase, minLevel: 3, section: 'selling' },
   { to: '/dashboard', label: 'Dashboard', icon: FiHome, minLevel: 1, section: 'selling' },
   { to: '/expenses', label: 'Expenses', icon: FiDollarSign, minLevel: 1, section: 'money' },
   { to: '/notifications', label: 'Notifications', icon: FiBell, minLevel: 1, section: 'selling' },

@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import useAuthStore from './store/authStore'
 import useDocumentTitle from './hooks/useDocumentTitle'
 import { canAccessPage, ROLE_LEVELS } from './config/pageAccess'
-import Layout, { FIELD_AGENT_PAGES, FIELD_AGENT_HOME } from './components/Layout'
+import Layout, { FIELD_AGENT_PAGES, FIELD_AGENT_HOME, homeFor } from './components/Layout'
 import LoadingSpinner from './components/LoadingSpinner'
 
 // Pages
@@ -35,6 +35,7 @@ import SalesHistory from './pages/SalesHistory'
 import PublicReceipt from './pages/PublicReceipt'
 import Layaways from './pages/Layaways'
 import PackagePlans from './pages/PackagePlans'
+import DirectorPortal from './pages/DirectorPortal'
 import FieldDispatch from './pages/FieldDispatch'
 import PhoneSales from './pages/PhoneSales'
 import ServiceCharges from './pages/ServiceCharges'
@@ -123,11 +124,6 @@ function NoAccess({ role }) {
   )
 }
 
-/** Where a signed-in user belongs when no particular page was asked for. */
-function homeFor(user) {
-  return user?.role === 'Field Agent' ? FIELD_AGENT_HOME : '/dashboard'
-}
-
 function RootRedirect() {
   const { user, token } = useAuthStore()
   const isAuthenticated = !!token && !!user
@@ -212,6 +208,7 @@ export default function App() {
         <Route path="layaways" element={<ProtectedRoute minLevel={2}><Layaways /></ProtectedRoute>} />
         {/* Any member of staff can take an instalment over the counter. */}
         <Route path="package-plans" element={<ProtectedRoute minLevel={1} page="package-plans"><PackagePlans /></ProtectedRoute>} />
+        <Route path="director" element={<ProtectedRoute minLevel={3} page="director"><DirectorPortal /></ProtectedRoute>} />
         {/* Staff conduct alerts — owners only; they name individual staff */}
         <Route path="fraud-alerts" element={<ProtectedRoute minLevel={3}><FraudAlerts /></ProtectedRoute>} />
 

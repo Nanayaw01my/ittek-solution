@@ -51,7 +51,7 @@ const UserSchema = new mongoose.Schema(
       // is done at the shop with a manager present.
       // Engineer is Sales by another name: the same access, the same limits,
       // kept separate only so the shop can see who sold or serviced what.
-      enum: ['Super Admin', 'CEO', 'COO', 'Manager', 'Sales', 'Engineer', 'Field Agent'],
+      enum: ['Super Admin', 'CEO', 'COO', 'Managing Director', 'Manager', 'Sales', 'Engineer', 'Field Agent'],
       required: [true, 'Role is required'],
     },
     is_active: {

@@ -5,15 +5,16 @@ const Category = require('../models/Category');
 const { sanitizeGrants } = require('../config/pageAccess');
 
 const { ROLE_LEVELS } = require('../config/pageAccess');
-const { STAFF_ROLES } = require('../middleware/rbac');
+const { STAFF_ROLES, ownerBelowAdmin } = require('../middleware/rbac');
 
 const canManage = (actorRole, targetRole) => {
   const actorLevel = ROLE_LEVELS[actorRole] || 0;
   const targetLevel = ROLE_LEVELS[targetRole] || 0;
   // Super Admin can manage anyone; CEO can manage Manager and Sales only
   if (actorRole === 'Super Admin') return true;
-  // A CEO or COO manages the staff below them, never each other.
-  if (['CEO', 'COO'].includes(actorRole)) return targetLevel <= 2;
+  // An owner below the Super Admin manages the staff below them, never
+  // each other, whatever their title.
+  if (ownerBelowAdmin(actorRole)) return targetLevel <= 2;
   return false;
 };
 
@@ -26,7 +27,7 @@ const getUsers = async (req, res) => {
     // A CEO manages the staff below them, not the other owners. Every role
     // below CEO belongs here — leaving one out hides those people from the
     // only screen that can edit them.
-    if (['CEO', 'COO'].includes(req.user.role)) {
+    if (ownerBelowAdmin(req.user.role)) {
       filter.role = { $in: STAFF_ROLES };
     }
 

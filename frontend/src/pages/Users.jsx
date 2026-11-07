@@ -8,7 +8,7 @@ import { getUsers, createUser, updateUser, deleteUser, toggleUserStatus, resetUs
 import { getCategories } from '../api/products'
 import { resizeImageToDataUrl, dataUrlToFile } from '../utils/resizeImage'
 import { uploadImage } from '../api/upload'
-import { GRANTABLE_PAGES, MODE_LABELS, badgeLoginAllowed } from '../config/pageAccess'
+import { GRANTABLE_PAGES, MODE_LABELS, badgeLoginAllowed, isOwner } from '../config/pageAccess'
 import { formatDate, getRoleLabel, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
 import useBarcodeScanner from '../hooks/useBarcodeScanner'
@@ -20,13 +20,14 @@ import useBarcodeScanner from '../hooks/useBarcodeScanner'
  */
 const ROLES_FOR_LEVEL = {
   3: ['Manager', 'Sales', 'Engineer', 'Field Agent'],
-  4: ['Super Admin', 'CEO', 'COO', 'Manager', 'Sales', 'Engineer', 'Field Agent'],
+  4: ['Super Admin', 'CEO', 'COO', 'Managing Director', 'Manager', 'Sales', 'Engineer', 'Field Agent'],
 }
 
 const ROLE_COLORS = {
   'Super Admin': 'bg-purple-100 text-purple-700',
   'CEO': 'bg-blue-100 text-blue-700',
   'COO': 'bg-indigo-100 text-indigo-700',
+  'Managing Director': 'bg-violet-100 text-violet-700',
   'Manager': 'bg-orange-100 text-orange-700',
   'Sales': 'bg-green-100 text-green-700',
   'Engineer': 'bg-sky-100 text-sky-700',
@@ -835,7 +836,10 @@ export default function Users() {
   const users = data?.users || data || []
   const myLevel = getRoleLevel(me?.role)
 
-  const visibleUsers = ['CEO', 'COO'].includes(me?.role)
+  // An owner below the Super Admin sees the staff, not their fellow
+  // officers. Asked by rank rather than by a list of two titles, so a new
+  // owner role does not arrive to find the other owners missing.
+  const visibleUsers = isOwner(me?.role) && me?.role !== 'Super Admin'
     ? users.filter(u => ['Manager', 'Sales', 'Engineer', 'Field Agent'].includes(u.role))
     : users
 

@@ -29,6 +29,8 @@ export const GRANTABLE_PAGES = {
   // Who sold what, to whom, at what discount. Owners by default; a CEO can
   // grant it to a manager who is chasing something specific.
   'staff-sales': { label: 'Who Sold What', defaultLevel: 3, modes: ['view'] },
+  // The owners' one screen: the day, the queue, and what is off.
+  director: { label: "Director's Portal", defaultLevel: 3, modes: ['view'] },
   'business-lines': { label: 'Business Lines', defaultLevel: 3, modes: ['view'] },
   reports: { label: 'Reports', defaultLevel: 3, modes: ['view'] },
   financial: { label: 'Financial', defaultLevel: 3, modes: ['view'] },
@@ -58,7 +60,7 @@ export const MODE_LABELS = {
  * dashboard — which the field-agent guard bounced straight back, looping
  * thousands of times a second until the page froze white.
  */
-export const ROLE_LEVELS = { 'Field Agent': 1, Sales: 1, Engineer: 1, Manager: 2, COO: 3, CEO: 3, 'Super Admin': 4 }
+export const ROLE_LEVELS = { 'Field Agent': 1, Sales: 1, Engineer: 1, Manager: 2, COO: 3, CEO: 3, 'Managing Director': 3, 'Super Admin': 4 }
 
 export const roleLevel = (role) => ROLE_LEVELS[role] || 0
 
@@ -69,7 +71,7 @@ export const roleLevel = (role) => ROLE_LEVELS[role] || 0
  * ['CEO', 'Super Admin'] — and a role added to the levels but not to those
  * lists can open a page and then find half of it missing.
  */
-export const OWNER_ROLES = ['CEO', 'COO', 'Super Admin']
+export const OWNER_ROLES = ['CEO', 'COO', 'Managing Director', 'Super Admin']
 export const isOwner = (role) => OWNER_ROLES.includes(role)
 
 /**
@@ -77,7 +79,7 @@ export const isOwner = (role) => OWNER_ROLES.includes(role)
  * backend/config/badges.js. A card can be photographed and copied, and these
  * accounts reach every screen in the shop.
  */
-export const BADGE_BLOCKED_ROLES = ['CEO', 'COO', 'Super Admin']
+export const BADGE_BLOCKED_ROLES = ['CEO', 'COO', 'Managing Director', 'Super Admin']
 export const badgeLoginAllowed = (role) => !BADGE_BLOCKED_ROLES.includes(role)
 
 /** What a user can do on a page: 'full' by role, else the granted mode, else null. */

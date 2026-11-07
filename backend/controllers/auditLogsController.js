@@ -1,3 +1,4 @@
+const { ownerBelowAdmin } = require('../middleware/rbac');
 const AuditLog = require('../models/AuditLog');
 
 /**
@@ -9,7 +10,7 @@ const getAuditLogs = async (req, res) => {
     const filter = {};
 
     // A CEO or COO cannot see what the Super Admin did.
-    if (['CEO', 'COO'].includes(req.user.role)) {
+    if (ownerBelowAdmin(req.user.role)) {
       filter.role = { $ne: 'Super Admin' };
     }
 
