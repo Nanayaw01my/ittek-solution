@@ -48,14 +48,7 @@ export const MANAGING_DIRECTOR_PAGES = [
   '/director', '/debts', '/suppliers', '/stock-requests', '/notifications',
 ]
 
-/**
- * Who may ring up a sale, mirroring SELLING_ROLES on the server.
- *
- * Selling is a job, not a rank, so it is not a level: a Manager outranks a
- * sales attendant and still has no business at the till.
- */
-export const SELLING_ROLES = ['Sales', 'CEO', 'COO', 'Super Admin']
-export const maySell = (role) => SELLING_ROLES.includes(role)
+
 
 /** Where a field agent lands after signing in, instead of the dashboard. */
 export const FIELD_AGENT_HOME = '/field-dispatch'
@@ -215,10 +208,8 @@ export default function Layout() {
           // would only ever be empty.
           && (item.to !== '/field-dispatch' || carriesFieldSheets(user)))
         : NAV_ITEMS.filter(item =>
-        (userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1)))
-        // The till is a job rather than a rank, so a level does not open it.
-        && (item.to !== '/pos' || maySell(user?.role))
-      )
+          userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1))
+        )
 
   useEffect(() => { if (!sidebarOpen) setNavFilter('') }, [sidebarOpen])
 

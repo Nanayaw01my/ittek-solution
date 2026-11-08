@@ -76,6 +76,17 @@ export const ROLE_LEVELS = {
  */
 export const carriesFieldSheets = (user) => user?.role === 'Field Agent' || user?.field_duty === true
 
+/**
+ * Who may ring up a sale, mirroring SELLING_ROLES on the server.
+ *
+ * Selling is a job, not a rank, so it is not a level: a Manager outranks a
+ * sales attendant and still has no business taking money. It lives here
+ * with the other role rules rather than in the layout, so the till can ask
+ * the question without importing a piece of the menu.
+ */
+export const SELLING_ROLES = ['Sales', 'CEO', 'COO', 'Super Admin']
+export const maySell = (role) => SELLING_ROLES.includes(role)
+
 export const roleLevel = (role) => ROLE_LEVELS[role] || 0
 
 /**

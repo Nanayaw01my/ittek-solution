@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import useAuthStore from './store/authStore'
 import useDocumentTitle from './hooks/useDocumentTitle'
 import { canAccessPage, ROLE_LEVELS } from './config/pageAccess'
-import Layout, { FIELD_AGENT_PAGES, FIELD_AGENT_HOME, MANAGING_DIRECTOR_PAGES, HEAD_OF_DEPARTMENT_PAGES, SELLING_ROLES, homeFor } from './components/Layout'
+import Layout, { FIELD_AGENT_PAGES, FIELD_AGENT_HOME, MANAGING_DIRECTOR_PAGES, HEAD_OF_DEPARTMENT_PAGES, homeFor } from './components/Layout'
 import LoadingSpinner from './components/LoadingSpinner'
 
 // Pages
@@ -186,9 +186,11 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="expenses" element={<Expenses />} />
         <Route path="notifications" element={<Notifications />} />
-        {/* The till is a job, not a rank: a Manager outranks a sales
-            attendant and still does not serve customers. */}
-        <Route path="pos" element={<ProtectedRoute allowedRoles={SELLING_ROLES}><POS /></ProtectedRoute>} />
+        {/* Open to anyone who may reach it: a Manager checking a price or
+            a stock level has every reason to be here. Finishing a sale is
+            the part that is restricted, and the restriction lives in the
+            screen and on the server rather than on the door. */}
+        <Route path="pos" element={<ProtectedRoute minLevel={1}><POS /></ProtectedRoute>} />
         <Route path="refunds" element={<ProtectedRoute minLevel={1}><Refunds /></ProtectedRoute>} />
         {/* Field dispatch is open to every signed-in user. */}
         <Route path="field-dispatch" element={<ProtectedRoute minLevel={1}><FieldDispatch /></ProtectedRoute>} />

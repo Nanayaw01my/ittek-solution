@@ -8,6 +8,7 @@ import { getProducts, getOfflineCatalogue, getProductByBarcode } from '../api/pr
 import { createSale, createShortPayment } from '../api/pos'
 import { getSettings } from '../api/settings'
 import useAuthStore from '../store/authStore'
+import { maySell } from '../config/pageAccess'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import useOnlineStatus from '../hooks/useOnlineStatus'
 import useBarcodeScanner from '../hooks/useBarcodeScanner'
@@ -487,6 +488,19 @@ function ShortPaymentModal({ isOpen, onClose, cartTotal, onConfirm, loading }) {
 
 export default function POS() {
   const { user } = useAuthStore()
+  /**
+   * Looking is for everybody; selling is not.
+   *
+   * A Manager checking a price or a stock level has every reason to be on
+   * this screen, so the screen is open. What the shop restricted is taking
+   * money: Sales, the CEO, the COO and the Super Admin finish a sale, and
+   * everyone else sees the till as a price list.
+   *
+   * The server refuses the same calls regardless. This only decides whether
+   * somebody is offered a button that would fail — a disabled button that
+   * says why is kinder than a red toast after a cart has been built.
+   */
+  const canSell = maySell(user?.role)
   const queryClient = useQueryClient()
   const searchRef = useRef(null)
   const isOnline = useOnlineStatus()
@@ -1373,7 +1387,7 @@ export default function POS() {
                 if (cart.length === 0) { toast.error('Cart is empty'); return }
                 setShowSplitModal(true)
               }}
-              disabled={cart.length === 0}
+              disabled={!canSell || cart.length === 0}
               title={t('pos.split')}
               className="flex-1 py-2 rounded-lg text-xs font-bold bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
             >
@@ -1402,17 +1416,29 @@ export default function POS() {
             )}
           </div>
 
+          {!canSell && (
+            <div className="mb-2 flex items-start gap-2 text-xs text-amber-800 bg-amber-50
+                            border border-amber-200 rounded-xl px-3 py-2">
+              <FiAlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>
+                <span className="font-bold">You can look up prices and stock here, but not sell.</span>
+                <span className="block">Sales attendants and the owners take money at the counter.</span>
+              </span>
+            </div>
+          )}
+
           {/* Action Buttons */}
           <div className="space-y-2">
             <button
               onClick={handleCompleteSale}
-              disabled={cart.length === 0 || saleMutation.isPending}
+              disabled={!canSell || cart.length === 0 || saleMutation.isPending}
+              title={canSell ? undefined : 'Your role does not take sales at the counter'}
               className="w-full py-3.5 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-black rounded-xl transition-colors flex items-center justify-center gap-2"
             >
               {saleMutation.isPending ? (
                 <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Processing...</>
               ) : (
-                <><FiCheck size={18} /> COMPLETE SALE</>
+                <><FiCheck size={18} /> {canSell ? 'COMPLETE SALE' : 'VIEWING ONLY'}</>
               )}
             </button>
 
@@ -1421,7 +1447,7 @@ export default function POS() {
             <div className="grid grid-cols-5 gap-1.5">
               <button
                 onClick={handleHoldCart}
-                disabled={cart.length === 0 || holdMutation.isPending}
+                disabled={!canSell || cart.length === 0 || holdMutation.isPending}
                 className="py-2 bg-slate-500 hover:bg-slate-600 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-[11px] flex flex-col items-center gap-0.5"
               >
                 <FiPause size={13} /> Hold
@@ -1437,7 +1463,7 @@ export default function POS() {
                   if (cart.length === 0) { toast.error('Cart is empty'); return }
                   setShowShortModal(true)
                 }}
-                disabled={cart.length === 0}
+                disabled={!canSell || cart.length === 0}
                 className="py-2 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-[11px] flex flex-col items-center gap-0.5"
               >
                 <FiAlertTriangle size={13} /> Short
@@ -1448,7 +1474,7 @@ export default function POS() {
                   if (!isOnline) { toast.error('Pay & Pick Later needs a connection'); return }
                   setShowPayLaterModal(true)
                 }}
-                disabled={cart.length === 0}
+                disabled={!canSell || cart.length === 0}
                 title="Customer pays in instalments and collects when fully paid"
                 className="py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-[11px] flex flex-col items-center gap-0.5"
               >
