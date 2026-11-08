@@ -57,8 +57,18 @@ const getUnreadCount = async (req, res) => {
  */
 const markRead = async (req, res) => {
   try {
-    const notification = await Notification.findByIdAndUpdate(
-      req.params.id,
+    /**
+     * Yours, or everybody's — not somebody else's.
+     *
+     * This looked the notification up by its id alone. That was nearly
+     * harmless while every notification was either addressed to you or
+     * broadcast to all, and stopped being harmless the moment an owner
+     * could write a private message to one person: anybody holding an id
+     * could clear somebody else's message, and the person it was for
+     * would never see it unread.
+     */
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.id, $or: [{ user_id: req.user._id }, { user_id: null }] },
       { is_read: true },
       { new: true }
     );
@@ -91,7 +101,13 @@ const markAllRead = async (req, res) => {
  */
 const deleteNotification = async (req, res) => {
   try {
-    const notification = await Notification.findByIdAndDelete(req.params.id);
+    // Scoped for the same reason as markRead above: deleting is worse
+    // than marking read, since the message is gone before the person it
+    // was addressed to has seen it at all.
+    const notification = await Notification.findOneAndDelete({
+      _id: req.params.id,
+      $or: [{ user_id: req.user._id }, { user_id: null }],
+    });
     if (!notification) return res.status(404).json({ success: false, message: 'Notification not found.' });
     return res.status(200).json({ success: true, message: 'Notification deleted.' });
   } catch (err) {
