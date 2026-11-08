@@ -50,11 +50,27 @@ const StockRequestSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    /**
+     * Where the request has got to.
+     *
+     * 'pending'   — the shop floor has asked, nobody has looked yet
+     * 'forwarded' — the Managing Director has read it and sent it up
+     * 'approved' / 'rejected' — the owners have decided
+     *
+     * The middle step is the shop's own order of business: the MD reads
+     * every request and passes on the ones worth buying, so the owners see
+     * a shortlist rather than everything anybody thought of.
+     */
     status: {
       type: String,
-      enum: ['pending', 'approved', 'rejected'],
+      enum: ['pending', 'forwarded', 'approved', 'rejected'],
       default: 'pending',
     },
+
+    /** Who sent it up, and what they said about it. */
+    reviewed_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reviewed_date: { type: Date },
+    review_note: { type: String, trim: true },
     approved_by: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

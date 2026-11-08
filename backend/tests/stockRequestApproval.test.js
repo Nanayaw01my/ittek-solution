@@ -14,6 +14,13 @@ Module._load = function (req) {
     find: () => ({ select: () => ({ lean: async () => [] }) }),
     findById: async () => doc,
   };
+  /**
+   * Approving now asks whether there is a Managing Director to review
+   * requests, because a pending one is not the owners' to sign until it
+   * has been sent up. Unstubbed, that query waits on a database that is
+   * not there and the whole suite hangs.
+   */
+  if (req.includes('models/User')) return { countDocuments: async () => 0 };
   if (req.includes('models/Product')) return {
     create: async (d) => { const p = { _id: 'p' + (products.length + 1), ...d }; products.push(p); return p; },
     findOne: () => ({ select: async () => null }),

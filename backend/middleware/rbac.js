@@ -201,8 +201,24 @@ const isOwner = (role) => OWNER_ROLES.includes(role);
  */
 const ownerBelowAdmin = (role) => isOwner(role) && role !== 'Super Admin';
 
+/**
+ * Who says yes to spending money.
+ *
+ * The Managing Director is an owner and sees everything an owner sees, but
+ * a stock request stops with them for review and goes on to the people who
+ * sign for it. So approving is not "is an owner" — it is this list, and the
+ * MD is deliberately absent from it.
+ */
+const APPROVER_ROLES = ['CEO', 'COO', 'Super Admin'];
+const mayApproveSpending = (role) => APPROVER_ROLES.includes(role);
+
+/** The desk a request waits at before it reaches the people who sign. */
+const REVIEWER_ROLES = ['Managing Director'];
+const mayReviewSpending = (role) => REVIEWER_ROLES.includes(role);
+
 module.exports = {
   requireRoles, requireLevel, requirePage, ROLE_LEVELS, OWNER_ROLES, isOwner, ownerBelowAdmin,
   SELF_ONLY_ROLES, seesOwnRecordsOnly, STAFF_ROLES, SELLING_ROLES, maySell,
+  APPROVER_ROLES, mayApproveSpending, REVIEWER_ROLES, mayReviewSpending,
   carriesFieldSheets, isConfinedFieldAgent,
 };

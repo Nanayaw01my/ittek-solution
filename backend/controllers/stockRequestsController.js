@@ -1,5 +1,6 @@
 const { validationResult } = require('express-validator');
-const { isOwner } = require('../middleware/rbac');
+const { isOwner, mayApproveSpending, mayReviewSpending } = require('../middleware/rbac');
+const User = require('../models/User');
 const StockRequest = require('../models/StockRequest');
 const Notification = require('../models/Notification');
 const Product = require('../models/Product');
@@ -214,16 +215,102 @@ const getStockRequest = async (req, res) => {
   }
 };
 
+
+/**
+ * Is there a Managing Director to review requests at all?
+ *
+ * The shop's order of business puts the MD between the floor and the
+ * owners. If the post is vacant — nobody appointed yet, or the account
+ * deactivated — requests would sit at 'pending' for ever with nobody
+ * entitled to move them, and the first anybody would know is a shop out
+ * of stock. So the owners may approve a pending request directly when
+ * there is no reviewer, and only then.
+ */
+const reviewerExists = async () => {
+  const count = await User.countDocuments({ role: 'Managing Director', is_active: true });
+  return count > 0;
+};
+
+/**
+ * PUT /api/stock-requests/:id/forward
+ *
+ * The Managing Director reading a request and sending it up.
+ */
+const forwardStockRequest = async (req, res) => {
+  try {
+    if (!mayReviewSpending(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the Managing Director reviews requests before they go up.',
+      });
+    }
+
+    const request = await StockRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ success: false, message: 'Stock request not found.' });
+    if (request.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: request.status === 'forwarded'
+          ? 'That has already gone up to the owners.'
+          : `That request was already ${request.status}.`,
+      });
+    }
+
+    request.status = 'forwarded';
+    request.reviewed_by = req.user._id;
+    request.reviewed_date = new Date();
+    request.review_note = String(req.body?.note || '').trim();
+    await request.save();
+
+    await Notification.create({
+      user_id: null,
+      type: 'important',
+      title: 'Stock request for your approval',
+      message: `${req.user.username} sent up a request for `
+        + `GH₵${Number(request.total_amount || 0).toFixed(2)}`
+        + (request.review_note ? ` — "${request.review_note}"` : ''),
+      link: '/stock-requests',
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: { ...request.toObject(), message: 'Sent up to the owners.' },
+    });
+  } catch (err) {
+    console.error('Forward stock request error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 /**
  * PUT /api/stock-requests/:id/approve
  */
 const approveStockRequest = async (req, res) => {
   try {
+    if (!mayApproveSpending(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'The Managing Director reviews requests; the owners approve them.',
+      });
+    }
+
     const request = await StockRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ success: false, message: 'Stock request not found.' });
 
-    if (request.status !== 'pending') {
-      return res.status(400).json({ success: false, message: 'Request is not pending.' });
+    if (!['pending', 'forwarded'].includes(request.status)) {
+      return res.status(400).json({ success: false, message: `That request was already ${request.status}.` });
+    }
+
+    /**
+     * A request still waiting on the MD is not yet the owners' to approve
+     * — unless there is no Managing Director, in which case waiting for
+     * one is waiting for nobody.
+     */
+    if (request.status === 'pending' && await reviewerExists()) {
+      return res.status(409).json({
+        success: false,
+        message: 'The Managing Director has not sent this up yet.',
+      });
     }
 
     /**
@@ -364,6 +451,11 @@ const approveStockRequest = async (req, res) => {
  */
 const rejectStockRequest = async (req, res) => {
   try {
+    // Either desk may turn a request down: the MD before it goes up, the
+    // owners after. Saying no costs nothing and should not need a relay.
+    if (!mayApproveSpending(req.user.role) && !mayReviewSpending(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'Not yours to decide.' });
+    }
     const { reason } = req.body;
     const request = await StockRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ success: false, message: 'Stock request not found.' });
@@ -417,4 +509,8 @@ const deleteStockRequest = async (req, res) => {
   }
 };
 
-module.exports = { getStockRequests, createStockRequest, getStockRequest, approveStockRequest, rejectStockRequest, deleteStockRequest };
+module.exports = {
+  getStockRequests, createStockRequest, getStockRequest,
+  forwardStockRequest, approveStockRequest, rejectStockRequest, deleteStockRequest,
+  reviewerExists,
+};

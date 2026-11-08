@@ -6,7 +6,7 @@ const { requireLevel } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
   getStockRequests, createStockRequest, getStockRequest,
-  approveStockRequest, rejectStockRequest, deleteStockRequest,
+  forwardStockRequest, approveStockRequest, rejectStockRequest, deleteStockRequest,
 } = require('../controllers/stockRequestsController');
 
 /**
@@ -36,6 +36,9 @@ router.post(
 router.get('/:id', getStockRequest);
 
 // Only CEO (3) and Super Admin (4) can approve/reject
+// The Managing Director's desk: read it, send it up. The role is checked
+// in the controller so the refusal can name whose job it is.
+router.put('/:id/forward', requireLevel(3), auditLog('FORWARD_STOCK_REQUEST'), forwardStockRequest);
 router.put('/:id/approve', requireLevel(3), auditLog('APPROVE_STOCK_REQUEST'), approveStockRequest);
 router.put('/:id/reject', requireLevel(3), auditLog('REJECT_STOCK_REQUEST'), rejectStockRequest);
 router.delete('/:id', auditLog('DELETE_STOCK_REQUEST'), deleteStockRequest);

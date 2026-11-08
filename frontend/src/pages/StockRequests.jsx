@@ -2,8 +2,8 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { FiPlus, FiTrash2, FiCheck, FiX, FiEye } from 'react-icons/fi'
-import { getStockRequests, createStockRequest, approveStockRequest, rejectStockRequest } from '../api/stockRequests'
+import { FiPlus, FiTrash2, FiCheck, FiX, FiEye, FiSend } from 'react-icons/fi'
+import { getStockRequests, createStockRequest, approveStockRequest, rejectStockRequest, forwardStockRequest } from '../api/stockRequests'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import useAuthStore from '../store/authStore'
 import PageHeader from '../components/PageHeader'
@@ -207,11 +207,22 @@ export default function StockRequests() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
   const userLevel = getRoleLevel(user?.role)
-  const canApprove = userLevel >= 3
+  /**
+   * Two desks, two different jobs.
+   *
+   * A request is read by the Managing Director and sent up; the owners
+   * sign for it. The MD is an owner by rank, so this cannot be a level —
+   * it has to name who does which.
+   */
+  const canApprove = ['CEO', 'COO', 'Super Admin'].includes(user?.role)
+  const canForward = user?.role === 'Managing Director'
+  /** Still open to a decision: on the MD's desk, or up with the owners. */
+  const isOpen = (status) => status === 'pending' || status === 'forwarded'
 
   const [statusFilter, setStatusFilter] = useState('all')
   const [showCreate, setShowCreate] = useState(false)
   const [approveTarget, setApproveTarget] = useState(null)
+  const [forwardNote, setForwardNote] = useState('')
   const [rejectTarget, setRejectTarget] = useState(null)
   const [viewing, setViewing] = useState(null)
   /**
@@ -280,6 +291,17 @@ export default function StockRequests() {
     onError: err => toast.error(err.response?.data?.message || 'Approval failed'),
   })
 
+  // The MD's desk: read it, say a word about it, send it up.
+  const forwardMutation = useMutation({
+    mutationFn: ({ id, note }) => forwardStockRequest(id, { note }),
+    onSuccess: (d) => {
+      toast.success(d?.message || 'Sent up to the owners')
+      queryClient.invalidateQueries({ queryKey: ['stock-requests'] })
+      setViewing(null)
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not send that up'),
+  })
+
   const rejectMutation = useMutation({
     mutationFn: (id) => rejectStockRequest(id, {}),
     onSuccess: () => {
@@ -341,8 +363,11 @@ export default function StockRequests() {
           >
             <FiEye size={15} />
           </button>
-          {canApprove && row.status === 'pending' && (
-            <>
+          {/* The tick is signing for the money, which is not the
+              Managing Director's to do — their job is to read a request
+              and send it up, and that happens in the detail view where
+              they can see what they are passing on. */}
+          {canApprove && isOpen(row.status) && (
             <button
               onClick={e => { e.stopPropagation(); openApprove(row) }}
               className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"
@@ -350,14 +375,24 @@ export default function StockRequests() {
             >
               <FiCheck size={15} />
             </button>
+          )}
+          {canForward && row.status === 'pending' && (
+            <button
+              onClick={e => { e.stopPropagation(); openView(row) }}
+              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
+              title="Read it and send it up"
+            >
+              <FiSend size={15} />
+            </button>
+          )}
+          {(canApprove || canForward) && isOpen(row.status) && (
             <button
               onClick={e => { e.stopPropagation(); setRejectTarget(row) }}
               className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
-              title="Reject"
+              title="Turn it down"
             >
               <FiX size={15} />
             </button>
-            </>
           )}
         </div>
       ),
@@ -381,7 +416,7 @@ export default function StockRequests() {
 
       {/* Status tabs */}
       <div className="flex flex-wrap gap-1 mb-5 bg-gray-100 p-1 rounded-xl w-fit">
-        {['all', 'pending', 'approved', 'rejected'].map(s => (
+        {['all', 'pending', 'forwarded', 'approved', 'rejected'].map(s => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
@@ -421,7 +456,7 @@ export default function StockRequests() {
               <Badge status={viewing.status} />
             </div>
 
-            {canApprove && viewing.status === 'pending' && (
+            {canApprove && isOpen(viewing.status) && (
               <p className="text-xs text-gray-600 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2">
                 You decide the quantity. Change any number below before approving —
                 set a line to <strong>0</strong> to leave it out altogether.
@@ -432,11 +467,11 @@ export default function StockRequests() {
               <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-gray-50 text-[11px] font-bold text-gray-500">
                 <span className="col-span-6">PRODUCT</span>
                 <span className="col-span-2 text-center">
-                  {canApprove && viewing.status === 'pending' ? 'APPROVE' : 'QTY'}
+                  {canApprove && isOpen(viewing.status) ? 'APPROVE' : 'QTY'}
                 </span>
                 <span className="col-span-2 text-right">EACH</span>
                 <span className="col-span-2 text-right">
-                  {canApprove && viewing.status === 'pending' ? 'SELLS / TOTAL' : 'TOTAL'}
+                  {canApprove && isOpen(viewing.status) ? 'SELLS / TOTAL' : 'TOTAL'}
                 </span>
               </div>
               {(viewing.items || []).map((i, idx) => (
@@ -454,7 +489,7 @@ export default function StockRequests() {
                     )}
                   </span>
                   <span className="col-span-2 text-center">
-                    {canApprove && viewing.status === 'pending' ? (
+                    {canApprove && isOpen(viewing.status) ? (
                       // Prefilled with what was asked for, so approving in
                       // full stays one tap. The number asked for is kept
                       // under it, so changing it never loses the record of
@@ -490,7 +525,7 @@ export default function StockRequests() {
                     )}
                   </span>
                   <span className="col-span-2 text-right text-gray-600">
-                    {canApprove && viewing.status === 'pending' ? (
+                    {canApprove && isOpen(viewing.status) ? (
                       <input
                         type="number" min="0" step="0.01" inputMode="decimal"
                         aria-label={`Cost per unit for ${i.product_name}`}
@@ -505,7 +540,7 @@ export default function StockRequests() {
                     ) : (i.estimated_cost ? formatCurrency(i.estimated_cost) : '—')}
                   </span>
                   <span className="col-span-2 text-right font-semibold">
-                    {canApprove && viewing.status === 'pending' ? (
+                    {canApprove && isOpen(viewing.status) ? (
                       i.is_new_product ? (
                         /* A new item cannot go on the shelf without a price
                            to sell it at, and this is the moment it is being
@@ -532,7 +567,7 @@ export default function StockRequests() {
               ))}
             </div>
 
-            {canApprove && viewing.status === 'pending'
+            {canApprove && isOpen(viewing.status)
               && (viewing.items || []).some((i, idx) => i.is_new_product && !Number(viewPrice[idx])) && (
               <p className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800">
                 Give every NEW item a selling price before approving, or it goes onto the shelf
@@ -540,10 +575,16 @@ export default function StockRequests() {
               </p>
             )}
 
-            {viewing.status === 'pending' && (viewing.items || []).some(i => i.is_new_product) && (
+            {isOpen(viewing.status) && (viewing.items || []).some(i => i.is_new_product) && (
               <p className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
                 Approving this also adds the items marked NEW to the products list,
                 at zero stock. The quantity lands when the goods are received.
+              </p>
+            )}
+
+            {viewing.review_note && (
+              <p className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900">
+                <span className="font-bold">The Managing Director says:</span> {viewing.review_note}
               </p>
             )}
 
@@ -573,7 +614,37 @@ export default function StockRequests() {
               </p>
             )}
 
-            {canApprove && viewing.status === 'pending' ? (
+            {canForward && viewing.status === 'pending' ? (
+              <div className="pt-2 border-t space-y-2">
+                <label className="block text-xs font-semibold text-gray-600">
+                  A word for the owners <span className="font-normal text-gray-400">(optional)</span>
+                </label>
+                <input
+                  value={forwardNote}
+                  onChange={(e) => setForwardNote(e.target.value)}
+                  aria-label="A word for the owners"
+                  placeholder="e.g. the batteries really are low"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm
+                             focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { const r = viewing; setViewing(null); setRejectTarget(r) }}
+                    className="flex-1 py-2.5 border border-red-200 text-red-600 rounded-xl font-bold text-sm hover:bg-red-50"
+                  >
+                    Turn it down
+                  </button>
+                  <button
+                    onClick={() => forwardMutation.mutate({ id: viewing._id, note: forwardNote })}
+                    disabled={forwardMutation.isPending}
+                    className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60
+                               text-white rounded-xl font-bold text-sm"
+                  >
+                    {forwardMutation.isPending ? 'Sending…' : 'Send up to the owners'}
+                  </button>
+                </div>
+              </div>
+            ) : canApprove && isOpen(viewing.status) ? (
               <div className="flex gap-2 pt-2 border-t">
                 <button
                   onClick={() => { const r = viewing; setViewing(null); setRejectTarget(r) }}

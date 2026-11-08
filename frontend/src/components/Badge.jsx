@@ -8,6 +8,8 @@ const BADGE_STYLES = {
   active: 'bg-blue-100 text-blue-700 border-blue-200',
   partial: 'bg-orange-100 text-orange-700 border-orange-200',
   pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  // Read by the Managing Director and sent up; waiting on the owners.
+  forwarded: 'bg-blue-100 text-blue-700 border-blue-200',
   overdue: 'bg-red-100 text-red-700 border-red-200',
   rejected: 'bg-red-100 text-red-700 border-red-200',
   inactive: 'bg-gray-100 text-gray-500 border-gray-200',
@@ -28,6 +30,7 @@ const BADGE_LABELS = {
   active: 'Active',
   partial: 'Partial',
   pending: 'Pending',
+  forwarded: 'With the owners',
   overdue: 'Overdue',
   rejected: 'Rejected',
   inactive: 'Inactive',
