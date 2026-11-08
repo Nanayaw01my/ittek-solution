@@ -64,8 +64,13 @@ test('the screen shows my stock and the unplaced goods, not other departments', 
 
   assert.deepStrictEqual(d.products.map((p) => p.name), ['NV-570W Panel', 'NV-100AH Battery']);
   assert.deepStrictEqual(d.unsorted.map((p) => p.name), ['Mystery Widget'],
-    'only what nobody has placed is offered for sorting');
-  assert.ok(!JSON.stringify(d).includes('Hikvision'), 'another head\'s stock is not here at all');
+    'what nobody has placed is offered on its own');
+  // The shop asked for the whole catalogue to be reachable: a head knows
+  // which stock is theirs better than a keyword does, and a solar panel
+  // filed under IT is the case they had in mind. It is listed apart from
+  // their own, so claiming one is a deliberate act.
+  assert.deepStrictEqual(d.elsewhere.map((p) => p.name), ['Hikvision Camera'],
+    'another department\'s stock is listed separately, not hidden');
 
   assert.strictEqual(d.departments[0].products, 2);
   assert.strictEqual(d.departments[0].pieces, 14);
@@ -87,16 +92,24 @@ test('claiming something nobody has placed works', async () => {
   assert.strictEqual(product.aspect, 'solar');
 });
 
-test('another head\'s product cannot be taken, but an owner may move it', async () => {
+test('a product can be taken from another department, and the move is named', async () => {
+  // This was refused until the shop asked for the opposite. What is kept
+  // is that nobody moves another department's goods without being told
+  // that is what they did — the reply says where it came from, and the
+  // route writes an audit entry.
   product = { _id: 'p2', name: 'Hikvision Camera', aspect: 'networking', save: async () => {} };
-  let r = res();
+  const r = res();
   await c.claimProduct({ user: head('solar'), params: { id: 'p2' }, body: { aspect: 'solar' } }, r);
-  assert.strictEqual(r.code, 409, 'the head of solar cannot help themselves to IT stock');
-  assert.strictEqual(product.aspect, 'networking', 'and nothing moved');
-  assert.match(r.body.message, /already in IT/);
-
-  r = res();
-  await c.claimProduct({ user: { _id: 'u9', role: 'CEO' }, params: { id: 'p2' }, body: { aspect: 'solar' } }, r);
-  assert.strictEqual(r.code, 200, 'settling which department a product belongs to is an owner\'s job');
+  assert.strictEqual(r.code, 200);
   assert.strictEqual(product.aspect, 'solar');
+  assert.strictEqual(r.body.data.moved_from, 'networking');
+  assert.match(r.body.data.message, /moved from IT to Solar/);
+});
+
+test('claiming something unplaced is not reported as a move', async () => {
+  product = { _id: 'p3', name: 'Mystery Widget', aspect: 'other', save: async () => {} };
+  const r = res();
+  await c.claimProduct({ user: head('solar'), params: { id: 'p3' }, body: { aspect: 'solar' } }, r);
+  assert.strictEqual(r.body.data.moved_from, null);
+  assert.match(r.body.data.message, /Mystery Widget → Solar/);
 });

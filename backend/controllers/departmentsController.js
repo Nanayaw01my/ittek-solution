@@ -55,6 +55,19 @@ const myDepartments = async (req, res) => {
 
     const inMine = [];
     const unsorted = [];
+    /**
+     * Everything else in the shop.
+     *
+     * This used to be withheld: a product sitting in another department
+     * was not offered, so sorting could only ever place goods nobody had
+     * placed. The shop asked for the opposite — heads know which stock is
+     * theirs better than the sorter does, and a panel filed under IT by a
+     * keyword is exactly the thing the head of solar should be able to
+     * take back. It is listed separately, and claiming one says where it
+     * came from, so moving another department's goods is a deliberate act
+     * rather than a quiet one.
+     */
+    const elsewhere = [];
     for (const p of products) {
       const category = p.category_id ? catById.get(String(p.category_id._id || p.category_id)) : null;
       const { aspect, source } = classify(p, category);
@@ -74,10 +87,8 @@ const myDepartments = async (req, res) => {
       };
 
       if (mine.includes(aspect)) inMine.push(row);
-      // Only what the system could not place at all is offered for sorting.
-      // A product already sitting in another head's department is their
-      // business, not this one's.
       else if (aspect === 'other') unsorted.push(row);
+      else elsewhere.push(row);
     }
 
     const departments = mine.map((key) => {
@@ -97,7 +108,8 @@ const myDepartments = async (req, res) => {
         mine,
         departments,
         products: inMine,
-        unsorted: unsorted.slice(0, 200),
+        unsorted: unsorted.slice(0, 500),
+        elsewhere: elsewhere.slice(0, 500),
       },
     });
   } catch (err) {
@@ -127,28 +139,33 @@ const claimProduct = async (req, res) => {
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
 
     /**
-     * A product already in somebody else's department stays there.
+     * Any product may be claimed, including one filed elsewhere.
      *
-     * Sorting is for stock nobody has placed yet. Without this, the sorting
-     * button is a way for one head to move another head's goods onto their
-     * own books, and the first anybody would know of it is a department
-     * total that moved overnight. An owner is exempt: settling which
-     * department a product belongs to is exactly their job.
+     * The shop's reasoning: a head knows which stock is theirs better than
+     * a keyword does, and a solar panel filed under IT is precisely what
+     * they should be able to take back without finding an owner first.
+     *
+     * What is kept is the trace. The move is named in the reply, so
+     * nobody takes another department's goods without being told that is
+     * what they did, and the route writes an audit entry either way.
      */
     const current = String(product.aspect || '').toLowerCase();
-    if (current && current !== 'other' && current !== aspect && !isOwner(req.user.role)) {
-      return res.status(409).json({
-        success: false,
-        message: `${product.name} is already in ${labelFor(current)}. Ask an owner to move it.`,
-      });
-    }
+    const moved = current && current !== 'other' && current !== aspect;
 
     product.aspect = aspect;
     await product.save();
 
     return res.status(200).json({
       success: true,
-      data: { _id: product._id, name: product.name, aspect, message: `${product.name} → ${labelFor(aspect)}` },
+      data: {
+        _id: product._id,
+        name: product.name,
+        aspect,
+        moved_from: moved ? current : null,
+        message: moved
+          ? `${product.name} moved from ${labelFor(current)} to ${labelFor(aspect)}`
+          : `${product.name} → ${labelFor(aspect)}`,
+      },
     });
   } catch (err) {
     console.error('Claim product error:', err.message);

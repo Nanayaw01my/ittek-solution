@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { FiBell, FiAlertTriangle, FiDollarSign, FiPackage, FiUser, FiCheck, FiTrash2, FiInfo } from 'react-icons/fi'
+import { FiBell, FiAlertTriangle, FiDollarSign, FiPackage, FiUser, FiCheck, FiTrash2, FiInfo, FiSend } from 'react-icons/fi'
 import { getNotifications, markNotificationRead, markAllNotificationsRead, deleteNotification } from '../api/notifications'
 import useNotificationStore from '../store/notificationStore'
 import { formatDateTime } from '../utils/helpers'
 import PageHeader from '../components/PageHeader'
+import StaffMessageModal from '../components/StaffMessageModal'
+import useAuthStore from '../store/authStore'
+import { isOwner } from '../config/pageAccess'
 
 const NOTIF_ICONS = {
   low_stock: { icon: FiPackage, bg: 'bg-orange-100', color: 'text-orange-600' },
@@ -27,6 +30,10 @@ const ROUTE_MAP = {
 }
 
 export default function Notifications() {
+  const { user } = useAuthStore()
+  // Writing to the staff is an owner's to do; everyone else only reads.
+  const canMessage = isOwner(user?.role)
+  const [composing, setComposing] = useState(false)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { setNotifications, markRead, markAllRead, removeNotification } = useNotificationStore()
@@ -87,18 +94,29 @@ export default function Notifications() {
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+      {composing && <StaffMessageModal onClose={() => setComposing(false)} />}
       <PageHeader
         title="Notifications"
         action={
-          notifications.some(n => !n.read) && (
-            <button
-              onClick={() => markAllMutation.mutate()}
-              disabled={markAllMutation.isPending}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-orange-600 border border-orange-200 rounded-xl hover:bg-orange-50 transition-colors"
-            >
-              <FiCheck size={14} /> Mark All Read
-            </button>
-          )
+          <div className="flex items-center gap-2">
+            {canMessage && (
+              <button
+                onClick={() => setComposing(true)}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-white bg-orange-500 hover:bg-orange-600 rounded-xl transition-colors"
+              >
+                <FiSend size={14} /> Message the staff
+              </button>
+            )}
+            {notifications.some(n => !n.read) && (
+              <button
+                onClick={() => markAllMutation.mutate()}
+                disabled={markAllMutation.isPending}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-orange-600 border border-orange-200 rounded-xl hover:bg-orange-50 transition-colors"
+              >
+                <FiCheck size={14} /> Mark All Read
+              </button>
+            )}
+          </div>
         }
       />
 
@@ -151,9 +169,18 @@ export default function Notifications() {
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm font-semibold ${!notif.read ? 'text-gray-900' : 'text-gray-700'}`}>
                     {notif.title}
+                    {/* A person speaking reads differently from the system
+                        reporting, so it says which this is. */}
+                    {notif.is_message && (
+                      <span className="ml-2 align-middle px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-bold">
+                        FROM {String(notif.from_name || 'THE OFFICE').toUpperCase()}
+                      </span>
+                    )}
                   </p>
                   <p className="text-sm text-gray-500 mt-0.5 line-clamp-2">{notif.message}</p>
-                  <p className="text-xs text-gray-400 mt-1">{formatDateTime(notif.createdAt)}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {formatDateTime(notif.createdAt || notif.created_at)}
+                  </p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   {!notif.read && (

@@ -25,6 +25,19 @@ const NotificationSchema = new mongoose.Schema(
     link: {
       type: String, // URL to navigate to
     },
+
+    /**
+     * A message written by an owner, rather than something the system
+     * noticed.
+     *
+     * Kept apart so the two read differently on screen: "Kofi gave a 22%
+     * discount" is the system reporting, and "Shop closes at 4 on Friday"
+     * is a person speaking. A staff member should be able to tell at a
+     * glance which they are looking at.
+     */
+    is_message: { type: Boolean, default: false },
+    from_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    from_name: { type: String, trim: true },
     is_read: {
       type: Boolean,
       default: false,

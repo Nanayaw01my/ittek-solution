@@ -51,6 +51,10 @@ export default function MyDepartment() {
   const departments = data?.departments || []
   const products = data?.products || []
   const unsorted = data?.unsorted || []
+  // Everything filed under a department that is not mine. Offered so a
+  // head can take back stock the sorter put in the wrong place — a solar
+  // panel filed under IT by a keyword is exactly the case.
+  const elsewhere = data?.elsewhere || []
 
   if (mine.length === 0) {
     // Not an error: a head who has not been given a department yet. Saying
@@ -69,7 +73,9 @@ export default function MyDepartment() {
     )
   }
 
-  const shown = products.filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
+  const match = (p) => p.name.toLowerCase().includes(search.trim().toLowerCase())
+  const shown = products.filter(match)
+  const claimable = (tab === 'unsorted' ? unsorted : elsewhere).filter(match)
   const lowCount = products.filter((p) => p.low).length
 
   return (
@@ -112,7 +118,15 @@ export default function MyDepartment() {
         >
           Not sorted yet ({unsorted.length})
         </button>
-        {tab === 'stock' && (
+        <button
+          onClick={() => setTab('elsewhere')}
+          className={`px-3 py-1.5 rounded-xl text-sm font-semibold ${
+            tab === 'elsewhere' ? 'bg-orange-500 text-white' : 'bg-white border border-gray-200 text-gray-600'
+          }`}
+        >
+          Other departments ({elsewhere.length})
+        </button>
+        {(
           <div className="flex items-center gap-2 ml-auto px-3 py-1.5 bg-white border border-gray-200 rounded-xl">
             <FiSearch size={14} className="text-gray-400" />
             <input
@@ -162,19 +176,26 @@ export default function MyDepartment() {
       ) : (
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <p className="px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-xs text-gray-600">
-            Goods the system could not place. Claim the ones that belong to you — anything already in
-            another department is not offered here.
+            {tab === 'unsorted'
+              ? 'Goods the system could not place. Claim the ones that belong to you.'
+              : 'Everything filed under another department. Claim anything that is really yours — '
+                + 'the move is recorded, and the other head will see it gone.'}
           </p>
-          {unsorted.length === 0 ? (
-            <p className="p-10 text-center text-sm text-gray-400">Everything is sorted.</p>
+          {claimable.length === 0 ? (
+            <p className="p-10 text-center text-sm text-gray-400">
+              {search ? `Nothing here matches “${search}”.`
+                : tab === 'unsorted' ? 'Everything is sorted.' : 'No stock in other departments.'}
+            </p>
           ) : (
             <div className="divide-y divide-gray-50">
-              {unsorted.map((p) => (
+              {claimable.map((p) => (
                 <div key={p._id} className="flex items-center gap-3 px-4 py-3">
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm font-medium text-gray-900 truncate">{p.name}</span>
                     <span className="block text-[11px] text-gray-400">
-                      {p.quantity} in stock{p.category ? ` · ${p.category}` : ''}
+                      {p.quantity} in stock
+                      {p.aspect && p.aspect !== 'other' ? ` · now in ${LABELS[p.aspect] || p.aspect}` : ''}
+                      {p.category ? ` · ${p.category}` : ''}
                     </span>
                   </span>
                   <span className="flex gap-1.5 shrink-0">
