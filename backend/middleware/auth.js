@@ -77,6 +77,35 @@ const HEAD_OF_DEPARTMENT_ALLOWED = [
   '/api/notifications',
   '/api/settings',
   '/api/upload',          // a photograph of a damaged item
+  // The till, to look up a price or a stock level. Selling is refused on
+  // the selling endpoints themselves, so reading it costs nothing.
+  '/api/pos',
+];
+
+/**
+ * What a sales attendant's account may reach.
+ *
+ * The counter and the things that happen at it. Everything else — the
+ * catalogue's prices, the shop's debts, the reports, the staff screens —
+ * belongs to somebody else, and an attendant signing in should not be one
+ * typed address away from it.
+ */
+const SALES_ALLOWED = [
+  '/api/auth',
+  '/api/pos',             // the till
+  '/api/products',        // and the catalogue it sells from
+  '/api/refunds',
+  '/api/dispatches',      // a sheet, when they take one out
+  '/api/expenses',
+  '/api/cash-up',
+  '/api/service-charges',
+  '/api/loyalty',         // the points panel inside the till
+  '/api/layaways',        // Pay & Pick Later, also inside the till
+  '/api/notifications',   // the bell in the header of every screen
+  '/api/settings',        // company name and currency on the receipt
+  '/api/sync',            // the offline queue catching up
+  '/api/push',            // registering for notifications on their phone
+  '/api/upload',
 ];
 
 const reaches = (req, allowed) => {
@@ -86,6 +115,7 @@ const reaches = (req, allowed) => {
 
 const managingDirectorMayReach = (req) => reaches(req, MANAGING_DIRECTOR_ALLOWED);
 const headOfDepartmentMayReach = (req) => reaches(req, HEAD_OF_DEPARTMENT_ALLOWED);
+const salesMayReach = (req) => reaches(req, SALES_ALLOWED);
 
 const fieldAgentMayReach = (req) => {
   const path = (req.originalUrl || req.url || '').split('?')[0];
@@ -153,6 +183,13 @@ const authenticate = async (req, res, next) => {
       });
     }
 
+    if (user.role === 'Sales' && !salesMayReach(req)) {
+      return res.status(403).json({
+        success: false,
+        message: 'That screen is not part of your work at the counter.',
+      });
+    }
+
     if (user.role === 'Head of Department' && !headOfDepartmentMayReach(req)) {
       return res.status(403).json({
         success: false,
@@ -179,4 +216,5 @@ const authenticate = async (req, res, next) => {
 
 module.exports = {
   MANAGING_DIRECTOR_ALLOWED,
-  HEAD_OF_DEPARTMENT_ALLOWED, authenticate };
+  HEAD_OF_DEPARTMENT_ALLOWED,
+  SALES_ALLOWED, authenticate };

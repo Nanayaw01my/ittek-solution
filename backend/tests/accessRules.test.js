@@ -11,7 +11,7 @@ const path = require('path');
 const B = path.join(__dirname, '..');
 
 const { maySell, SELLING_ROLES, ROLE_LEVELS } = require(path.join(B, 'middleware/rbac.js'));
-const { MANAGING_DIRECTOR_ALLOWED, HEAD_OF_DEPARTMENT_ALLOWED } = require(path.join(B, 'middleware/auth.js'));
+const { MANAGING_DIRECTOR_ALLOWED, HEAD_OF_DEPARTMENT_ALLOWED, SALES_ALLOWED } = require(path.join(B, 'middleware/auth.js'));
 const { carriesFieldSheets, isConfinedFieldAgent } = require(path.join(B, 'middleware/rbac.js'));
 
 const ALL_ROLES = Object.keys(ROLE_LEVELS);
@@ -123,8 +123,53 @@ test('a head of department reaches their own work and nothing else', () => {
     '/api/damaged-goods', '/api/notifications', '/api/auth/me']) {
     assert.ok(hodReaches(url), `${url} must be reachable`);
   }
-  for (const url of ['/api/pos/sale', '/api/debts', '/api/reports/dashboard',
+  // The till was on this list until the shop said a head may look at it.
+  // Selling from it is refused by role, not by the allowlist — see the
+  // test below.
+  for (const url of ['/api/debts', '/api/reports/dashboard',
     '/api/users', '/api/financial', '/api/aspects/sales', '/api/director/overview']) {
     assert.ok(!hodReaches(url), `${url} is outside a department head's work`);
   }
+});
+
+
+const prefixed = (allowed) => (url) => {
+  const p = url.split('?')[0];
+  return allowed.some((prefix) => p === prefix || p.startsWith(prefix + '/'));
+};
+
+test('a sales attendant reaches the counter and nothing past it', () => {
+  const ok = prefixed(SALES_ALLOWED);
+  // The six screens the shop named, and what they are made of.
+  for (const url of ['/api/pos/sale', '/api/pos/sales/today', '/api/products?search=panel',
+    '/api/refunds', '/api/dispatches', '/api/expenses', '/api/cash-up',
+    '/api/service-charges', '/api/loyalty/account', '/api/layaways',
+    '/api/notifications', '/api/settings', '/api/sync/pull', '/api/auth/me']) {
+    assert.ok(ok(url), `${url} must be reachable or the counter is broken`);
+  }
+  for (const url of ['/api/debts', '/api/reports/dashboard', '/api/users',
+    '/api/financial', '/api/purchases', '/api/suppliers', '/api/aspects/sales',
+    '/api/director/overview', '/api/departments/mine', '/api/stock-requests',
+    '/api/backup', '/api/audit-logs']) {
+    assert.ok(!ok(url), `${url} is past the counter`);
+  }
+});
+
+test('a head of department may look at the till but still not sell', () => {
+  const ok = prefixed(HEAD_OF_DEPARTMENT_ALLOWED);
+  assert.ok(ok('/api/pos/sales'), 'reading prices and stock is the point of letting them in');
+  assert.ok(ok('/api/pos/sale'), 'the endpoint is reachable...');
+  // ...and refused there, by role, which is the gate that matters. A head
+  // of department is not in SELLING_ROLES and never will be by accident.
+  assert.strictEqual(maySell('Head of Department'), false);
+});
+
+test('every confined role is shut out of the others\' screens', () => {
+  const sales = prefixed(SALES_ALLOWED);
+  const hod = prefixed(HEAD_OF_DEPARTMENT_ALLOWED);
+  const md = prefixed(MANAGING_DIRECTOR_ALLOWED);
+
+  assert.ok(!sales('/api/departments/mine') && !sales('/api/director/overview'));
+  assert.ok(!hod('/api/director/overview') && !hod('/api/cash-up'));
+  assert.ok(!md('/api/pos/sale') && !md('/api/cash-up'));
 });

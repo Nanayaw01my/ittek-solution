@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import useAuthStore from './store/authStore'
 import useDocumentTitle from './hooks/useDocumentTitle'
 import { canAccessPage, ROLE_LEVELS } from './config/pageAccess'
-import Layout, { FIELD_AGENT_PAGES, FIELD_AGENT_HOME, MANAGING_DIRECTOR_PAGES, HEAD_OF_DEPARTMENT_PAGES, homeFor } from './components/Layout'
+import Layout, { FIELD_AGENT_PAGES, FIELD_AGENT_HOME, pagesFor, pageAllowed, homeFor } from './components/Layout'
 import LoadingSpinner from './components/LoadingSpinner'
 
 // Pages
@@ -73,34 +73,17 @@ function ProtectedRoute({ children, minLevel = 1, allowedRoles = null, page = nu
     return <Navigate to="/login" replace />
   }
 
-  // A field agent is confined to their own screen. Typing another route into
-  // the address bar lands them back on it rather than on the dashboard, which
-  // they are not allowed to see either.
-  if (user?.role === 'Field Agent') {
-    const here = path || location.pathname
-    if (!FIELD_AGENT_PAGES.some(p => here === p || here.startsWith(p + '/'))) {
-      return <Navigate to="/field-dispatch" replace />
-    }
-  }
-
-  // A head of department runs one side of the shop, so the address bar
-  // does not get them to the rest of it either.
-  if (user?.role === 'Head of Department') {
-    const here = path || location.pathname
-    if (!HEAD_OF_DEPARTMENT_PAGES.some(p => here === p || here.startsWith(p + '/'))) {
-      return <Navigate to="/my-department" replace />
-    }
-  }
-
-  // The Managing Director's remit is four screens, and typing a fifth into
-  // the address bar lands them back on their portal. The same list is
-  // enforced on the API, so this is the tidy half of the answer rather than
-  // the whole of it.
-  if (user?.role === 'Managing Director') {
-    const here = path || location.pathname
-    if (!MANAGING_DIRECTOR_PAGES.some(p => here === p || here.startsWith(p + '/'))) {
-      return <Navigate to="/director" replace />
-    }
+  /**
+   * Roles whose screens are a list, not a level.
+   *
+   * Typing a route into the address bar lands them back on their own home
+   * rather than on the dashboard, which they are not allowed to see
+   * either. One table, shared with the menu — this was three near-identical
+   * blocks, and a fourth role would have been a fourth.
+   */
+  const confinedTo = pagesFor(user)
+  if (confinedTo && !pageAllowed(user, path || location.pathname)) {
+    return <Navigate to={homeFor(user)} replace />
   }
 
   const userLevel = ROLE_LEVELS[user?.role] || 0
@@ -120,7 +103,13 @@ function ProtectedRoute({ children, minLevel = 1, allowedRoles = null, page = nu
     return turnAway
   }
 
-  if (minLevel && userLevel < minLevel && !(page && canAccessPage(user, page))) {
+  /**
+   * A confined role's list has already decided, so a level must not
+   * overrule it: Cash Up is level two and a sales attendant is level one,
+   * and the shop put Cash Up on their list deliberately — they are the
+   * ones counting the till at the end of the day.
+   */
+  if (!confinedTo && minLevel && userLevel < minLevel && !(page && canAccessPage(user, page))) {
     return turnAway
   }
 

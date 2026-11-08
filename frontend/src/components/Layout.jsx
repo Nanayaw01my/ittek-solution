@@ -23,32 +23,67 @@ import InstallAppButton from './InstallAppButton'
 export const FIELD_AGENT_PAGES = ['/field-dispatch', '/phone-sales', '/notifications']
 
 /**
+ * A head of department's screens.
+ *
+ * Their own stock, the stock they ask for, breakages in it, their dispatch
+ * sheets when they are also out on the road, and the till — which they may
+ * read but not sell from, the same as a Manager. The stop on selling lives
+ * in the till itself and on the server, not on the door.
+ */
+export const HEAD_OF_DEPARTMENT_PAGES = [
+  '/my-department', '/stock-requests', '/damaged-goods', '/field-dispatch',
+  '/pos', '/notifications',
+]
+
+/**
  * The Managing Director's screens.
  *
  * Beside the CEO in rank, but a narrower job: the business's figures, what
- * it is owed, who it buys from, and what the floor is asking for. The same
- * list is enforced on the API in middleware/auth.js — this one only decides
- * what the menu shows, and a menu is not a lock.
+ * it is owed, who it buys from, and what the floor is asking for.
  */
-/**
- * A head of department's screens.
- *
- * Their own stock, the stock they ask for, breakages in it, and — when
- * they are also out on the road — their dispatch sheets. Dispatch is in
- * the list for all of them because the gate that matters is on the sheets
- * themselves: somebody with no field duty is shown none, so the screen is
- * empty rather than forbidden, and a head sent out tomorrow needs no
- * permission change.
- */
-export const HEAD_OF_DEPARTMENT_PAGES = [
-  '/my-department', '/stock-requests', '/damaged-goods', '/field-dispatch', '/notifications',
-]
-
 export const MANAGING_DIRECTOR_PAGES = [
   '/director', '/debts', '/suppliers', '/stock-requests', '/notifications',
 ]
 
+/**
+ * A sales attendant's screens.
+ *
+ * The counter and the things that happen at it: the till, refunds, a
+ * dispatch sheet when they take one out, money paid out, the day's cash
+ * up, and work charged for. Notifications is here because the bell sits in
+ * the header of every screen — left out, tapping it would bounce them back
+ * to the till, which reads as broken rather than as a permission.
+ */
+export const SALES_PAGES = [
+  '/pos', '/refunds', '/field-dispatch', '/expenses', '/cash-up',
+  '/service-charges', '/notifications',
+]
 
+/**
+ * The roles whose screens are a list rather than a level.
+ *
+ * Four roles have one now, and each used to be its own branch in the menu
+ * and a second in the route guard — eight places to keep in step, and the
+ * eighth is where a role quietly keeps a screen it should have lost. One
+ * table, read by both. A role that is not in here is governed by levels
+ * and grants, as before.
+ */
+export const ROLE_PAGES = {
+  'Field Agent': FIELD_AGENT_PAGES,
+  'Head of Department': HEAD_OF_DEPARTMENT_PAGES,
+  'Managing Director': MANAGING_DIRECTOR_PAGES,
+  Sales: SALES_PAGES,
+}
+
+/** The screens this person is confined to, or null if a level decides. */
+export const pagesFor = (user) => ROLE_PAGES[user?.role] || null
+
+/** Is this screen open to them, given a list that confines them? */
+export const pageAllowed = (user, pathname) => {
+  const allowed = pagesFor(user)
+  if (!allowed) return true
+  return allowed.some((p) => pathname === p || pathname.startsWith(p + '/'))
+}
 
 /** Where a field agent lands after signing in, instead of the dashboard. */
 export const FIELD_AGENT_HOME = '/field-dispatch'
@@ -67,6 +102,10 @@ export function homeFor(user) {
   // A head of department lands on their own stock: the Dashboard is the
   // shop's money, which is not their job.
   if (user?.role === 'Head of Department') return '/my-department'
+  // A sales attendant lands at the till. The Dashboard is no longer theirs
+  // to open, and sending somebody to a screen they are barred from is how
+  // one wrong permission becomes a redirect loop.
+  if (user?.role === 'Sales') return '/pos'
   // The Dashboard answers "how is the shop". The portal answers "is
   // anything waiting for me", which is the question an owner opens the
   // system to ask. The other owners keep the Dashboard and reach the
@@ -198,18 +237,19 @@ export default function Layout() {
   // A field agent is the exception: they get the one screen and nothing else,
   // listed rather than filtered so a page added later does not quietly appear
   // on a rep's phone. The server enforces the same list.
-  const visibleNavItems = user?.role === 'Field Agent'
-    ? NAV_ITEMS.filter(item => FIELD_AGENT_PAGES.includes(item.to))
-    : user?.role === 'Managing Director'
-      ? NAV_ITEMS.filter(item => MANAGING_DIRECTOR_PAGES.includes(item.to))
-      : user?.role === 'Head of Department'
-        ? NAV_ITEMS.filter(item => HEAD_OF_DEPARTMENT_PAGES.includes(item.to)
-          // A head who is not on field duty has no sheets, so the screen
-          // would only ever be empty.
-          && (item.to !== '/field-dispatch' || carriesFieldSheets(user)))
-        : NAV_ITEMS.filter(item =>
-          userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1))
-        )
+  // One rule for every confined role, read from the same table the route
+  // guard reads, so the menu and the door cannot disagree.
+  const confinedTo = pagesFor(user)
+  const visibleNavItems = confinedTo
+    ? NAV_ITEMS.filter(item => confinedTo.includes(item.to)
+      // Somebody with no field duty has no sheets, so the screen would
+      // only ever be empty. A Field Agent is the duty.
+      && (item.to !== '/field-dispatch'
+        || user?.role === 'Field Agent'
+        || carriesFieldSheets(user)))
+    : NAV_ITEMS.filter(item =>
+      userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1))
+    )
 
   useEffect(() => { if (!sidebarOpen) setNavFilter('') }, [sidebarOpen])
 
