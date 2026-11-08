@@ -49,6 +49,7 @@ export const getRoleBadgeColor = (role) => {
     'CEO': 'bg-blue-100 text-blue-800',
     'COO': 'bg-indigo-100 text-indigo-800',
     'Managing Director': 'bg-violet-100 text-violet-800',
+    'Head of Department': 'bg-cyan-100 text-cyan-800',
     'Manager': 'bg-green-100 text-green-800',
     'Sales': 'bg-orange-100 text-orange-700',
     // Engineer does the same job as Sales, so it reads as the same kind of

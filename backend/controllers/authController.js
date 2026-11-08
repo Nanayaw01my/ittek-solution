@@ -228,6 +228,13 @@ const login = async (req, res) => {
           // Products page uses it to limit the category picker; the server
           // enforces it again on every create.
           assigned_categories: (user.assigned_categories || []).map(String),
+          // Which side of the shop a head of department runs, and whether
+          // this person also goes out with a dispatch sheet. Both decide
+          // what the menu shows, so both have to travel with the login —
+          // left out, a head would sign in to an empty department and
+          // somebody on field duty would not see their sheets.
+          departments: user.departments || [],
+          field_duty: !!user.field_duty,
           // Screens granted to this user on top of what their role opens.
           page_access: user.page_access ? Object.fromEntries(user.page_access) : {},
         },

@@ -54,12 +54,38 @@ const MANAGING_DIRECTOR_ALLOWED = [
   '/api/settings',        // company name, currency, the shop's own thresholds
 ];
 
+/**
+ * What a Head of Department's account may reach.
+ *
+ * They run one side of the shop's stock, so: their own department, the
+ * stock requests they raise for it, and — when they are also out on the
+ * road — their dispatch sheets. Not the till, not the catalogue's prices,
+ * not the shop's money.
+ *
+ * Dispatch is in the list for everyone with the role, because the gate
+ * that matters is on the sheets themselves: somebody with no field duty
+ * sees no sheets, so the screen is empty rather than forbidden, and a head
+ * who is sent out tomorrow needs no permission change.
+ */
+const HEAD_OF_DEPARTMENT_ALLOWED = [
+  '/api/auth',
+  '/api/departments',     // their own stock, and sorting into it
+  '/api/products',        // the picker inside a stock request
+  '/api/stock-requests',  // asking for more of what they run
+  '/api/dispatches',      // when they also carry a sheet
+  '/api/damaged-goods',   // breakages in their own stock
+  '/api/notifications',
+  '/api/settings',
+  '/api/upload',          // a photograph of a damaged item
+];
+
 const reaches = (req, allowed) => {
   const path = (req.originalUrl || req.url || '').split('?')[0];
   return allowed.some((prefix) => path === prefix || path.startsWith(prefix + '/'));
 };
 
 const managingDirectorMayReach = (req) => reaches(req, MANAGING_DIRECTOR_ALLOWED);
+const headOfDepartmentMayReach = (req) => reaches(req, HEAD_OF_DEPARTMENT_ALLOWED);
 
 const fieldAgentMayReach = (req) => {
   const path = (req.originalUrl || req.url || '').split('?')[0];
@@ -127,6 +153,13 @@ const authenticate = async (req, res, next) => {
       });
     }
 
+    if (user.role === 'Head of Department' && !headOfDepartmentMayReach(req)) {
+      return res.status(403).json({
+        success: false,
+        message: 'That screen is outside your department.',
+      });
+    }
+
     if (user.role === 'Managing Director' && !managingDirectorMayReach(req)) {
       return res.status(403).json({
         success: false,
@@ -145,4 +178,5 @@ const authenticate = async (req, res, next) => {
 };
 
 module.exports = {
-  MANAGING_DIRECTOR_ALLOWED, authenticate };
+  MANAGING_DIRECTOR_ALLOWED,
+  HEAD_OF_DEPARTMENT_ALLOWED, authenticate };

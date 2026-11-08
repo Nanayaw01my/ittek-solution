@@ -39,6 +39,8 @@ const GRANTABLE_PAGES = {
   // Who sold what, to whom, at what discount. Owners by default; a CEO can
   // grant it to a manager who is chasing something specific.
   'staff-sales': { label: 'Who Sold What', defaultLevel: 3, modes: ['view'] },
+  // A head of department's own stock, and sorting new goods into it.
+  'my-department': { label: 'My Department', defaultLevel: 2, modes: ['view'] },
   // The owners' one screen: the day, the queue, and what is off.
   director: { label: "Director's Portal", defaultLevel: 3, modes: ['view'] },
   'business-lines': { label: 'Business Lines', defaultLevel: 3, modes: ['view'] },

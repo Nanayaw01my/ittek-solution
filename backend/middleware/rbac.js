@@ -25,6 +25,14 @@ const ROLE_LEVELS = {
   // rather than by level precisely so a level cannot grant them by accident.
   COO: 3,
   Manager: 2,
+  /**
+   * Runs one side of the shop — the solar stock, the IT stock — rather
+   * than the shop. Level two, beside a Manager: senior to the counter,
+   * junior to the owners. Which departments they run is on the user, not
+   * in the level, because two heads of department are the same rank and
+   * different jobs.
+   */
+  'Head of Department': 2,
   Sales: 1,
   // An engineer does the same job as Sales from the system's point of view:
   // sells, takes payment, books service work, and sees no cost price. It is
@@ -55,7 +63,7 @@ const seesOwnRecordsOnly = (role) => SELF_ONLY_ROLES.includes(role);
  * The staff an owner manages, as opposed to the owners themselves. Used for
  * the user list a Manager is allowed to see, and for staff counts.
  */
-const STAFF_ROLES = ['Manager', 'Sales', 'Engineer', 'Field Agent'];
+const STAFF_ROLES = ['Manager', 'Head of Department', 'Sales', 'Engineer', 'Field Agent'];
 
 /**
  * Who may ring up a sale.
@@ -73,6 +81,20 @@ const STAFF_ROLES = ['Manager', 'Sales', 'Engineer', 'Field Agent'];
  * longer true.
  */
 const SELLING_ROLES = ['Sales', 'CEO', 'COO', 'Super Admin'];
+
+/**
+ * Who carries a field dispatch sheet.
+ *
+ * Being out on the road is a duty, not a rank — a head of department can
+ * spend Tuesday selling panels in a village, and the system should not
+ * need a second account for it. 'Field Agent' is still a role, but that
+ * role means *confined to* the dispatch screens; the flag means *also
+ * does* dispatch, and leaves everything else about the person alone.
+ */
+const carriesFieldSheets = (user) => user?.role === 'Field Agent' || user?.field_duty === true;
+
+/** Only the role is confined; the flag confines nobody. */
+const isConfinedFieldAgent = (user) => user?.role === 'Field Agent';
 const maySell = (role) => SELLING_ROLES.includes(role);
 
 /**
@@ -182,4 +204,5 @@ const ownerBelowAdmin = (role) => isOwner(role) && role !== 'Super Admin';
 module.exports = {
   requireRoles, requireLevel, requirePage, ROLE_LEVELS, OWNER_ROLES, isOwner, ownerBelowAdmin,
   SELF_ONLY_ROLES, seesOwnRecordsOnly, STAFF_ROLES, SELLING_ROLES, maySell,
+  carriesFieldSheets, isConfinedFieldAgent,
 };

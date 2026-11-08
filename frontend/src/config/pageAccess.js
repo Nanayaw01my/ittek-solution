@@ -29,6 +29,8 @@ export const GRANTABLE_PAGES = {
   // Who sold what, to whom, at what discount. Owners by default; a CEO can
   // grant it to a manager who is chasing something specific.
   'staff-sales': { label: 'Who Sold What', defaultLevel: 3, modes: ['view'] },
+  // A head of department's own stock, and sorting new goods into it.
+  'my-department': { label: 'My Department', defaultLevel: 2, modes: ['view'] },
   // The owners' one screen: the day, the queue, and what is off.
   director: { label: "Director's Portal", defaultLevel: 3, modes: ['view'] },
   'business-lines': { label: 'Business Lines', defaultLevel: 3, modes: ['view'] },
@@ -60,7 +62,19 @@ export const MODE_LABELS = {
  * dashboard — which the field-agent guard bounced straight back, looping
  * thousands of times a second until the page froze white.
  */
-export const ROLE_LEVELS = { 'Field Agent': 1, Sales: 1, Engineer: 1, Manager: 2, COO: 3, CEO: 3, 'Managing Director': 3, 'Super Admin': 4 }
+export const ROLE_LEVELS = {
+  'Field Agent': 1, Sales: 1, Engineer: 1,
+  Manager: 2, 'Head of Department': 2,
+  COO: 3, CEO: 3, 'Managing Director': 3,
+  'Super Admin': 4,
+}
+
+/**
+ * Who carries a field dispatch sheet — mirroring carriesFieldSheets on the
+ * server. Being out on the road is a duty, not a rank: a head of department
+ * can spend Tuesday selling panels in a village without a second account.
+ */
+export const carriesFieldSheets = (user) => user?.role === 'Field Agent' || user?.field_duty === true
 
 export const roleLevel = (role) => ROLE_LEVELS[role] || 0
 

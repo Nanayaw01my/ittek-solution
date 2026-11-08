@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
-import { canAccessPage } from '../config/pageAccess'
+import { canAccessPage, carriesFieldSheets } from '../config/pageAccess'
 import { getMe } from '../api/auth'
 import useNotificationStore from '../store/notificationStore'
 import { getRoleLabel, getRoleLevel } from '../utils/helpers'
 import {
-  FiHome, FiShoppingCart, FiPackage, FiTag, FiTruck, FiDollarSign, FiBriefcase,
+  FiHome, FiShoppingCart, FiPackage, FiTag, FiTruck, FiDollarSign, FiBriefcase, FiGrid,
   FiAlertCircle, FiUsers, FiShoppingBag, FiInbox, FiFileText,
   FiBarChart2, FiSettings, FiDatabase, FiBell, FiSearch, FiLogOut,
   FiMenu, FiX, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
@@ -30,6 +30,20 @@ export const FIELD_AGENT_PAGES = ['/field-dispatch', '/phone-sales', '/notificat
  * list is enforced on the API in middleware/auth.js — this one only decides
  * what the menu shows, and a menu is not a lock.
  */
+/**
+ * A head of department's screens.
+ *
+ * Their own stock, the stock they ask for, breakages in it, and — when
+ * they are also out on the road — their dispatch sheets. Dispatch is in
+ * the list for all of them because the gate that matters is on the sheets
+ * themselves: somebody with no field duty is shown none, so the screen is
+ * empty rather than forbidden, and a head sent out tomorrow needs no
+ * permission change.
+ */
+export const HEAD_OF_DEPARTMENT_PAGES = [
+  '/my-department', '/stock-requests', '/damaged-goods', '/field-dispatch', '/notifications',
+]
+
 export const MANAGING_DIRECTOR_PAGES = [
   '/director', '/debts', '/suppliers', '/stock-requests', '/notifications',
 ]
@@ -57,6 +71,9 @@ export const FIELD_AGENT_HOME = '/field-dispatch'
  */
 export function homeFor(user) {
   if (user?.role === 'Field Agent') return FIELD_AGENT_HOME
+  // A head of department lands on their own stock: the Dashboard is the
+  // shop's money, which is not their job.
+  if (user?.role === 'Head of Department') return '/my-department'
   // The Dashboard answers "how is the shop". The portal answers "is
   // anything waiting for me", which is the question an owner opens the
   // system to ask. The other owners keep the Dashboard and reach the
@@ -96,6 +113,8 @@ const NAV_ITEMS = [
   // Sales+ (all logged-in users)
   { to: '/pos', label: 'Point of Sale', icon: FiShoppingCart, minLevel: 1, section: 'selling' },
   { to: '/refunds', label: 'Refunds', icon: FiRotateCcw, minLevel: 1, section: 'selling' },
+  // A head of department's own stock, and sorting new goods into it.
+  { to: '/my-department', label: 'My Department', icon: FiGrid, minLevel: 2, section: 'stock' },
   { to: '/field-dispatch', label: 'Field Dispatch', icon: FiSend, minLevel: 1, section: 'selling' },
   { to: '/phone-sales', label: 'Phone Credit Sales', icon: FiSmartphone, minLevel: 1, section: 'selling' },
   { to: '/service-charges', label: 'Service Charges', icon: FiTool, minLevel: 1, section: 'selling' },
@@ -190,7 +209,12 @@ export default function Layout() {
     ? NAV_ITEMS.filter(item => FIELD_AGENT_PAGES.includes(item.to))
     : user?.role === 'Managing Director'
       ? NAV_ITEMS.filter(item => MANAGING_DIRECTOR_PAGES.includes(item.to))
-      : NAV_ITEMS.filter(item =>
+      : user?.role === 'Head of Department'
+        ? NAV_ITEMS.filter(item => HEAD_OF_DEPARTMENT_PAGES.includes(item.to)
+          // A head who is not on field duty has no sheets, so the screen
+          // would only ever be empty.
+          && (item.to !== '/field-dispatch' || carriesFieldSheets(user)))
+        : NAV_ITEMS.filter(item =>
         (userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1)))
         // The till is a job rather than a rank, so a level does not open it.
         && (item.to !== '/pos' || maySell(user?.role))

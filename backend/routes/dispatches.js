@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
-const { requireLevel, ROLE_LEVELS } = require('../middleware/rbac');
+const { requireLevel, ROLE_LEVELS, carriesFieldSheets, isConfinedFieldAgent } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
   getFieldAgents, getDispatches, getDispatch, createDispatch,
@@ -19,7 +19,11 @@ router.use(authenticate);
  * Letting them issue to themselves would be letting them help themselves.
  */
 const shopStaffOnly = (req, res, next) => {
-  if (req.user.role === 'Field Agent') {
+  // Only the confined role is kept off the issuing screen. Shop staff who
+  // also carry a sheet — a head of department out for the day — issue goods
+  // as part of their actual job; what they may not do is issue to
+  // themselves, which the controller checks when the agent is named.
+  if (isConfinedFieldAgent(req.user)) {
     return res.status(403).json({
       success: false,
       message: 'Goods are issued to you at the shop. Ask the counter to add them.',
@@ -57,7 +61,8 @@ router.put('/:id/return', shopStaffOnly, auditLog('RETURN_DISPATCH'), returnDisp
  */
 const mayTakeMoney = (req, res, next) => {
   const level = ROLE_LEVELS[req.user.role] || 0;
-  if (req.user.role === 'Field Agent' || level >= 2) return next();
+  // Whoever carried the goods can settle for them, whatever else they do.
+  if (carriesFieldSheets(req.user) || level >= 2) return next();
   return res.status(403).json({
     success: false,
     message: 'Only the agent or a manager can settle a field sheet.',

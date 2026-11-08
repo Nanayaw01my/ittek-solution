@@ -51,7 +51,8 @@ const UserSchema = new mongoose.Schema(
       // is done at the shop with a manager present.
       // Engineer is Sales by another name: the same access, the same limits,
       // kept separate only so the shop can see who sold or serviced what.
-      enum: ['Super Admin', 'CEO', 'COO', 'Managing Director', 'Manager', 'Sales', 'Engineer', 'Field Agent'],
+      enum: ['Super Admin', 'CEO', 'COO', 'Managing Director', 'Manager',
+        'Head of Department', 'Sales', 'Engineer', 'Field Agent'],
       required: [true, 'Role is required'],
     },
     is_active: {
@@ -86,6 +87,28 @@ const UserSchema = new mongoose.Schema(
         ref: 'Category',
       },
     ],
+    /**
+     * The departments a Head of Department runs: 'solar', 'networking',
+     * 'electrical' — the same keys the rest of the system sorts stock by,
+     * so a head sees exactly what Business Lines counts.
+     *
+     * More than one, because a small shop's head of solar is often also
+     * the head of electricals. Empty means they run nothing yet, which is
+     * a head who can see no stock rather than one who can see all of it.
+     */
+    departments: [{ type: String, trim: true, lowercase: true }],
+
+    /**
+     * Also goes out on the road with a dispatch sheet.
+     *
+     * A duty rather than a rank, so it is a flag and not a role: a head of
+     * department who spends Tuesday selling in a village keeps their own
+     * account and their own screens. The 'Field Agent' role still exists
+     * and still means something different — confined to the dispatch
+     * screens and nothing else.
+     */
+    field_duty: { type: Boolean, default: false },
+
     /**
      * Screens this user has been given access to beyond what their role
      * already opens, as page id -> mode (see backend/config/pageAccess.js).

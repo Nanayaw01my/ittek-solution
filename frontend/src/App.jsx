@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import useAuthStore from './store/authStore'
 import useDocumentTitle from './hooks/useDocumentTitle'
 import { canAccessPage, ROLE_LEVELS } from './config/pageAccess'
-import Layout, { FIELD_AGENT_PAGES, FIELD_AGENT_HOME, MANAGING_DIRECTOR_PAGES, SELLING_ROLES, homeFor } from './components/Layout'
+import Layout, { FIELD_AGENT_PAGES, FIELD_AGENT_HOME, MANAGING_DIRECTOR_PAGES, HEAD_OF_DEPARTMENT_PAGES, SELLING_ROLES, homeFor } from './components/Layout'
 import LoadingSpinner from './components/LoadingSpinner'
 
 // Pages
@@ -36,6 +36,7 @@ import PublicReceipt from './pages/PublicReceipt'
 import Layaways from './pages/Layaways'
 import PackagePlans from './pages/PackagePlans'
 import DirectorPortal from './pages/DirectorPortal'
+import MyDepartment from './pages/MyDepartment'
 import FieldDispatch from './pages/FieldDispatch'
 import PhoneSales from './pages/PhoneSales'
 import ServiceCharges from './pages/ServiceCharges'
@@ -79,6 +80,15 @@ function ProtectedRoute({ children, minLevel = 1, allowedRoles = null, page = nu
     const here = path || location.pathname
     if (!FIELD_AGENT_PAGES.some(p => here === p || here.startsWith(p + '/'))) {
       return <Navigate to="/field-dispatch" replace />
+    }
+  }
+
+  // A head of department runs one side of the shop, so the address bar
+  // does not get them to the rest of it either.
+  if (user?.role === 'Head of Department') {
+    const here = path || location.pathname
+    if (!HEAD_OF_DEPARTMENT_PAGES.some(p => here === p || here.startsWith(p + '/'))) {
+      return <Navigate to="/my-department" replace />
     }
   }
 
@@ -222,6 +232,7 @@ export default function App() {
         {/* Any member of staff can take an instalment over the counter. */}
         <Route path="package-plans" element={<ProtectedRoute minLevel={1} page="package-plans"><PackagePlans /></ProtectedRoute>} />
         <Route path="director" element={<ProtectedRoute minLevel={3} page="director"><DirectorPortal /></ProtectedRoute>} />
+        <Route path="my-department" element={<ProtectedRoute minLevel={2} page="my-department"><MyDepartment /></ProtectedRoute>} />
         {/* Staff conduct alerts — owners only; they name individual staff */}
         <Route path="fraud-alerts" element={<ProtectedRoute minLevel={3}><FraudAlerts /></ProtectedRoute>} />
 

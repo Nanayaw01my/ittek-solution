@@ -93,7 +93,10 @@ const createUser = async (req, res) => {
       return res.status(400).json({ success: false, message: errors.array()[0].msg });
     }
 
-    const { username, email, password, role, assigned_categories, page_access } = req.body;
+    const {
+      username, email, password, role, assigned_categories, page_access,
+      departments, field_duty,
+    } = req.body;
     const normalUsername = username.trim().toLowerCase();
     const normalEmail = email ? email.trim().toLowerCase() : null;
 
@@ -131,6 +134,14 @@ const createUser = async (req, res) => {
       created_by: req.user._id,
       ...(avatar_url ? { avatar_url } : {}),
       ...(categoryIds.length ? { assigned_categories: categoryIds } : {}),
+      // Which side of the shop they run, and whether they also go out with
+      // a dispatch sheet. Both are set here rather than inferred from the
+      // role, because two heads of department are the same role and
+      // different jobs, and field duty is a duty rather than a rank.
+      ...(Array.isArray(departments)
+        ? { departments: departments.map((d) => String(d).toLowerCase().trim()).filter(Boolean) }
+        : {}),
+      ...(field_duty !== undefined ? { field_duty: !!field_duty } : {}),
       // Screens this user may reach beyond what their role opens.
       ...(page_access ? { page_access: sanitizeGrants(page_access) } : {}),
     });
@@ -180,7 +191,10 @@ const updateUser = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
-    const { username, email, role, avatar_url, assigned_categories, page_access } = req.body;
+    const {
+      username, email, role, avatar_url, assigned_categories, page_access,
+      departments, field_duty,
+    } = req.body;
 
     if (role && !canManage(req.user.role, role)) {
       return res.status(403).json({ success: false, message: 'Cannot assign that role.' });
@@ -212,6 +226,14 @@ const updateUser = async (req, res) => {
 
     // Which product categories this Manager may add products to. Sent as an
     // array of category ids; an empty array withdraws the assignment entirely.
+    // Editable after the fact: a head takes on electricals as well as
+    // solar, somebody starts going out on the road. Neither should mean
+    // deleting the account and making a new one.
+    if (Array.isArray(departments)) {
+      user.departments = departments.map((d) => String(d).toLowerCase().trim()).filter(Boolean);
+    }
+    if (field_duty !== undefined) user.field_duty = !!field_duty;
+
     if (Array.isArray(assigned_categories)) {
       const ids = assigned_categories.filter((id) => mongoose.isValidObjectId(id));
       const found = await Category.countDocuments({ _id: { $in: ids } });

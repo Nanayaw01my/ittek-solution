@@ -19,8 +19,8 @@ import useBarcodeScanner from '../hooks/useBarcodeScanner'
  * manufacture a peer.
  */
 const ROLES_FOR_LEVEL = {
-  3: ['Manager', 'Sales', 'Engineer', 'Field Agent'],
-  4: ['Super Admin', 'CEO', 'COO', 'Managing Director', 'Manager', 'Sales', 'Engineer', 'Field Agent'],
+  3: ['Manager', 'Head of Department', 'Sales', 'Engineer', 'Field Agent'],
+  4: ['Super Admin', 'CEO', 'COO', 'Managing Director', 'Manager', 'Head of Department', 'Sales', 'Engineer', 'Field Agent'],
 }
 
 const ROLE_COLORS = {
@@ -28,6 +28,7 @@ const ROLE_COLORS = {
   'CEO': 'bg-blue-100 text-blue-700',
   'COO': 'bg-indigo-100 text-indigo-700',
   'Managing Director': 'bg-violet-100 text-violet-700',
+  'Head of Department': 'bg-cyan-100 text-cyan-700',
   'Manager': 'bg-orange-100 text-orange-700',
   'Sales': 'bg-green-100 text-green-700',
   'Engineer': 'bg-sky-100 text-sky-700',
@@ -118,6 +119,23 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
     (editUser?.assigned_categories || []).map(c => String(c?._id || c))
   )
 
+  /**
+   * Which side of the shop a head of department runs, and whether this
+   * person also goes out with a dispatch sheet.
+   *
+   * Departments are the same three the rest of the system sorts stock by,
+   * so a head sees exactly what Business Lines counts. Field duty is kept
+   * separate from the role on purpose: being out on the road is a duty,
+   * not a rank, and a head who spends Tuesday selling in a village should
+   * not need a second account for it.
+   */
+  const [departments, setDepartments] = useState(
+    (editUser?.departments || []).map(d => String(d))
+  )
+  const [fieldDuty, setFieldDuty] = useState(!!editUser?.field_duty)
+  const toggleDepartment = (key) =>
+    setDepartments(prev => (prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key]))
+
   // Staff photo. Uploaded as soon as it is chosen so the form only ever
   // carries the resulting URL — the image itself never rides along with the
   // rest of the user's details.
@@ -165,7 +183,14 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
 
   return (
     <form
-      onSubmit={handleSubmit(data => onSubmit({ ...data, avatar_url: avatarUrl, assigned_categories: assigned, page_access: grants }))}
+      onSubmit={handleSubmit(data => onSubmit({
+        ...data,
+        avatar_url: avatarUrl,
+        assigned_categories: assigned,
+        departments,
+        field_duty: fieldDuty,
+        page_access: grants,
+      }))}
       className="p-5 space-y-4"
     >
       {/* The photo, first: it is what the person sees when they sign in. */}
@@ -265,6 +290,61 @@ function UserForm({ user: editUser, myRole, onSubmit, loading }) {
             ))}
           </div>
         </div>
+      )}
+
+      {selectedRole === 'Head of Department' && (
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">
+            Which department do they run?
+          </label>
+          <p className="text-xs text-gray-500 mb-2">
+            They see the stock in these and can sort unplaced goods into them. Tick more than
+            one where the same person runs two sides of the shop. None ticked means they see
+            no stock at all, which is a head waiting to be given a department rather than one
+            who can see everything.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { key: 'solar', label: 'Solar' },
+              { key: 'networking', label: 'IT' },
+              { key: 'electrical', label: 'Electricals' },
+            ].map(d => (
+              <button
+                key={d.key}
+                type="button"
+                onClick={() => toggleDepartment(d.key)}
+                className={`px-3 py-2 rounded-xl border text-sm font-semibold ${
+                  departments.includes(d.key)
+                    ? 'border-orange-500 bg-orange-50 text-orange-700'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Any role can also carry a sheet — except the Field Agent role,
+          which already is one and nothing else. */}
+      {selectedRole && selectedRole !== 'Field Agent' && (
+        <label className="flex items-start gap-2.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={fieldDuty}
+            onChange={e => setFieldDuty(e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-orange-500"
+          />
+          <span>
+            <span className="font-bold">Also goes out with a dispatch sheet</span>
+            <span className="block text-xs text-gray-500 leading-relaxed">
+              Goods can be issued to them for the field, and they settle their own sheet when
+              they come back. They keep everything else their role gives them — this adds the
+              duty, it does not turn them into a field agent.
+            </span>
+          </span>
+        </label>
       )}
 
       {grants.products === 'inventory' && (

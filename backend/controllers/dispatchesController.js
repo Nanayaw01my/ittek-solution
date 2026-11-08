@@ -1,3 +1,4 @@
+const { carriesFieldSheets } = require('../middleware/rbac');
 const Dispatch = require('../models/Dispatch');
 const { groupByAgent } = require('../utils/dispatchGrouping');
 
@@ -85,7 +86,10 @@ const costPriceOf = async (item) => {
  * "forbidden" so guessing ids tells a rep nothing about other reps' sheets.
  */
 const mayTouch = (req, dispatch) =>
-  req.user.role !== 'Field Agent'
+  // Anybody who carries sheets sees their own and nobody else's, whether
+  // that is their whole job or Tuesday's. Shop staff who carry none see
+  // them all, because issuing and settling is what they are for.
+  !carriesFieldSheets(req.user)
   || String(dispatch.agent_user_id || '') === String(req.user._id);
 
 /** How many of a line are still with the agent. */
@@ -101,7 +105,12 @@ const stillOut = (item) =>
  */
 const getFieldAgents = async (req, res) => {
   try {
-    const agents = await User.find({ role: 'Field Agent', is_active: true })
+    // The role means "does nothing else"; the flag means "also does this".
+    // Both carry sheets, so both are offered when goods are being issued.
+    const agents = await User.find({
+      is_active: true,
+      $or: [{ role: 'Field Agent' }, { field_duty: true }],
+    })
       .select('username')
       .sort({ username: 1 })
       .lean();
@@ -125,8 +134,8 @@ const getFieldAgents = async (req, res) => {
 const getDispatchesByAgent = async (req, res) => {
   try {
     const base = {};
-    // A field agent sees their own and nobody else's.
-    if (req.user.role === 'Field Agent') base.agent_user_id = req.user._id;
+    // Whoever carries sheets sees their own and nobody else's.
+    if (carriesFieldSheets(req.user)) base.agent_user_id = req.user._id;
 
     const [openSheets, closed] = await Promise.all([
       Dispatch.find({ ...base, status: { $ne: 'closed' } })
@@ -184,7 +193,7 @@ const getDispatches = async (req, res) => {
     const filter = {};
     // A field agent sees their own sheets and nobody else's — one rep has no
     // business knowing what another is carrying or what they owe.
-    if (req.user.role === 'Field Agent') filter.agent_user_id = req.user._id;
+    if (carriesFieldSheets(req.user)) filter.agent_user_id = req.user._id;
     if (status) filter.status = status;
     if (agent) filter.agent_name = { $regex: String(agent), $options: 'i' };
 
@@ -250,9 +259,25 @@ const createDispatch = async (req, res) => {
     // request: a typed name that does not match any login would leave the
     // goods against a rep who can never see them.
     if (agent_user_id) {
-      const agent = await User.findById(agent_user_id).select('username role is_active').lean();
-      if (!agent || agent.role !== 'Field Agent' || !agent.is_active) {
+      const agent = await User.findById(agent_user_id).select('username role is_active field_duty').lean();
+      if (!agent || !carriesFieldSheets(agent) || !agent.is_active) {
         return res.status(400).json({ success: false, message: 'Choose an active field agent.' });
+      }
+      /**
+       * Nobody issues a sheet to themselves.
+       *
+       * The old rule barred the Field Agent role from the issuing screen
+       * entirely, on the grounds that letting a rep pick their own goods is
+       * letting them help themselves. Now that shop staff can also carry a
+       * sheet, that rule has to be said properly: it was never about the
+       * role, it was about the same person choosing the goods and taking
+       * them.
+       */
+      if (String(agent._id) === String(req.user._id)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Somebody else issues your sheet — goods are not taken by the person choosing them.',
+        });
       }
       agent_name = agent.username;
     }
