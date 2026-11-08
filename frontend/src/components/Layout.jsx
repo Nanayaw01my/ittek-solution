@@ -10,8 +10,7 @@ import {
   FiAlertCircle, FiUsers, FiShoppingBag, FiInbox, FiFileText,
   FiBarChart2, FiSettings, FiDatabase, FiBell, FiSearch, FiLogOut,
   FiMenu, FiX, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
-  FiArchive, FiShield, FiGlobe, FiTrash2, FiClipboard, FiSend, FiSmartphone, FiTool, FiAlertTriangle, FiLock, FiCheckSquare, FiPhone, FiUserCheck, FiPieChart
-} from 'react-icons/fi'
+  FiArchive, FiShield, FiGlobe, FiTrash2, FiClipboard, FiSend, FiSmartphone, FiTool, FiAlertTriangle, FiLock, FiCheckSquare, FiPhone, FiUserCheck, FiPieChart, FiCalendar } from 'react-icons/fi'
 import { logout as apiLogout } from '../api/auth'
 import toast from 'react-hot-toast'
 import OfflineBanner from './OfflineBanner'
@@ -32,7 +31,7 @@ export const FIELD_AGENT_PAGES = ['/field-dispatch', '/phone-sales', '/notificat
  */
 export const HEAD_OF_DEPARTMENT_PAGES = [
   '/my-department', '/stock-requests', '/damaged-goods', '/field-dispatch',
-  '/pos', '/notifications',
+  '/pos', '/my-week', '/notifications',
 ]
 
 /**
@@ -56,7 +55,7 @@ export const MANAGING_DIRECTOR_PAGES = [
  */
 export const SALES_PAGES = [
   '/pos', '/refunds', '/field-dispatch', '/expenses', '/cash-up',
-  '/service-charges', '/notifications',
+  '/service-charges', '/my-week', '/notifications',
 ]
 
 /**
@@ -141,6 +140,8 @@ const NAV_ITEMS = [
   { to: '/director', label: "Director's Portal", icon: FiBriefcase, minLevel: 3, section: 'selling' },
   { to: '/dashboard', label: 'Dashboard', icon: FiHome, minLevel: 1, section: 'selling' },
   { to: '/expenses', label: 'Expenses', icon: FiDollarSign, minLevel: 1, section: 'money' },
+  // Everybody's own week, on a sheet they can print.
+  { to: '/my-week', label: 'My Week', icon: FiCalendar, minLevel: 1, section: 'selling' },
   { to: '/notifications', label: 'Notifications', icon: FiBell, minLevel: 1, section: 'selling' },
   // Sales+ (all logged-in users)
   { to: '/pos', label: 'Point of Sale', icon: FiShoppingCart, minLevel: 1, section: 'selling' },

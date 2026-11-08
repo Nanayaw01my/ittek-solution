@@ -261,6 +261,8 @@ app.use('/api/stock-requests', require('./routes/stockRequests'));
 app.use('/api/package-plans', require('./routes/packagePlans'));
 app.use('/api/director', require('./routes/director'));
 app.use('/api/departments', require('./routes/departments'));
+app.use('/api/complaints', require('./routes/complaints'));
+app.use('/api/my-week', require('./routes/myWeek'));
 app.use('/api/dispatches', require('./routes/dispatches'));
 app.use('/api/phone-sales', require('./routes/phoneSales'));
 app.use('/api/service-charges', require('./routes/serviceCharges'));

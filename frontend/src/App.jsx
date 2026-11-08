@@ -37,6 +37,7 @@ import Layaways from './pages/Layaways'
 import PackagePlans from './pages/PackagePlans'
 import DirectorPortal from './pages/DirectorPortal'
 import MyDepartment from './pages/MyDepartment'
+import MyWeek from './pages/MyWeek'
 import FieldDispatch from './pages/FieldDispatch'
 import PhoneSales from './pages/PhoneSales'
 import ServiceCharges from './pages/ServiceCharges'
@@ -224,6 +225,7 @@ export default function App() {
         <Route path="package-plans" element={<ProtectedRoute minLevel={1} page="package-plans"><PackagePlans /></ProtectedRoute>} />
         <Route path="director" element={<ProtectedRoute minLevel={3} page="director"><DirectorPortal /></ProtectedRoute>} />
         <Route path="my-department" element={<ProtectedRoute minLevel={2} page="my-department"><MyDepartment /></ProtectedRoute>} />
+        <Route path="my-week" element={<ProtectedRoute minLevel={1}><MyWeek /></ProtectedRoute>} />
         {/* Staff conduct alerts — owners only; they name individual staff */}
         <Route path="fraud-alerts" element={<ProtectedRoute minLevel={3}><FraudAlerts /></ProtectedRoute>} />
 

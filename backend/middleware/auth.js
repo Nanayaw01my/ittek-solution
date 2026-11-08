@@ -80,6 +80,8 @@ const HEAD_OF_DEPARTMENT_ALLOWED = [
   // The till, to look up a price or a stock level. Selling is refused on
   // the selling endpoints themselves, so reading it costs nothing.
   '/api/pos',
+  '/api/complaints',
+  '/api/my-week',
 ];
 
 /**
@@ -103,6 +105,8 @@ const SALES_ALLOWED = [
   '/api/layaways',        // Pay & Pick Later, also inside the till
   '/api/notifications',   // the bell in the header of every screen
   '/api/settings',        // company name and currency on the receipt
+  '/api/complaints',      // writing down what a customer was unhappy about
+  '/api/my-week',         // their own week, to read and to print
   '/api/sync',            // the offline queue catching up
   '/api/push',            // registering for notifications on their phone
   '/api/upload',
