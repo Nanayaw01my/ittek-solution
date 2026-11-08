@@ -48,6 +48,14 @@ const MANAGING_DIRECTOR_ALLOWED = [
   '/api/debts',           // what the shop is owed
   '/api/reminders',       // chasing it, which the Debts screen does
   '/api/suppliers',       // who the shop buys from
+  /**
+   * Customer agreements — goods out on credit against a signature.
+   *
+   * It sits beside the debts rather than apart from them: the portal
+   * already tells the MD when one has gone into default, and sending
+   * somebody to a screen they cannot open is worse than not telling them.
+   */
+  '/api/credit-agreements',
   '/api/stock-requests',  // and approving what the floor asks for
   '/api/products',        // the picker inside a stock request, and supplier lookups
   '/api/notifications',

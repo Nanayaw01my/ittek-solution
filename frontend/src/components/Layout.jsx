@@ -41,7 +41,8 @@ export const HEAD_OF_DEPARTMENT_PAGES = [
  * it is owed, who it buys from, and what the floor is asking for.
  */
 export const MANAGING_DIRECTOR_PAGES = [
-  '/director', '/debts', '/suppliers', '/stock-requests', '/notifications',
+  '/director', '/debts', '/credit-agreements', '/suppliers', '/stock-requests',
+  '/notifications',
 ]
 
 /**

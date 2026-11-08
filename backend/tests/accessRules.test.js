@@ -53,6 +53,9 @@ test('the four screens the MD was given all work', () => {
     '/api/director/overview',
     '/api/debts', '/api/debts/abc123', '/api/debts/abc123/payment',
     '/api/suppliers', '/api/suppliers/abc123',
+    // Customer agreements: the portal reports defaults on them, so the
+    // screen behind that line has to open.
+    '/api/credit-agreements', '/api/credit-agreements/abc123',
     '/api/stock-requests', '/api/stock-requests/abc123/approve',
     // The product picker inside a stock request, which the screen cannot
     // work without.
@@ -169,7 +172,9 @@ test('every confined role is shut out of the others\' screens', () => {
   const hod = prefixed(HEAD_OF_DEPARTMENT_ALLOWED);
   const md = prefixed(MANAGING_DIRECTOR_ALLOWED);
 
-  assert.ok(!sales('/api/departments/mine') && !sales('/api/director/overview'));
-  assert.ok(!hod('/api/director/overview') && !hod('/api/cash-up'));
+  assert.ok(!sales('/api/departments/mine') && !sales('/api/director/overview')
+    && !sales('/api/credit-agreements'));
+  assert.ok(!hod('/api/director/overview') && !hod('/api/cash-up')
+    && !hod('/api/credit-agreements'));
   assert.ok(!md('/api/pos/sale') && !md('/api/cash-up'));
 });
