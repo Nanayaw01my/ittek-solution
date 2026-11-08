@@ -1173,6 +1173,13 @@ export default function Users() {
               role: formData.role,
               avatar_url: formData.avatar_url,
               assigned_categories: formData.assigned_categories,
+              // Dropped here when they were added to the form, which is why
+              // a head of department signed in to "no department has been
+              // given to you yet" however carefully one was ticked. The
+              // warning above this payload describes this exact mistake,
+              // made once before with the staff photo, and then made again.
+              departments: formData.departments,
+              field_duty: formData.field_duty,
               page_access: formData.page_access,
               ...(!editUser && { password: formData.password }),
             }
