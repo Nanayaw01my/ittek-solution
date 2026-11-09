@@ -3,6 +3,32 @@ const User = require('../models/User');
 const { isOwner, ROLE_LEVELS } = require('../middleware/rbac');
 
 /**
+ * Which notifications belong to this person.
+ *
+ * A row with no user_id is not "for everybody" — it is for the owners.
+ * Every place in the system that writes one means it that way: a new
+ * sale, a refund waiting for approval, a debt, a complaint raised
+ * against the shop, a stock request, a credit agreement. notifyOwners()
+ * in utils/notify.js says so outright, and sends the matching phone
+ * alert to OWNER_ROLES and nobody else.
+ *
+ * The bell read those rows as a broadcast to all staff. So a sales
+ * attendant's notifications were the owners' notifications: every
+ * refund, every debt, every complaint, and the value of every large
+ * sale in the shop. Nobody noticed while the screen was showing an
+ * empty list to everyone; the moment it started working, the whole
+ * shop could suddenly read the office's post.
+ *
+ * A message addressed to named people has a real user_id, so it was
+ * never the thing leaking — but it arrived in a bell already full of
+ * rows everyone could see, which is indistinguishable from a message
+ * that went to everybody.
+ */
+const visibleTo = (user) => (isOwner(user.role)
+  ? { $or: [{ user_id: user._id }, { user_id: null }] }
+  : { user_id: user._id });
+
+/**
  * GET /api/notifications
  */
 const getNotifications = async (req, res) => {
@@ -10,10 +36,7 @@ const getNotifications = async (req, res) => {
     const { page = 1, limit = 20 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    // Get notifications for this user OR broadcast (null)
-    const filter = {
-      $or: [{ user_id: req.user._id }, { user_id: null }],
-    };
+    const filter = visibleTo(req.user);
 
     const [notifications, total, unread_count] = await Promise.all([
       Notification.find(filter)
@@ -42,7 +65,7 @@ const getNotifications = async (req, res) => {
 const getUnreadCount = async (req, res) => {
   try {
     const count = await Notification.countDocuments({
-      $or: [{ user_id: req.user._id }, { user_id: null }],
+      ...visibleTo(req.user),
       is_read: false,
     });
     return res.status(200).json({ success: true, data: { count } });
@@ -68,7 +91,7 @@ const markRead = async (req, res) => {
      * would never see it unread.
      */
     const notification = await Notification.findOneAndUpdate(
-      { _id: req.params.id, $or: [{ user_id: req.user._id }, { user_id: null }] },
+      { _id: req.params.id, ...visibleTo(req.user) },
       { is_read: true },
       { new: true }
     );
@@ -86,7 +109,7 @@ const markRead = async (req, res) => {
 const markAllRead = async (req, res) => {
   try {
     await Notification.updateMany(
-      { $or: [{ user_id: req.user._id }, { user_id: null }], is_read: false },
+      { ...visibleTo(req.user), is_read: false },
       { $set: { is_read: true } }
     );
     return res.status(200).json({ success: true, message: 'All notifications marked as read.' });
@@ -106,7 +129,7 @@ const deleteNotification = async (req, res) => {
     // was addressed to has seen it at all.
     const notification = await Notification.findOneAndDelete({
       _id: req.params.id,
-      $or: [{ user_id: req.user._id }, { user_id: null }],
+      ...visibleTo(req.user),
     });
     if (!notification) return res.status(404).json({ success: false, message: 'Notification not found.' });
     return res.status(200).json({ success: true, message: 'Notification deleted.' });
@@ -193,7 +216,22 @@ const sendMessage = async (req, res) => {
       data: {
         sent_to: targets.length,
         names: targets.slice(0, 8).map((u) => u.username),
-        message: `Sent to ${targets.length} ${targets.length === 1 ? 'person' : 'people'}.`,
+        /**
+         * Who it went to, by name, not just how many.
+         *
+         * "Sent to 3 people" is only reassuring if you already trust
+         * the thing that said it. Naming them lets the sender see at a
+         * glance that their message went where they aimed it — which
+         * is the one question an owner has after pressing Send.
+         */
+        message: (() => {
+          const names = targets.map((u) => u.username);
+          const head = names.slice(0, 5).join(', ');
+          const rest = names.length - 5;
+          return names.length === 1
+            ? `Sent to ${head}.`
+            : `Sent to ${names.length} people: ${head}${rest > 0 ? ` and ${rest} more` : ''}.`;
+        })(),
       },
     });
   } catch (err) {

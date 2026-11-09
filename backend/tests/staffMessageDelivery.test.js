@@ -21,6 +21,16 @@ const staff = [
 ];
 let store = [];
 
+/**
+ * The same test the real query answers: does this row belong to this
+ * person? An owner's filter carries an $or that also takes the rows with
+ * no user_id — the office's own post — and everybody else's filter is a
+ * plain user_id and takes nothing else.
+ */
+const belongsTo = (filter, n) => (filter.$or
+  ? filter.$or.some((c) => String(c.user_id) === String(n.user_id))
+  : String(filter.user_id) === String(n.user_id));
+
 const orig = Module._load;
 Module._load = function (req) {
   if (req.includes('models/Notification')) return {
@@ -28,24 +38,25 @@ Module._load = function (req) {
       store.push(...rows.map((r, i) => ({ _id: 'n' + (store.length + i), is_read: false, ...r })));
       return rows;
     },
+    create: async (row) => {
+      const saved = { _id: 'n' + store.length, is_read: false, user_id: null, ...row };
+      store.push(saved);
+      return saved;
+    },
     find: (filter) => {
-      const rows = store.filter((n) =>
-        filter.$or.some((c) => String(c.user_id) === String(n.user_id)));
+      const rows = store.filter((n) => belongsTo(filter, n));
       return { sort: () => ({ skip: () => ({ limit: async () => rows }) }) };
     },
-    countDocuments: async (filter) => store.filter((n) =>
-      filter.$or.some((c) => String(c.user_id) === String(n.user_id))
+    countDocuments: async (filter) => store.filter((n) => belongsTo(filter, n)
       && (filter.is_read === undefined || n.is_read === filter.is_read)).length,
     // Mirrors the real query: the id AND the person it belongs to.
     findOneAndUpdate: async (f) => {
-      const row = store.find((n) => String(n._id) === String(f._id)
-        && f.$or.some((cond) => String(cond.user_id) === String(n.user_id)));
+      const row = store.find((n) => String(n._id) === String(f._id) && belongsTo(f, n));
       if (row) row.is_read = true;
       return row || null;
     },
     findOneAndDelete: async (f) => {
-      const i = store.findIndex((n) => String(n._id) === String(f._id)
-        && f.$or.some((cond) => String(cond.user_id) === String(n.user_id)));
+      const i = store.findIndex((n) => String(n._id) === String(f._id) && belongsTo(f, n));
       return i === -1 ? null : store.splice(i, 1)[0];
     },
   };
@@ -135,4 +146,72 @@ test('a person cannot mark somebody else\'s message read', async () => {
   await c.deleteNotification({ user: staff[1], params: { id: kofisRow._id } }, d);
   assert.strictEqual(d.code, 404);
   assert.strictEqual((await inboxOf(staff[2])).data.length, 1, 'and it is still there');
+});
+
+/**
+ * The office's post is not the shop's post.
+ *
+ * A notification with no user_id is written by notifyOwners() and means
+ * "for the owners": a refund waiting for approval, a debt, a complaint,
+ * the value of a large sale. The bell used to treat the same row as a
+ * broadcast to all staff, so every attendant's notifications were the
+ * owners' notifications. It went unnoticed only because the screen was
+ * showing an empty list to everybody; the moment the list worked, the
+ * whole shop could read the office's post — and an owner sending a
+ * message to one person saw it land in a bell full of rows everyone
+ * could see, which looks exactly like a message sent to everybody.
+ */
+test('a row with no user_id reaches the owners and nobody else', async () => {
+  store = [];
+  // What notifyOwners() writes: a row with no user_id at all.
+  store.push({ _id: 'own1', user_id: null, is_read: false, type: 'important',
+    title: 'Refund awaiting approval', message: 'GH₵ 1,200 refund by ama.' });
+
+  for (const owner of [
+    { _id: 'ceo1', username: 'lawrence', role: 'CEO' },
+    { _id: 'x', username: 'x', role: 'Super Admin' },
+    { _id: 'y', username: 'y', role: 'Managing Director' },
+    { _id: 'z', username: 'z', role: 'COO' },
+  ]) {
+    assert.strictEqual((await inboxOf(owner)).data.length, 1, `${owner.role} must see it`);
+  }
+
+  for (const staffer of [
+    { _id: 'u2', username: 'ama', role: 'Sales' },
+    { _id: 'u4', username: 'yaw', role: 'Head of Department' },
+    { _id: 'u5', username: 'esi', role: 'Manager' },
+    { _id: 'u6', username: 'kojo', role: 'Field Agent' },
+  ]) {
+    const inbox = await inboxOf(staffer);
+    assert.strictEqual(inbox.data.length, 0, `${staffer.role} must not see the owners' post`);
+    assert.strictEqual(inbox.unread_count, 0, `nor have it counted on ${staffer.role}'s bell`);
+  }
+});
+
+test('a message to one person reaches that person alone', async () => {
+  store = [];
+  // The office's own alerts are sitting there as well, which is the
+  // state the shop was actually in when this looked broken.
+  store.push({ _id: 'own1', user_id: null, is_read: false, type: 'info',
+    title: 'New Sale', message: 'GH₵ 2,500.' });
+
+  const r = res();
+  await c.sendMessage({
+    user: staff[0],
+    body: { title: 'See me', message: 'Come to the office.', audience: 'people', user_ids: ['u4'] },
+  }, r);
+  assert.strictEqual(r.code, 201);
+  assert.match(r.body.data.message, /Sent to yaw\./, 'and it says who it went to, by name');
+
+  const yaw = await inboxOf(staff[3]);
+  assert.strictEqual(yaw.data.length, 1);
+  assert.strictEqual(yaw.data[0].title, 'See me');
+
+  for (const other of [staff[1], staff[2]]) {
+    assert.strictEqual((await inboxOf(other)).data.length, 0,
+      `${other.username} was not written to and sees nothing at all`);
+  }
+  // The owner still sees their own alert, and not a copy of their message.
+  const ceo = await inboxOf(staff[0]);
+  assert.deepStrictEqual(ceo.data.map((n) => n.title), ['New Sale']);
 });
