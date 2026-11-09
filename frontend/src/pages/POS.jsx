@@ -39,10 +39,10 @@ function ProductCard({ product, onAdd }) {
     <button
       onClick={() => !outOfStock && onAdd(product)}
       disabled={outOfStock}
-      className={`text-left p-3 rounded-xl border transition-all group
+      className={`text-left p-3 rounded-xl border-2 transition-all group
         ${outOfStock
-          ? 'bg-gray-50 border-gray-200 opacity-60 cursor-not-allowed'
-          : 'bg-white border-gray-200 hover:border-orange-400 hover:shadow-md hover:shadow-orange-100 cursor-pointer active:scale-95'
+          ? 'bg-gray-50 border-gray-300 opacity-60 cursor-not-allowed'
+          : 'bg-white border-gray-900 hover:border-orange-500 hover:bg-orange-50 cursor-pointer active:scale-95'
         }`}
     >
       {product.image_url && (
@@ -51,16 +51,20 @@ function ProductCard({ product, onAdd }) {
         </div>
       )}
       <div className="flex items-start justify-between mb-1">
-        <p className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2 group-hover:text-orange-700">{product.name}</p>
+        <p className="text-sm font-black text-gray-900 leading-tight line-clamp-2 group-hover:text-orange-700">{product.name}</p>
         {outOfStock && (
           <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold flex-shrink-0 ml-1">OUT</span>
         )}
       </div>
-      <p className="text-xs text-gray-400 font-mono mb-2">{product.barcode || '—'}</p>
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-black text-orange-600">{formatCurrency(product.selling_price)}</p>
-        <p className={`text-xs font-semibold ${product.quantity <= (product.low_stock_level || 5) ? 'text-orange-500' : 'text-gray-400'}`}>
-          Qty: {product.quantity}
+      <p className="text-[11px] text-gray-400 font-mono mb-1.5 truncate">{product.barcode || '—'}</p>
+      {/* Big & bold: the price is the figure the cashier checks, so it gets
+          a line to itself at display size. Sharing the line with the stock
+          count broke "GH₵ 3,400.00" across two lines on a phone, which
+          reads for a moment as two different numbers. */}
+      <div>
+        <p className="text-base font-black text-gray-900 leading-none whitespace-nowrap">{formatCurrency(product.selling_price)}</p>
+        <p className={`mt-1 text-[11px] font-black uppercase tracking-wide leading-none ${product.quantity <= (product.low_stock_level || 5) ? 'text-orange-600' : 'text-gray-500'}`}>
+          {product.quantity} left
         </p>
       </div>
     </button>
@@ -1151,10 +1155,24 @@ export default function POS() {
 
   return (
     <div className="h-[calc(100vh-56px)] flex flex-col lg:flex-row bg-gray-100 overflow-hidden">
-      {/* LEFT PANEL - Products */}
-      <div className="flex-1 flex flex-col lg:max-w-[60%] min-h-0 bg-white border-r border-gray-200">
+      {/* LEFT PANEL - Products.
+          Someone who may not sell gets the whole screen for it: the cart
+          beside it is of no use to them, and on a phone it was taking half
+          the view away from the only part they came for. */}
+      <div className={`flex-1 flex flex-col min-h-0 bg-white border-r border-gray-200
+                       ${canSell ? 'lg:max-w-[60%]' : ''}`}>
         {/* Search */}
-        <div className="p-3 border-b border-gray-200 bg-white flex-shrink-0">
+        <div className="p-3 border-b-2 border-gray-900 bg-white flex-shrink-0">
+          {!canSell && (
+            <div className="mb-2 flex items-start gap-2 text-xs text-amber-800 bg-amber-50
+                            border-2 border-amber-300 rounded-xl px-3 py-2">
+              <FiAlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>
+                <span className="font-black">Prices and stock only — you cannot sell from here.</span>
+                <span className="block">Sales attendants and the owners take money at the counter.</span>
+              </span>
+            </div>
+          )}
           {!isOnline && (
             <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
               <FiAlertTriangle size={13} />
@@ -1167,7 +1185,11 @@ export default function POS() {
           {/* Downloading the whole catalogue is what makes the till usable with
               no signal. Kept visible with its age rather than hidden in
               settings: the figure staff need to judge is how old it is. */}
-          <div className="mb-2 flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+          {/* The offline catalogue matters to whoever rings up sales with no
+              signal. To a department head looking up a price it is a bar of
+              text in the way, so it is kept for sellers only. */}
+          <div className={`mb-2 items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5
+                           ${canSell ? 'flex' : 'hidden'}`}>
             <span className="text-gray-600 truncate">
               <span className="font-semibold text-gray-800">{cachedCount}</span>
               {' '}products saved for offline · updated{' '}
@@ -1190,15 +1212,16 @@ export default function POS() {
           </div>
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <FiSearch size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <FiSearch size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
                 ref={searchRef}
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Search a product, or just scan it..."
-                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50"
+                placeholder={canSell ? 'Search a product, or just scan it…' : 'Search a product…'}
+                className="w-full pl-10 pr-4 py-3 border-2 border-gray-900 rounded-xl text-base font-semibold
+                           focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
               />
             </div>
             <button
@@ -1211,10 +1234,12 @@ export default function POS() {
               <FiRefreshCw size={16} className={productsFetching ? 'animate-spin' : ''} />
             </button>
           </div>
-          <p className="mt-1.5 text-xs text-gray-400 flex items-center gap-1.5">
-            <FiCrosshair size={12} className="flex-shrink-0 text-orange-500" />
-            Scan an item to add it to the cart — no need to click here first.
-          </p>
+          {canSell && (
+            <p className="mt-1.5 text-xs text-gray-500 font-semibold flex items-center gap-1.5">
+              <FiCrosshair size={12} className="flex-shrink-0 text-orange-500" />
+              Scan an item to add it to the cart — no need to click here first.
+            </p>
+          )}
         </div>
 
         {/* Product Grid */}
@@ -1231,7 +1256,7 @@ export default function POS() {
               <p className="text-sm">No products found</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className={`grid grid-cols-2 gap-2 ${canSell ? 'sm:grid-cols-3' : 'sm:grid-cols-3 lg:grid-cols-4'}`}>
               {products.map(p => (
                 <ProductCard key={p._id} product={p} onAdd={addToCart} />
               ))}
@@ -1240,7 +1265,10 @@ export default function POS() {
         </div>
       </div>
 
-      {/* RIGHT PANEL - Cart */}
+      {/* RIGHT PANEL - Cart. Not rendered at all for someone who may not
+          sell — an empty cart they can never ring up is only clutter, and
+          on a phone it was eating half the screen. */}
+      {canSell && (
       <div className="flex flex-col w-full lg:w-[40%] lg:max-w-sm min-h-0 bg-white">
         {/* Cart header */}
         <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
@@ -1433,12 +1461,15 @@ export default function POS() {
               onClick={handleCompleteSale}
               disabled={!canSell || cart.length === 0 || saleMutation.isPending}
               title={canSell ? undefined : 'Your role does not take sales at the counter'}
-              className="w-full py-3.5 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-black rounded-xl transition-colors flex items-center justify-center gap-2"
+              /* Green, and the largest thing on the screen: taking the money
+                 is the one action at this counter that must never be
+                 mistaken for any other. */
+              className="w-full py-5 bg-green-700 hover:bg-green-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-lg font-black tracking-wide rounded-xl transition-colors flex items-center justify-center gap-2"
             >
               {saleMutation.isPending ? (
                 <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Processing...</>
               ) : (
-                <><FiCheck size={18} /> {canSell ? 'COMPLETE SALE' : 'VIEWING ONLY'}</>
+                <><FiCheck size={20} /> {canSell ? 'COMPLETE SALE' : 'VIEWING ONLY'}</>
               )}
             </button>
 
@@ -1491,6 +1522,7 @@ export default function POS() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Short Payment Modal */}
       {/*

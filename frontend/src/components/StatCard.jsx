@@ -52,10 +52,13 @@ export default function StatCard({ icon: Icon, value, label, trend, trendUp, col
           </span>
         )}
       </div>
-      <p className="text-lg sm:text-2xl font-black text-gray-900 leading-tight tabular-nums truncate">
+      {/* Big & bold: the figure is the whole point of the tile, so it is
+          set a size larger than the old one and the label beneath it is
+          demoted to a small capitalised caption. */}
+      <p className="text-2xl sm:text-3xl font-black text-gray-900 leading-none tabular-nums truncate">
         {prefix}{typeof value === 'number' ? value.toLocaleString('en-GH') : value}{suffix}
       </p>
-      <p className="text-[13px] sm:text-sm text-gray-500 mt-0.5 sm:mt-1 font-medium leading-snug">{label}</p>
+      <p className="text-[11px] sm:text-xs uppercase tracking-wide text-gray-600 mt-1.5 font-black leading-snug">{label}</p>
       {/* Context under a figure that would otherwise be read wrongly — most
           usefully, how many records a total was made from, so a zero can be
           told apart from a total that failed to arrive. */}

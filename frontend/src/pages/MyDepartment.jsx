@@ -60,7 +60,7 @@ export default function MyDepartment() {
     // Not an error: a head who has not been given a department yet. Saying
     // which screen fixes it is more use than an empty table.
     return (
-      <div>
+      <div className="p-4 sm:p-6 max-w-6xl mx-auto">
         <PageHeader title="My Department" subtitle="Your side of the shop" />
         <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center">
           <FiGrid size={28} className="mx-auto text-gray-300 mb-2" />
@@ -79,7 +79,10 @@ export default function MyDepartment() {
   const lowCount = products.filter((p) => p.low).length
 
   return (
-    <div>
+    // The page had no padding of its own, so on a phone every card sat
+    // flush against both edges of the screen with the text touching the
+    // glass. Same frame the other screens use.
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
       <PageHeader
         title="My Department"
         subtitle={mine.map((k) => LABELS[k] || k).join(' · ')}
@@ -101,43 +104,61 @@ export default function MyDepartment() {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <button
-          onClick={() => setTab('stock')}
-          className={`px-3 py-1.5 rounded-xl text-sm font-semibold ${
-            tab === 'stock' ? 'bg-orange-500 text-white' : 'bg-white border border-gray-200 text-gray-600'
-          }`}
-        >
-          My stock ({products.length})
-        </button>
-        <button
-          onClick={() => setTab('unsorted')}
-          className={`px-3 py-1.5 rounded-xl text-sm font-semibold ${
-            tab === 'unsorted' ? 'bg-orange-500 text-white' : 'bg-white border border-gray-200 text-gray-600'
-          }`}
-        >
-          Not sorted yet ({unsorted.length})
-        </button>
-        <button
-          onClick={() => setTab('elsewhere')}
-          className={`px-3 py-1.5 rounded-xl text-sm font-semibold ${
-            tab === 'elsewhere' ? 'bg-orange-500 text-white' : 'bg-white border border-gray-200 text-gray-600'
-          }`}
-        >
-          Other departments ({elsewhere.length})
-        </button>
-        {(
-          <div className="flex items-center gap-2 ml-auto px-3 py-1.5 bg-white border border-gray-200 rounded-xl">
-            <FiSearch size={14} className="text-gray-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Find a product"
-              aria-label="Find a product"
-              className="text-sm focus:outline-none w-44"
-            />
-          </div>
-        )}
+      {/*
+        The toolbar, rebuilt for a phone.
+
+        It used to be one wrapping row with the search box pushed right by
+        `ml-auto` and given a fixed 11rem. On a phone the three tabs took
+        the first line, the box dropped to a second one still shoved
+        against the right edge, and what you had typed sat in a strip
+        about half the width of the screen — so searching for a product
+        worked but you could barely read what you had searched for.
+
+        Now the search is its own full-width row above the tabs, where it
+        belongs: it is the control a head of department reaches for first.
+        The tabs scroll sideways underneath instead of wrapping, so the
+        counts stay on one line at any width.
+      */}
+      <div className="mb-4 space-y-2.5">
+        <div className="flex items-center gap-2 px-3.5 py-3 bg-white border-2 border-gray-900 rounded-xl">
+          <FiSearch size={17} className="text-gray-500 shrink-0" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Find a product"
+            aria-label="Find a product"
+            className="flex-1 min-w-0 text-base font-semibold focus:outline-none"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              aria-label="Clear search"
+              className="shrink-0 text-xs font-black uppercase text-gray-500 hover:text-gray-900"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 pb-1">
+          {[
+            { key: 'stock', label: 'My stock', count: products.length },
+            { key: 'unsorted', label: 'Not sorted yet', count: unsorted.length },
+            { key: 'elsewhere', label: 'Other departments', count: elsewhere.length },
+          ].map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`shrink-0 px-3.5 py-2 rounded-xl text-sm font-black uppercase tracking-wide border-2 ${
+                tab === t.key
+                  ? 'bg-orange-500 border-orange-500 text-white'
+                  : 'bg-white border-gray-900 text-gray-700'
+              }`}
+            >
+              {t.label} ({t.count})
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === 'stock' ? (
@@ -158,14 +179,14 @@ export default function MyDepartment() {
                 <div key={p._id} className="flex items-center gap-3 px-4 py-3">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ background: COLOURS[p.aspect] }} />
                   <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-medium text-gray-900 truncate">{p.name}</span>
-                    <span className="block text-[11px] text-gray-400">
+                    <span className="block text-[15px] font-black text-gray-900 leading-snug">{p.name}</span>
+                    <span className="block text-[11px] font-semibold text-gray-500">
                       {LABELS[p.aspect] || p.aspect}
                       {p.category ? ` · ${p.category}` : ''}
                       {p.source === 'guess' ? ' · sorted by name, not confirmed' : ''}
                     </span>
                   </span>
-                  <span className={`text-sm font-bold ${p.low ? 'text-red-600' : 'text-gray-800'}`}>
+                  <span className={`text-lg font-black tabular-nums shrink-0 ${p.low ? 'text-red-600' : 'text-gray-900'}`}>
                     {p.quantity}
                   </span>
                 </div>
@@ -189,10 +210,12 @@ export default function MyDepartment() {
           ) : (
             <div className="divide-y divide-gray-50">
               {claimable.map((p) => (
-                <div key={p._id} className="flex items-center gap-3 px-4 py-3">
+                // Stacked on a phone: the name gets the full width instead
+                // of being squeezed into whatever the claim buttons leave.
+                <div key={p._id} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 py-3">
                   <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-medium text-gray-900 truncate">{p.name}</span>
-                    <span className="block text-[11px] text-gray-400">
+                    <span className="block text-[15px] font-black text-gray-900 leading-snug">{p.name}</span>
+                    <span className="block text-[11px] font-semibold text-gray-500">
                       {p.quantity} in stock
                       {p.aspect && p.aspect !== 'other' ? ` · now in ${LABELS[p.aspect] || p.aspect}` : ''}
                       {p.category ? ` · ${p.category}` : ''}
@@ -204,7 +227,7 @@ export default function MyDepartment() {
                         key={key}
                         disabled={claim.isPending}
                         onClick={() => claim.mutate({ id: p._id, aspect: key })}
-                        className="px-2.5 py-1.5 rounded-lg border text-[11px] font-bold
+                        className="px-3 py-2 rounded-lg border-2 text-[11px] font-black uppercase tracking-wide
                                    hover:bg-gray-50 disabled:opacity-50 inline-flex items-center gap-1"
                         style={{ borderColor: COLOURS[key], color: COLOURS[key] }}
                       >

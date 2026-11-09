@@ -218,3 +218,59 @@ body {
 
 .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
 .animate-slideIn { animation: slideIn 0.3s ease-out; }
+
+/* ══════════════════════════ Big & bold ══════════════════════════
+   The shop chose this look over four others: larger type, heavier
+   weights, and a real outline round every card instead of a hairline.
+   It is a counter in a hardware shop — staff read these screens
+   standing up, at arm's length, often with the phone on the counter
+   rather than in their hand.
+
+   It is done here, in one place, rather than by editing fifty pages,
+   because the whole app is built out of the same handful of Tailwind
+   class combinations. These rules sit after @tailwind utilities, so
+   they carry the same specificity and win on source order.
+
+   Two things are deliberately NOT scaled: the print block above sets
+   its own html font-size, so receipts are untouched; and the root
+   size drops back on a narrow phone, where a sixth more of everything
+   would push the content off the side. */
+
+/* The "big" half, in one line: every Tailwind size is in rem, so the
+   root size lifts type, padding, gaps and icons together instead of
+   leaving large text in small boxes. */
+html { font-size: 17px; }
+@media (max-width: 430px) { html { font-size: 16px; } }
+
+/* The "bold" half. Each weight moves up one notch, which is what
+   separates this from simply a bigger version of the old screens. */
+.font-normal   { font-weight: 500; }
+.font-medium   { font-weight: 600; }
+.font-semibold { font-weight: 700; }
+.font-bold     { font-weight: 800; }
+.font-black    { font-weight: 900; }
+
+/* Cards get an outline you can see across a room. Only the big
+   radius is treated as a card: rounded-xl and below are inputs,
+   chips and buttons, which would look boxed-in with a black edge. */
+.rounded-2xl.border.border-gray-200,
+.rounded-2xl.border.border-gray-100 {
+  border-width: 2px;
+  border-color: #111827;
+}
+/* With a hard edge the drop shadow only muddies it. */
+.rounded-2xl.border.border-gray-200.shadow-sm,
+.rounded-2xl.border.border-gray-100.shadow-sm { box-shadow: none; }
+
+/* Coloured notice cards keep their own colour — a red warning must not
+   turn into another black box — but take the same weight of edge. */
+.rounded-2xl.border.border-red-200,
+.rounded-2xl.border.border-amber-200,
+.rounded-2xl.border.border-green-200,
+.rounded-2xl.border.border-blue-200,
+.rounded-2xl.border.border-orange-200 { border-width: 2px; }
+
+/* Anything that acts is stated plainly. */
+button, a[class*="bg-orange-5"], a[class*="bg-green-6"] { letter-spacing: 0.01em; }
+button.bg-orange-500, button.bg-orange-600,
+button.bg-green-600, button.bg-gray-900 { font-weight: 800; }

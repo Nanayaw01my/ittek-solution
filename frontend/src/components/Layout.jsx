@@ -303,11 +303,11 @@ export default function Layout() {
         against.
       */}
       <aside className={`
-        fixed top-0 left-0 h-full w-[17rem] bg-white shadow-xl z-40 flex flex-col
+        fixed top-0 left-0 h-full w-[17rem] bg-gray-900 shadow-xl z-40 flex flex-col
         transition-transform duration-300 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         lg:translate-x-0 lg:sticky lg:top-0 lg:h-screen lg:self-start
-        lg:shadow-none lg:border-r lg:border-gray-200
+        lg:shadow-none
       `}>
         {/* Logo. The top padding clears a phone's notch when the app is
             installed and draws under the status bar. */}
@@ -335,8 +335,9 @@ export default function Layout() {
               onChange={(e) => setNavFilter(e.target.value)}
               placeholder="Find a screen…"
               aria-label="Find a screen"
-              className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm
-                         focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white"
+              className="w-full pl-9 pr-8 py-2 bg-gray-800 border border-gray-700 text-white
+                         placeholder-gray-500 rounded-xl text-sm
+                         focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
             {navFilter && (
               <button
@@ -361,7 +362,7 @@ export default function Layout() {
             if (items.length === 0) return null
             return (
               <div key={section.key} className="pb-1">
-                <p className="px-4 pt-3 pb-1 text-[10px] font-black uppercase tracking-[0.08em] text-gray-400">
+                <p className="px-4 pt-3 pb-1 text-[10px] font-black uppercase tracking-[0.12em] text-gray-500">
                   {section.label}
                 </p>
                 {items.map((item) => {
@@ -373,10 +374,11 @@ export default function Layout() {
                       key={item.to}
                       to={item.to}
                       onClick={() => setSidebarOpen(false)}
-                      className={`mx-2 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors
+                      className={`mx-2 flex items-center gap-3 rounded-xl px-3 py-3 text-[13px]
+                                  uppercase tracking-wide transition-colors
                         ${isActive
-                          ? 'bg-orange-500 text-white font-bold shadow-sm'
-                          : 'text-gray-600 font-medium hover:bg-orange-50 hover:text-orange-600'
+                          ? 'bg-orange-500 text-white font-black'
+                          : 'text-gray-300 font-bold hover:bg-gray-800 hover:text-white'
                         }`}
                     >
                       <Icon size={17} className="flex-shrink-0" />
@@ -399,24 +401,28 @@ export default function Layout() {
         {/* The two controls that used to crowd the top bar on a phone. They
             belong to the person, not to the page, so they sit with the
             account — and outside the nav, so filtering never hides them. */}
-        <div className="lg:hidden border-t border-gray-100 px-4 py-2.5 flex items-center gap-2">
+        {/* Both of these are built for a white bar and paint themselves
+            text-gray-600, which on the dark sidebar is grey on near-black.
+            Recoloured from here rather than giving each a dark variant. */}
+        <div className="lg:hidden border-t border-gray-800 px-4 py-2.5 flex items-center gap-2
+                        [&_button]:text-gray-300 [&_button:hover]:text-white [&_button:hover]:bg-gray-800">
           <LocaleSwitcher />
           <InstallAppButton compact />
         </div>
 
         {/* User info at bottom */}
-        <div className="border-t border-gray-200 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+        <div className="border-t border-gray-800 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-              <span className="text-orange-600 font-bold text-sm">
+            <div className="w-9 h-9 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-black text-sm">
                 {(user?.username || user?.name || 'U').charAt(0).toUpperCase()}
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 truncate">
+              <p className="text-sm font-bold text-white truncate">
                 {user?.username || user?.name}
               </p>
-              <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
+              <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-gray-800 text-orange-300 font-semibold">
                 {getRoleLabel(user?.role)}
               </span>
             </div>
@@ -424,7 +430,7 @@ export default function Layout() {
           <button
             onClick={handleLogout}
             disabled={loggingOut}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors font-medium"
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-400 hover:bg-red-500/15 hover:text-red-400 rounded-lg transition-colors font-bold uppercase tracking-wide"
           >
             <FiLogOut size={16} />
             {loggingOut ? 'Logging out...' : 'Logout'}
@@ -435,7 +441,7 @@ export default function Layout() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top navbar */}
-        <header className="bg-white/95 backdrop-blur border-b border-gray-200 sticky top-0 z-20
+        <header className="bg-white/95 backdrop-blur border-b-2 border-gray-900 sticky top-0 z-20
                            pt-[env(safe-area-inset-top,0px)]">
           <div className="flex items-center justify-between gap-2 px-2 sm:px-4 h-14">
             <div className="flex items-center gap-1.5 min-w-0">
@@ -450,7 +456,7 @@ export default function Layout() {
                   The phone used to show only the word ITTEK, so the only
                   thing naming the screen was the heading below — and a toast
                   landing over it left nothing at all. */}
-              <h2 className="text-[15px] font-bold text-gray-800 truncate">
+              <h2 className="text-[15px] font-black uppercase tracking-wide text-gray-900 truncate">
                 {currentPage?.label || 'Dashboard'}
               </h2>
             </div>
