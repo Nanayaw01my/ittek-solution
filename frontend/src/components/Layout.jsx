@@ -3,6 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
 import { canAccessPage, carriesFieldSheets } from '../config/pageAccess'
 import { getMe } from '../api/auth'
+import { getUnreadCount } from '../api/notifications'
 import useNotificationStore from '../store/notificationStore'
 import { getRoleLabel, getRoleLevel } from '../utils/helpers'
 import {
@@ -196,7 +197,7 @@ const NAV_ITEMS = [
 
 export default function Layout() {
   const { user, logout } = useAuthStore()
-  const { unreadCount } = useNotificationStore()
+  const { unreadCount, setUnreadCount } = useNotificationStore()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -204,6 +205,34 @@ export default function Layout() {
   // Forty-two screens is more than anybody scrolls through. Typing three
   // letters is faster than finding "Delete Records" by eye.
   const [navFilter, setNavFilter] = useState('')
+
+  /**
+   * The bell, on every screen.
+   *
+   * The badge used to be fed only by the notifications page writing the
+   * list it had just fetched into the store. So it lit up once you were
+   * already reading your notifications and showed nothing anywhere
+   * else — which is the whole job of a bell. A message from an owner
+   * could sit unread for a week with no sign of it on any screen the
+   * person actually works on.
+   *
+   * Polled rather than pushed: the shop runs on phones over patchy
+   * mobile data, and a count every half minute costs a few bytes.
+   * Failures are swallowed on purpose — a bell that cannot reach the
+   * server should go quiet, not throw a toast over somebody's work.
+   */
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    const tick = () => {
+      getUnreadCount()
+        .then((r) => { if (!cancelled) setUnreadCount(r.data?.count ?? 0) })
+        .catch(() => {})
+    }
+    tick()
+    const id = setInterval(tick, 30000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [user?._id, setUnreadCount])
 
   // The stored user is written at login and never again, so a page the CEO
   // grants mid-shift would not appear in the sidebar until the next login.

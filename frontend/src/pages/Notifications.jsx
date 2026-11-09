@@ -11,7 +11,24 @@ import StaffMessageModal from '../components/StaffMessageModal'
 import useAuthStore from '../store/authStore'
 import { isOwner } from '../config/pageAccess'
 
+/**
+ * Read or unread, whatever shape the row arrives in.
+ *
+ * The server stores `is_read`. This screen was written against `read`,
+ * which no notification has ever carried, so every message rendered as
+ * unread for ever: the orange dot never went out, the unread tab counted
+ * everything, and marking one read changed nothing on screen.
+ */
+const isUnread = (n) => !(n?.is_read ?? n?.read)
+
 const NOTIF_ICONS = {
+  // What the staff messages and the system's own alerts actually arrive
+  // as. Without these three every notification fell through to the grey
+  // default bell, so a message from the CEO looked identical to a
+  // low-stock warning.
+  critical: { icon: FiAlertTriangle, bg: 'bg-red-100', color: 'text-red-600' },
+  important: { icon: FiAlertTriangle, bg: 'bg-amber-100', color: 'text-amber-600' },
+  info: { icon: FiInfo, bg: 'bg-blue-100', color: 'text-blue-600' },
   low_stock: { icon: FiPackage, bg: 'bg-orange-100', color: 'text-orange-600' },
   large_sale: { icon: FiDollarSign, bg: 'bg-green-100', color: 'text-green-600' },
   overdue_debt: { icon: FiAlertTriangle, bg: 'bg-red-100', color: 'text-red-600' },
@@ -46,9 +63,7 @@ export default function Notifications() {
   })
 
   useEffect(() => {
-    if (data?.notifications) {
-      setNotifications(data.notifications)
-    }
+    if (Array.isArray(data)) setNotifications(data)
   }, [data])
 
   const markReadMutation = useMutation({
@@ -76,16 +91,30 @@ export default function Notifications() {
     },
   })
 
-  const notifications = data?.notifications || []
+  /**
+   * The whole screen was empty, for everybody.
+   *
+   * The axios layer unwraps { success, data, … } and hands back only
+   * `data`, which for this endpoint is the array of notifications
+   * itself. This read `data.notifications` — a field that does not
+   * exist on an array — so the list was always empty and every message
+   * an owner sent looked as though it had never arrived. It had: the
+   * rows were in the database the whole time.
+   */
+  const notifications = Array.isArray(data) ? data : (data?.notifications || [])
 
   const filtered = notifications.filter(n => {
-    if (activeTab === 'unread') return !n.read
-    if (activeTab === 'critical') return n.type === 'overdue_debt' || n.type === 'low_stock'
+    if (activeTab === 'unread') return isUnread(n)
+    // 'critical' now means what the server calls critical, plus the
+    // system's own two urgent kinds.
+    if (activeTab === 'critical') {
+      return ['critical', 'overdue_debt', 'low_stock'].includes(n.type)
+    }
     return true
   })
 
   const handleClick = (notif) => {
-    if (!notif.read) {
+    if (isUnread(notif)) {
       markReadMutation.mutate(notif._id || notif.id)
     }
     const route = ROUTE_MAP[notif.type]
@@ -107,7 +136,7 @@ export default function Notifications() {
                 <FiSend size={14} /> Message the staff
               </button>
             )}
-            {notifications.some(n => !n.read) && (
+            {notifications.some(isUnread) && (
               <button
                 onClick={() => markAllMutation.mutate()}
                 disabled={markAllMutation.isPending}
@@ -130,9 +159,9 @@ export default function Notifications() {
               ${activeTab === tab ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
           >
             {tab}
-            {tab === 'unread' && notifications.filter(n => !n.read).length > 0 && (
+            {tab === 'unread' && notifications.filter(isUnread).length > 0 && (
               <span className="ml-1.5 bg-orange-500 text-white text-xs rounded-full px-1.5 py-0.5">
-                {notifications.filter(n => !n.read).length}
+                {notifications.filter(isUnread).length}
               </span>
             )}
           </button>
@@ -151,14 +180,17 @@ export default function Notifications() {
           </div>
         ) : (
           filtered.map(notif => {
-            const typeConfig = NOTIF_ICONS[notif.type] || NOTIF_ICONS.default
+            // A person writing to you outranks what kind of alert it is.
+            const typeConfig = notif.is_message
+              ? { icon: FiSend, bg: 'bg-blue-100', color: 'text-blue-700' }
+              : (NOTIF_ICONS[notif.type] || NOTIF_ICONS.default)
             const Icon = typeConfig.icon
             return (
               <div
                 key={notif._id || notif.id}
                 onClick={() => handleClick(notif)}
                 className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all hover:shadow-md
-                  ${!notif.read
+                  ${isUnread(notif)
                     ? 'bg-orange-50 border-orange-200 hover:bg-orange-100'
                     : 'bg-white border-gray-200 hover:bg-gray-50'
                   }`}
@@ -167,23 +199,26 @@ export default function Notifications() {
                   <Icon size={18} className={typeConfig.color} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-semibold ${!notif.read ? 'text-gray-900' : 'text-gray-700'}`}>
+                  <p className={`text-sm font-semibold ${isUnread(notif) ? 'text-gray-900' : 'text-gray-700'}`}>
                     {notif.title}
-                    {/* A person speaking reads differently from the system
-                        reporting, so it says which this is. */}
-                    {notif.is_message && (
-                      <span className="ml-2 align-middle px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-bold">
+                  </p>
+                  {/* A person speaking reads differently from the system
+                      reporting, so it says which this is. On its own line:
+                      inline, it broke the heading in half on a phone. */}
+                  {notif.is_message && (
+                    <p className="mt-1">
+                      <span className="inline-block px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-bold">
                         FROM {String(notif.from_name || 'THE OFFICE').toUpperCase()}
                       </span>
-                    )}
-                  </p>
+                    </p>
+                  )}
                   <p className="text-sm text-gray-500 mt-0.5 line-clamp-2">{notif.message}</p>
                   <p className="text-xs text-gray-400 mt-1">
                     {formatDateTime(notif.createdAt || notif.created_at)}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  {!notif.read && (
+                  {isUnread(notif) && (
                     <div className="w-2 h-2 rounded-full bg-orange-500" />
                   )}
                   <button
