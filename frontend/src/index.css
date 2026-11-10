@@ -176,11 +176,8 @@ body {
     margin-left: auto !important;
     margin-right: auto !important;
   }
-  /* The QR must stay large enough for a phone camera to read it. */
-  .receipt-print-area img[alt="Receipt QR code"] {
-    width: 45% !important;
-    max-width: 45% !important;
-  }
+  /* The slip no longer carries a QR code — the logo is the only picture
+     on it, sized by the rule above. */
 
   /* Ancestors must not clip or scroll, or the absolute receipt is cut off. */
   .print-container,
@@ -238,9 +235,24 @@ body {
 
 /* The "big" half, in one line: every Tailwind size is in rem, so the
    root size lifts type, padding, gaps and icons together instead of
-   leaving large text in small boxes. */
-html { font-size: 17px; }
-@media (max-width: 430px) { html { font-size: 16px; } }
+   leaving large text in small boxes.
+
+   Screen only, and this is not a precaution — it is a repair.
+
+   The print block above sets `html { font-size: 12px }` for a reason:
+   the receipt's gaps are in rem, and printReceipt.js measures the slip
+   against that same 12px before telling @page how long to cut the
+   paper. A media query adds no specificity, so an unscoped rule down
+   here simply won the cascade in print too, by being later in the
+   file. The slip then printed at 17px rem against a page measured at
+   12px — 198mm of receipt on a 159mm page — and came out split across
+   two sheets with the tail of the first one fed blank. The phone rule
+   below was worse: a print page is about 302px wide, so `max-width:
+   430px` matched while printing, from a desktop as much as a phone. */
+@media screen {
+  html { font-size: 17px; }
+  @media (max-width: 430px) { html { font-size: 16px; } }
+}
 
 /* The "bold" half. Each weight moves up one notch, which is what
    separates this from simply a bigger version of the old screens. */

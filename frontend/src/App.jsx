@@ -150,7 +150,7 @@ export default function App() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
-      {/* Public receipt — what the QR code on a receipt opens. No login. */}
+      {/* Public receipt — the link sent to a customer over WhatsApp. No login. */}
       <Route path="/r/:token" element={<PublicReceipt />} />
 
       {/* Root redirect */}

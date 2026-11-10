@@ -21,7 +21,7 @@ import { buildWhatsAppReceiptLink } from '../utils/phone'
 import { printWhenReady } from '../utils/printReceipt'
 import Modal from '../components/Modal'
 import Ean13 from '../components/Ean13'
-import { mintReceiptBarcode } from '../utils/ean13'
+import { modules, mintReceiptBarcode } from '../utils/ean13'
 import SplitPaymentModal from '../components/SplitPaymentModal'
 import HeldSalesModal from '../components/HeldSalesModal'
 import VariantPickerModal from '../components/VariantPickerModal'
@@ -153,11 +153,19 @@ function ReceiptModal({
   const balanceDue = parseFloat(saleData.debt_amount || saleData.balanceDue || 0)
   const paymentMethod = (saleData.payment_method || saleData.paymentMethod || '').replace(/_/g, ' ').toUpperCase()
   const customerPhone = saleData.customer_phone || saleData.customer?.phone || ''
-  const qrCode = saleData.qr_code || null
   // The receipt's own barcode. Offline sales have none until they sync, so the
   // slip simply prints without one rather than printing a code that no sale on
   // the server answers to.
-  const receiptBarcode = saleData.receipt_barcode || null
+  /**
+   * …and only if it can actually be drawn.
+   *
+   * Ean13 renders nothing when the code is not a valid EAN-13, which is
+   * right — a barcode nobody can scan is worse than none. But the block
+   * around it printed regardless, so a bad code left a dashed rule and
+   * the line "Scan this for a refund" above empty paper: an instruction
+   * pointing at nothing, and a centimetre of roll for it.
+   */
+  const receiptBarcode = modules(saleData.receipt_barcode) ? saleData.receipt_barcode : null
   const receiptUrl = saleData.receipt_url || null
 
   // Null when the number isn't a valid Ghana number — the button stays disabled
@@ -303,18 +311,17 @@ function ReceiptModal({
 
           </div>
 
-          {/* Offline there is simply no QR block. The receipt used to explain
-              why, which told the customer about the shop's syncing rather than
-              about their purchase — nothing they can act on, printed on paper
-              they keep. The QR is a convenience; its absence needs no notice. */}
+          {/*
+            No QR code.
 
-          {/* QR code — generated server-side, links to the public receipt page */}
-          {qrCode && (
-            <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
-              <img src={qrCode} alt="Receipt QR code" className="h-28 w-28 mx-auto" />
-              <p className="text-[10px] text-gray-500 mt-1">Scan to view this receipt online</p>
-            </div>
-          )}
+            It was the tallest thing on the slip after the items — about
+            30mm of roll on every sale, plus its caption and rule — and it
+            only carried the public receipt link. That link already reaches
+            the customer the way they actually want it: the WhatsApp button
+            below sends it to their phone, where it is tappable rather than
+            something they have to point a camera at. Paper the shop buys by
+            the roll is the wrong place to keep a URL.
+          */}
 
           {/* The receipt's barcode. Scanning it at the refund screen pulls this
               sale up, so a return does not depend on anybody reading

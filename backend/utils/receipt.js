@@ -62,13 +62,21 @@ const generateReceiptQrBuffer = async (url) => {
 };
 
 /**
- * Attach receipt_url + qr_code to a sale payload being returned to the POS.
+ * Attach the public receipt_url to a sale payload being returned to the POS.
  * Backfills receipt_token on older sales that predate this feature.
+ *
+ * It used to attach a rendered QR code as well — a 240px PNG as a base64
+ * data URL, a few kilobytes on every sale, over the shop's mobile data.
+ * The slip no longer prints one, so nothing was left to show it: the link
+ * goes to the customer over WhatsApp, where it is tappable. The URL is
+ * still here, and the PDF receipt still draws its own QR from it, because
+ * an A4 page has room to spare and no roll to waste.
+ *
  * @param {import('mongoose').Document} saleDoc - a Sale mongoose document
  * @param {Object} [req] - Express request, used to derive the public host
  * @returns {Promise<Object>} plain object safe to send to the till
  */
-const withReceiptQr = async (saleDoc, req) => {
+const withReceiptLink = async (saleDoc, req) => {
   if (!saleDoc) return saleDoc;
 
   let token = saleDoc.receipt_token;
@@ -80,7 +88,7 @@ const withReceiptQr = async (saleDoc, req) => {
 
   const receipt_url = buildReceiptUrl(token, req);
   const obj = typeof saleDoc.toObject === 'function' ? saleDoc.toObject() : { ...saleDoc };
-  return { ...obj, receipt_url, qr_code: await generateReceiptQr(receipt_url) };
+  return { ...obj, receipt_url };
 };
 
 module.exports = {
@@ -89,5 +97,5 @@ module.exports = {
   buildReceiptUrl,
   generateReceiptQr,
   generateReceiptQrBuffer,
-  withReceiptQr,
+  withReceiptLink,
 };

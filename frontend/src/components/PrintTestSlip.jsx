@@ -145,8 +145,8 @@ export default function PrintTestSlip({ widthMm = 80, offsetMm = 0, textScale = 
               </p>
               <p className="text-xs">
                 Your Windows paper size must be at least this long, or the receipt is cut
-                in two. A real receipt with a QR code runs longer than this test — set it
-                to 300mm (11.81 in) and nothing will ever split. This driver asks for
+                in two. A real receipt with several items runs longer than this test — set
+                it to 300mm (11.81 in) and nothing will ever split. This driver asks for
                 inches.
               </p>
             </div>

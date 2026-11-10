@@ -308,11 +308,8 @@ const receiptRules = (m, scope) => {
     margin-left: auto !important;
     margin-right: auto !important;
   }
-  /* The QR has to stay big enough for a phone camera to read it. */
-  ${a} img[alt="Receipt QR code"] {
-    width: ${Math.round(m.logoWidth * 1.3)}px !important;
-    max-width: ${Math.round(m.logoWidth * 1.3)}px !important;
-  }
+  /* The QR code is gone from the slip, so the only picture left is the
+     logo and the rule above covers it. */
 `
 }
 

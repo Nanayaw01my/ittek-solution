@@ -8,7 +8,7 @@ const { createSaleWithInvoice } = require('../utils/generateInvoice');
 const { nextFreeReceiptBarcode, acceptReceiptBarcode } = require('../utils/barcode');
 const { queueEmail, templates } = require('../utils/email');
 const { generateReceipt } = require('../utils/pdfGenerator');
-const { withReceiptQr, buildReceiptUrl, generateReceiptQrBuffer } = require('../utils/receipt');
+const { withReceiptLink, buildReceiptUrl, generateReceiptQrBuffer } = require('../utils/receipt');
 const { buildSaleItems, deductStock, validatePayments } = require('../utils/saleHelpers');
 const { giftFor, giftStockLines } = require('../utils/giftPromo');
 const loyalty = require('../utils/loyalty');
@@ -209,7 +209,7 @@ const processSale = async (req, res) => {
     let receipt = sale;
     try {
       const populated = await Sale.findById(sale._id).populate('user_id', 'username');
-      receipt = await withReceiptQr(populated, req);
+      receipt = await withReceiptLink(populated, req);
     } catch (receiptErr) {
       console.error('Receipt build failed for', invoice_no, '-', receiptErr.stack || receiptErr.message);
     }
@@ -330,7 +330,7 @@ const processShortPayment = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: 'Short payment processed. Debt created.',
-      data: { sale: await withReceiptQr(sale, req), debt },
+      data: { sale: await withReceiptLink(sale, req), debt },
     });
   } catch (err) {
     console.error('Short payment error:', err.stack || err.message);
@@ -427,7 +427,7 @@ const getSale = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
-    return res.status(200).json({ success: true, data: await withReceiptQr(sale, req) });
+    return res.status(200).json({ success: true, data: await withReceiptLink(sale, req) });
   } catch (err) {
     console.error('Get sale error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
