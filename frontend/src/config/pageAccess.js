@@ -79,6 +79,23 @@ export const ROLE_LEVELS = {
 export const carriesFieldSheets = (user) => user?.role === 'Field Agent' || user?.field_duty === true
 
 /**
+ * Who may take the money for goods sold on the field, mirroring
+ * maySettleFieldSheet on the server.
+ *
+ * Whoever carried the sheet settles it themselves, wherever they are,
+ * plus Manager and above for everyone's. This screen used to spell the
+ * rule out as a list of three role names and the list drifted: the
+ * server accepted a head of department's payment while the screen drew
+ * them no button, so somebody holding the shop's goods in a village had
+ * to carry the money back for a senior to enter on their behalf.
+ *
+ * backend/tests/fieldSettlement.test.js reads this very line and checks
+ * it against the server's, so the two cannot part company again.
+ */
+export const maySettleFieldSheet = (user) =>
+  carriesFieldSheets(user) || roleLevel(user?.role) >= 2
+
+/**
  * Who may ring up a sale, mirroring SELLING_ROLES on the server.
  *
  * Selling is a job, not a rank, so it is not a level: a Manager outranks a

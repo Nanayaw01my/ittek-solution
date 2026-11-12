@@ -95,6 +95,33 @@ const carriesFieldSheets = (user) => user?.role === 'Field Agent' || user?.field
 
 /** Only the role is confined; the flag confines nobody. */
 const isConfinedFieldAgent = (user) => user?.role === 'Field Agent';
+
+/**
+ * Who may take the money for goods sold on the field.
+ *
+ * Whoever carried the sheet settles it themselves, wherever they are,
+ * plus Manager and above for everyone's. Field duty is a duty and not a
+ * rank, so this cannot be a list of role names: a head of department out
+ * for the day, or a sales attendant sent on a run, is holding the goods
+ * exactly as a Field Agent is.
+ *
+ * Not included: a sales attendant at the counter carrying nothing. They
+ * issue sheets and take goods back, but the person who records a field
+ * sale is the person who made it.
+ *
+ * Note what settling does NOT prove: that the money reached the shop. It
+ * records that the goods were sold, on the seller's word. The check on
+ * that is the sheet itself — what went out against what came back — read
+ * at the weekly accounting.
+ *
+ * It lives here, beside the other role rules, because the screen has to
+ * ask the same question to decide whether to draw the button. It was
+ * written out twice instead, and the copy on the screen drifted into a
+ * list of three role names: the server accepted a head of department's
+ * payment while the screen gave them no button to make it with.
+ */
+const maySettleFieldSheet = (user) =>
+  carriesFieldSheets(user) || (ROLE_LEVELS[user?.role] || 0) >= 2;
 const maySell = (role) => SELLING_ROLES.includes(role);
 
 /**
@@ -220,5 +247,5 @@ module.exports = {
   requireRoles, requireLevel, requirePage, ROLE_LEVELS, OWNER_ROLES, isOwner, ownerBelowAdmin,
   SELF_ONLY_ROLES, seesOwnRecordsOnly, STAFF_ROLES, SELLING_ROLES, maySell,
   APPROVER_ROLES, mayApproveSpending, REVIEWER_ROLES, mayReviewSpending,
-  carriesFieldSheets, isConfinedFieldAgent,
+  carriesFieldSheets, isConfinedFieldAgent, maySettleFieldSheet,
 };

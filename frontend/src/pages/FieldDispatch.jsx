@@ -18,7 +18,7 @@ import {
   closeDispatch, deleteDispatch, getDispatchSheet, getDispatchesByAgent,
 } from '../api/dispatches'
 import useAuthStore from '../store/authStore'
-import { isOwner } from '../config/pageAccess'
+import { isOwner, carriesFieldSheets, maySettleFieldSheet } from '../config/pageAccess'
 
 const STATUS_STYLES = {
   issued: 'bg-blue-100 text-blue-700',
@@ -718,11 +718,24 @@ export default function FieldDispatch() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const owner = isOwner(user?.role)
-  // Only the shop takes money. A rep on the field carries goods and comes in
-  // to account; the server refuses the payment either way.
-  // The agent settles their own sheet from the field; a manager can settle
-  // anyone's. A Sales hand at the counter cannot.
-  const canTakeMoney = ['Field Agent', 'Manager'].includes(user?.role) || isOwner(user?.role)
+  /**
+   * Whoever is holding the sheet settles it themselves.
+   *
+   * This is the server's own rule — mayTakeMoney in routes/dispatches.js:
+   * anybody carrying sheets, or Manager and above. It used to be written
+   * here as a list of three role names, and the list had drifted. Field
+   * duty is a duty, not a rank: a head of department out for the day, or
+   * a sales attendant sent on a run, carries a sheet without their role
+   * changing. The server accepted their payment; this screen gave them no
+   * button to make it with, so they had to bring the money and the sheet
+   * back to somebody senior to enter on their behalf — which is the
+   * opposite of what a field sheet is for.
+   *
+   * Still not here: a sales attendant at the counter who is carrying
+   * nothing. They can issue a sheet and take goods back, but the person
+   * who records a field sale is the person who made it.
+   */
+  const canTakeMoney = maySettleFieldSheet(user)
   // A rep is handed goods at the counter; they never issue their own sheet,
   // and they cannot see the shop's stock to build one from.
   const isAgent = user?.role === 'Field Agent'
@@ -755,7 +768,11 @@ export default function FieldDispatch() {
    * field agent sees their own card only — which is already their own sheet
    * in their own hands.
    */
-  const showMoney = getRoleLevel(user?.role) >= 2 || isAgent
+  // Same people, for the same reason: somebody settling a sheet has to be
+  // able to see what it is worth. Keyed on carrying sheets rather than on
+  // the Field Agent role, or a sales attendant on a run would be asked to
+  // take money for a card showing no figures.
+  const showMoney = getRoleLevel(user?.role) >= 2 || carriesFieldSheets(user)
 
   const agents = allAgents.filter((a) => {
     if (view === 'carrying') return a.pieces_out > 0

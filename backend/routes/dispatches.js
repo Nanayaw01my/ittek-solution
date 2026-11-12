@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
-const { requireLevel, ROLE_LEVELS, carriesFieldSheets, isConfinedFieldAgent } = require('../middleware/rbac');
+const { requireLevel, isConfinedFieldAgent, maySettleFieldSheet } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
   getFieldAgents, getDispatches, getDispatch, createDispatch,
@@ -60,9 +60,9 @@ router.put('/:id/return', shopStaffOnly, auditLog('RETURN_DISPATCH'), returnDisp
  * accounting.
  */
 const mayTakeMoney = (req, res, next) => {
-  const level = ROLE_LEVELS[req.user.role] || 0;
-  // Whoever carried the goods can settle for them, whatever else they do.
-  if (carriesFieldSheets(req.user) || level >= 2) return next();
+  // The rule itself lives in rbac.js, so the screen can ask the same
+  // question when it decides whether to draw the Pay button.
+  if (maySettleFieldSheet(req.user)) return next();
   return res.status(403).json({
     success: false,
     message: 'Only the agent or a manager can settle a field sheet.',

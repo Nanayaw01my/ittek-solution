@@ -253,6 +253,20 @@ export default function Layout() {
           avatar_url: fresh.avatar_url,
           assigned_categories: (fresh.assigned_categories || []).map(c => String(c?._id || c)),
           page_access: fresh.page_access || {},
+          /**
+           * Field duty and departments, for the same reason as the rest.
+           *
+           * This object is built field by field, so anything left out of
+           * it is silently dropped from the stored user — which has now
+           * bitten this codebase three times. Both of these decide what a
+           * person may do: field duty puts the dispatch screen in their
+           * menu and the Pay button on their own sheet, and departments
+           * decides what My Department shows them. Without them here, an
+           * owner ticking "field duty" at eleven changed nothing until
+           * that person next signed out and in.
+           */
+          field_duty: !!fresh.field_duty,
+          departments: fresh.departments || [],
         })
       })
       .catch(() => {})
