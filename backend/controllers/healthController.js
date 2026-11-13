@@ -290,4 +290,96 @@ const runJobsNow = async (req, res) => {
   }
 };
 
-module.exports = { systemHealth, runJobsNow, ago };
+/**
+ * GET /api/health/credit-sales-gap
+ *
+ * Credit agreement money that never reached the sales book. Reads only —
+ * the shop sees which payments are involved and what it comes to before
+ * anything is written into the figures.
+ */
+const creditSalesGap = async (req, res) => {
+  try {
+    const { findMissing } = require('../utils/creditSalesRepair');
+    const since = req.query.since ? new Date(req.query.since) : undefined;
+    const missing = await findMissing({ since: Number.isNaN(+since) ? undefined : since });
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        count: missing.length,
+        total: Number(missing.reduce((s, m) => s + m.amount, 0).toFixed(2)),
+        /** How much of it belongs to today, which is the only day still open. */
+        today_count: missing.filter((m) => new Date(m.paid_at) >= startOfToday).length,
+        today_total: Number(missing
+          .filter((m) => new Date(m.paid_at) >= startOfToday)
+          .reduce((s, m) => s + m.amount, 0).toFixed(2)),
+        payments: missing.slice(0, 200),
+        truncated: missing.length > 200,
+      },
+    });
+  } catch (err) {
+    console.error('Credit sales gap error:', err.message);
+    return res.status(500).json({ success: false, message: 'Could not check.' });
+  }
+};
+
+/**
+ * POST /api/health/credit-sales-gap/repair
+ *
+ * Write the missing rows, dated to the day the money changed hands.
+ * `keys` restricts it to named payments; `today` to the day still open,
+ * which is the safe default when something was recorded this evening and
+ * nothing older should move.
+ */
+const repairCreditSales = async (req, res) => {
+  try {
+    const { repairMissing } = require('../utils/creditSalesRepair');
+
+    let since;
+    if (req.body?.today) {
+      since = new Date();
+      since.setHours(0, 0, 0, 0);
+    } else if (req.body?.since) {
+      const d = new Date(req.body.since);
+      if (!Number.isNaN(+d)) since = d;
+    }
+
+    const keys = Array.isArray(req.body?.keys) ? req.body.keys : undefined;
+    if (!keys && !since) {
+      // Repairing everything ever is a real decision about days that have
+      // been closed and reported on, so it has to be asked for outright.
+      if (!req.body?.all) {
+        return res.status(400).json({
+          success: false,
+          message: 'Say which payments: today, a date to start from, or all.',
+        });
+      }
+    }
+
+    const { repaired, failed, total } = await repairMissing({ since, keys, user: req.user });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        repaired: repaired.length,
+        failed: failed.length,
+        total,
+        amount: Number(repaired.reduce((s, m) => s + m.amount, 0).toFixed(2)),
+        details: repaired,
+        problems: failed,
+        message: repaired.length
+          ? `Added ${repaired.length} ${repaired.length === 1 ? 'payment' : 'payments'} `
+            + `to the takings, GH\u20b5${repaired.reduce((s, m) => s + m.amount, 0).toFixed(2)} in all.`
+          : 'Nothing was missing.',
+      },
+    });
+  } catch (err) {
+    console.error('Repair credit sales error:', err.message);
+    return res.status(500).json({ success: false, message: 'Could not repair.' });
+  }
+};
+
+module.exports = { systemHealth, runJobsNow, creditSalesGap, repairCreditSales, ago };

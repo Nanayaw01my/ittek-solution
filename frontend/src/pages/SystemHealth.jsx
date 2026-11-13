@@ -9,7 +9,7 @@ import {
 import PageHeader from '../components/PageHeader'
 import LoadingSpinner from '../components/LoadingSpinner'
 import RefreshButton from '../components/RefreshButton'
-import { getSystemHealth, runJobsNow } from '../api/health'
+import { getSystemHealth, runJobsNow, getCreditSalesGap, repairCreditSales } from '../api/health'
 
 const TONE = {
   ok: { bar: 'bg-green-500', text: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200', Icon: FiCheckCircle },
@@ -47,6 +47,109 @@ function Check({ title, icon: Icon, state, children }) {
             <tone.Icon size={13} className={tone.text} />
           </div>
           <div className="text-xs text-gray-600 mt-0.5 space-y-0.5">{children}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Credit agreement money that never reached the sales book.
+ *
+ * Recording a payment used to write it onto the agreement and nowhere
+ * else, and the day's takings are the sum of that day's sale rows — so
+ * every payment taken before the fix is missing from the figures for the
+ * day it was taken. The balance on the agreement was always right; the
+ * shop's day was short by whatever had been collected.
+ *
+ * It shows before it touches anything, and today is offered on its own.
+ * Today is the only day still open: adding to it corrects a figure
+ * nobody has closed, while reaching back into last month moves money
+ * into days that have already been reported on. That is a decision for
+ * the shop, so it is a separate button and says what it will do.
+ */
+function CreditSalesGap() {
+  const queryClient = useQueryClient()
+  const { data, isLoading } = useQuery({
+    queryKey: ['credit-sales-gap'],
+    queryFn: () => getCreditSalesGap().then((r) => r.data),
+    retry: false,
+  })
+
+  const fix = useMutation({
+    mutationFn: repairCreditSales,
+    onSuccess: (d) => {
+      // The sentence rides inside `data`: the axios layer keeps only that
+      // and drops every sibling field, `message` included.
+      toast.success(d?.message || 'Added to the takings.')
+      queryClient.invalidateQueries({ queryKey: ['credit-sales-gap'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not repair'),
+  })
+
+  if (isLoading || !data) return null
+  if (!data.count) return null
+
+  const money = (n) => `GH\u20b5${Number(n || 0).toFixed(2)}`
+
+  return (
+    <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-5">
+      <div className="flex items-start gap-3">
+        <FiAlertTriangle size={24} className="text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <p className="text-base font-black text-amber-900">
+            {data.count} credit agreement {data.count === 1 ? 'payment is' : 'payments are'} missing
+            from the takings
+          </p>
+          <p className="text-sm text-gray-700 mt-1">
+            {money(data.total)} in all. The money is on the agreements and the balances are
+            right — it was never written into the sales book, so it is absent from the figures
+            for the day it was taken. Adding it dates each one to the day it was actually paid.
+          </p>
+
+          {data.today_count > 0 && (
+            <p className="text-sm font-bold text-amber-900 mt-2">
+              {data.today_count} of {data.today_count === 1 ? 'them was' : 'them were'} taken
+              today — {money(data.today_total)}.
+            </p>
+          )}
+
+          <div className="mt-3 rounded-xl bg-white border border-amber-200 divide-y divide-amber-100 max-h-56 overflow-y-auto">
+            {data.payments.map((p) => (
+              <div key={p.key} className="flex items-center gap-2 px-3 py-2 text-sm">
+                <span className="flex-1 min-w-0">
+                  <span className="block font-bold text-gray-900 truncate">{p.customer_name}</span>
+                  <span className="block text-[11px] text-gray-500">
+                    {p.kind === 'deposit' ? 'Deposit at signing' : 'Instalment'}
+                    {' · '}{format(new Date(p.paid_at), 'd MMM yyyy')}
+                  </span>
+                </span>
+                <span className="font-black tabular-nums shrink-0">{money(p.amount)}</span>
+              </div>
+            ))}
+          </div>
+          {data.truncated && (
+            <p className="text-[11px] text-gray-500 mt-1">Showing the 200 most recent.</p>
+          )}
+
+          <div className="flex flex-wrap gap-2 mt-3">
+            {data.today_count > 0 && (
+              <button onClick={() => fix.mutate({ today: true })} disabled={fix.isPending}
+                className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-black text-sm disabled:opacity-50">
+                {fix.isPending ? 'Adding…' : `Add today's ${money(data.today_total)}`}
+              </button>
+            )}
+            <button onClick={() => fix.mutate({ all: true })} disabled={fix.isPending}
+              title="Includes days that have already been closed and reported on"
+              className="px-4 py-2.5 border-2 border-gray-900 text-gray-800 hover:bg-white rounded-xl font-black text-sm disabled:opacity-50">
+              Add all {data.count}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-500 mt-2">
+            Adding all of them changes the totals for days that have already been closed.
+            Safe to press twice — a payment that has been added is skipped.
+          </p>
         </div>
       </div>
     </div>
@@ -134,6 +237,8 @@ export default function SystemHealth() {
           </div>
         }
       />
+
+      <CreditSalesGap />
 
       <div className={`rounded-2xl border ${tone.border} ${tone.bg} p-5 flex items-center gap-4`}>
         <tone.Icon size={32} className={tone.text} />
