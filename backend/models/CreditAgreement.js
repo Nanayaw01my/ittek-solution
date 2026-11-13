@@ -6,6 +6,17 @@ const CreditPaymentSchema = new mongoose.Schema(
     payment_date: { type: Date, default: Date.now },
     week_number: { type: Number },
     recorded_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    payment_method: { type: String, default: 'cash' },
+    /**
+     * The sale row this instalment was written into.
+     *
+     * Money paid against an agreement is money the shop took that day, so
+     * it has to exist in the sales book or it is missing from the
+     * takings, the dashboard and the month. Kept here so a payment can be
+     * traced to the row it produced — and so a second attempt can tell
+     * that one was already written.
+     */
+    sale_ref: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale' },
     // Whether the customer was texted that this instalment landed. See
     // utils/paymentReceipt.js.
     sms_sent: { type: Boolean, default: false },

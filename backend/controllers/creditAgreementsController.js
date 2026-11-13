@@ -2,8 +2,51 @@ const { validationResult } = require('express-validator');
 const CreditAgreement = require('../models/CreditAgreement');
 const Notification = require('../models/Notification');
 const Settings = require('../models/Settings');
+const Sale = require('../models/Sale');
 const { generateCreditAgreement, generateExchangeNote } = require('../utils/pdfGenerator');
 const { sendPaymentReceipt, recordSend } = require('../utils/paymentReceipt');
+
+/**
+ * Money taken against an agreement, written into the sales book.
+ *
+ * An agreement's payments were being written onto the agreement and
+ * nowhere else. The day's takings are the sum of that day's Sale rows, so
+ * a customer paying GH₵500 on their plan showed as GH₵500 on the
+ * agreement and nothing at all in the shop's figures: the cash was in the
+ * drawer with no record of how it got there, and the dashboard, the
+ * month's total and cash-up were all short by it.
+ *
+ * This is the same shape debts and package plans already use — items
+ * empty, payment_status 'debt_payment' — so every report that separates
+ * collected money from goods sold over the counter keeps working without
+ * being taught about credit agreements. Stock is not touched: the goods
+ * left the shelf when the agreement was signed.
+ *
+ * @param {'deposit'|'instalment'} kind - which part of the plan this is
+ */
+const recordAsSale = async (agreement, { amount, paymentId, method, at }, user, kind) => {
+  const now = at || new Date();
+  const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const tail = kind === 'deposit' ? 'DEP' : String(paymentId || '').slice(-4).toUpperCase();
+  const invoice = `CRD-${datePart}-${String(agreement._id).slice(-4).toUpperCase()}-${tail}`;
+
+  return Sale.create({
+    invoice_no: invoice,
+    user_id: user._id,
+    customer_name: agreement.customer_name,
+    customer_phone: agreement.customer_phone,
+    credit_ref: agreement._id,
+    subtotal: amount,
+    discount: 0,
+    total_amount: amount,
+    cart_total: amount,
+    debt_amount: 0,
+    payment_status: 'debt_payment',
+    payment_method: method || 'cash',
+    sale_date: now,
+    items: [],
+  });
+};
 
 /**
  * GET /api/credit-agreements
@@ -73,6 +116,27 @@ const createCreditAgreement = async (req, res) => {
 
     const agreement = await CreditAgreement.create(data);
 
+    /**
+     * The deposit is money taken today, so it goes in today's takings.
+     *
+     * It had the same hole as the instalments: a customer handing over
+     * GH₵2,000 to sign for a fridge appeared on the agreement and in the
+     * drawer, and in none of the shop's figures. Recorded here, at
+     * signing, because that is the day the cash changed hands.
+     */
+    const deposit = Number(agreement.down_payment) || 0;
+    if (deposit > 0) {
+      try {
+        await recordAsSale(agreement, {
+          amount: deposit,
+          method: req.body.payment_method,
+          at: agreement.start_date,
+        }, req.user, 'deposit');
+      } catch (saleErr) {
+        console.error('Credit deposit sale row failed:', saleErr.message);
+      }
+    }
+
     await Notification.create({
       user_id: null,
       type: 'important',
@@ -128,8 +192,21 @@ const updateCreditAgreement = async (req, res) => {
  */
 const recordPayment = async (req, res) => {
   try {
-    const { amount, week_number } = req.body;
-    if (!amount || amount <= 0) {
+    const { week_number, payment_method } = req.body;
+
+    /**
+     * The figure, checked as a number rather than as a truthy thing.
+     *
+     * This read `if (!amount || amount <= 0)`, which lets any non-numeric
+     * string through: 'abc' is truthy and `'abc' <= 0` is false, because
+     * comparing NaN is always false. Number('abc') is NaN, and NaN was
+     * then pushed onto the agreement and written to the sale as its
+     * total — and one NaN anywhere in the day turns the whole takings
+     * figure into NaN, because any sum touching it is NaN. A blank
+     * dashboard from one fat-fingered entry.
+     */
+    const amount = Number(req.body?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ success: false, message: 'Payment amount must be positive.' });
     }
 
@@ -140,10 +217,29 @@ const recordPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Agreement is already completed.' });
     }
 
+    /**
+     * No more than is owed.
+     *
+     * The money now lands in the day's takings, so an extra nought typed
+     * here is no longer just a wrong balance on one agreement — it is the
+     * shop's figures for the day reading high by the difference. Refused
+     * rather than quietly reduced to what is owed, because the person at
+     * the counter is holding the cash and needs to know which of the two
+     * numbers is wrong before they hand any change back.
+     */
+    const owed = agreement.outstanding();
+    if (amount > owed) {
+      return res.status(400).json({
+        success: false,
+        message: `Only GH₵${owed.toFixed(2)} is still owed on this agreement.`,
+      });
+    }
+
     agreement.payments.push({
-      amount: Number(amount),
+      amount,
       payment_date: new Date(),
       week_number: week_number || agreement.payments.length + 1,
+      payment_method: payment_method || 'cash',
       recorded_by: req.user._id,
     });
 
@@ -167,13 +263,38 @@ const recordPayment = async (req, res) => {
 
     await agreement.save();
 
+    const lastPayment = agreement.payments[agreement.payments.length - 1];
+
+    /**
+     * Into the sales book, so the money lands in today's takings.
+     *
+     * Written after the agreement is saved: if this throws, the payment is
+     * still on the agreement and the shop can see what was taken, which is
+     * the record that matters to the customer standing at the counter. A
+     * missing sale row is an accounting repair; a missing payment is an
+     * argument about whether somebody paid.
+     */
+    try {
+      const sale = await recordAsSale(agreement, {
+        amount,
+        paymentId: lastPayment?._id,
+        method: payment_method,
+        at: lastPayment?.payment_date,
+      }, req.user, 'instalment');
+      if (lastPayment) {
+        lastPayment.sale_ref = sale._id;
+        await agreement.save();
+      }
+    } catch (saleErr) {
+      console.error('Credit payment sale row failed:', saleErr.message);
+    }
+
     // Tell the customer, after the money is recorded and without being able
     // to unrecord it.
-    const lastPayment = agreement.payments[agreement.payments.length - 1];
     const texted = await sendPaymentReceipt({
       name: agreement.customer_name,
       phone: agreement.customer_phone,
-      amount: Number(amount),
+      amount,
       remaining,
       // No reference: an agreement carries no number the customer has ever
       // been shown, and inventing one here would have them quoting a code

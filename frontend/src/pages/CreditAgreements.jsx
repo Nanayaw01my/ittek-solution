@@ -358,6 +358,10 @@ const buildSchedule = (agreement) => {
 function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, startSwapping }) {
   const queryClient = useQueryClient()
   const [payAmount, setPayAmount] = useState('')
+  // How the money arrived. It is written onto the sale this payment
+  // creates, and cash-up counts the drawer against the cash ones — so
+  // booking a momo transfer as cash leaves the till short on paper.
+  const [payMethod, setPayMethod] = useState('cash')
   const [swapping, setSwapping] = useState(false)
   const swapRef = useRef(null)
   const [swap, setSwap] = useState({
@@ -617,15 +621,39 @@ function ViewAgreementModal({ agreement, isOpen, onClose, onAgreementChange, sta
             <div className="flex gap-2">
               <input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)}
                 placeholder="Amount (GH₵)" min="0.01" max={remaining}
-                className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                aria-label="Payment amount"
+                className="flex-1 px-3 py-2 border-2 border-gray-900 rounded-xl text-base font-bold focus:outline-none focus:ring-2 focus:ring-orange-500" />
               <button onClick={() => {
                 if (!payAmount || parseFloat(payAmount) <= 0) { toast.error('Enter amount'); return }
-                payMutation.mutate({ id: agreement._id, data: { amount: parseFloat(payAmount) } })
+                payMutation.mutate({
+                  id: agreement._id,
+                  data: { amount: parseFloat(payAmount), payment_method: payMethod },
+                })
               }} disabled={payMutation.isPending}
                 className="px-4 py-2 bg-orange-500 text-white rounded-xl font-bold text-sm hover:bg-orange-600 disabled:opacity-60">
                 {payMutation.isPending ? '...' : 'Pay'}
               </button>
             </div>
+            <div className="flex gap-2 mt-2">
+              {[
+                { key: 'cash', label: 'Cash' },
+                { key: 'mobile_money', label: 'Mobile Money' },
+                { key: 'card', label: 'Card' },
+              ].map(o => (
+                <button key={o.key} type="button" onClick={() => setPayMethod(o.key)}
+                  className={`px-3 py-1.5 rounded-lg border-2 text-xs font-black uppercase tracking-wide ${
+                    payMethod === o.key
+                      ? 'bg-orange-500 border-orange-500 text-white'
+                      : 'bg-white border-gray-900 text-gray-700'
+                  }`}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-500 mt-2">
+              This goes into today's takings as a collection, like a debt payment.
+              Stock is not touched — the goods left when the agreement was signed.
+            </p>
           </div>
         )}
 

@@ -174,6 +174,22 @@ const SaleSchema = new mongoose.Schema(
       index: true,
       sparse: true,
     },
+    /**
+     * Set when the sale is money paid against a credit agreement — the
+     * deposit taken when it is signed, or an instalment afterwards.
+     *
+     * Same reasoning as package_ref: the money is counted on the day it
+     * was handed over, and the marker lets a report tell collections
+     * apart from goods sold over the counter without reading invoice
+     * numbers. Without a sale row at all, which is how this started,
+     * the money was simply absent from the day's takings.
+     */
+    credit_ref: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'CreditAgreement',
+      index: true,
+      sparse: true,
+    },
     customer_phone: {
       type: String,
       trim: true,
