@@ -108,7 +108,7 @@ function WorkSlide({ item, onDone }) {
   useEffect(() => { setFailed(false) }, [item.id])
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-2xl bg-gray-900">
+    <div className="relative h-full w-full overflow-hidden bg-gray-900">
       {failed ? (
         // The file would not load. The board says the shop's own name
         // rather than showing a broken picture to a room of customers.
@@ -332,7 +332,15 @@ export default function Signage() {
          style={{ cursor: showControls ? 'default' : 'none' }}>
 
       {/* Header: who you are standing in front of */}
-      <div className="shrink-0 flex items-center justify-between gap-6 px-[2.5vw] py-[1.8vh] border-b-4 border-orange-500">
+      {/*
+        No coloured rule under the header, and no coloured bars down the
+        tiles. Those stripes were decoration standing in for information
+        — the department is already written on every tile in its own
+        colour — and a screen edged in bars reads as a template somebody
+        filled in rather than as this shop's board. What is left is the
+        photographs, the names and the prices.
+      */}
+      <div className="shrink-0 flex items-center justify-between gap-6 px-[2.5vw] py-[1.8vh] border-b border-gray-800">
         <div className="min-w-0">
           <h1 className="text-[4.4vh] font-black leading-none tracking-tight truncate">
             {shop.name || 'ITTEK Solution'}
@@ -352,9 +360,12 @@ export default function Signage() {
       </div>
 
       {/* The prices */}
-      <div className="flex-1 min-h-0 px-[2.5vw] py-[1.6vh]">
+      {/* Edge to edge. The gutter around the grid made eight separate
+          cards floating on a background; the photographs now meet, and
+          the thin seam between them is the only line left. */}
+      <div className="flex-1 min-h-0">
         {isLoading ? (
-          <p className="text-[3vh] text-gray-500 font-black">Loading prices…</p>
+          <p className="text-[3vh] text-gray-500 font-black px-[2.5vw] py-[2vh]">Loading prices…</p>
         ) : isError && products.length === 0 ? (
           // Never a stack trace and never an empty grid pretending to be
           // a price list. A customer reading this should learn nothing
@@ -370,12 +381,12 @@ export default function Signage() {
         ) : onWork ? (
           <WorkSlide item={slide.item} onDone={next} />
         ) : slide ? (
-          <div className="h-full grid grid-cols-2 grid-rows-2 gap-[1.6vh]">
+          <div className="h-full grid grid-cols-2 grid-rows-2 gap-[2px] bg-gray-800">
             {slide.items.map((p) => {
               const a = ASPECTS[p.aspect] || ASPECTS.other
               return (
                 <div key={p.id}
-                     className="relative min-h-0 overflow-hidden rounded-2xl bg-gray-900">
+                     className="relative min-h-0 overflow-hidden bg-gray-900">
                   {/*
                     The photograph, filling the tile.
 
@@ -427,11 +438,6 @@ export default function Signage() {
                       {formatCurrency(p.price)}
                     </p>
                   </div>
-                  {/* The side of the business, as a bar down the edge —
-                      the one piece of the old board worth keeping here,
-                      because colour survives being glanced at. */}
-                  <div className="absolute left-0 top-0 bottom-0 w-[0.9vh]"
-                       style={{ background: a.colour }} />
                 </div>
               )
             })}
