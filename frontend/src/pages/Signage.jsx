@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getSignageBoard } from '../api/signage'
 import { FiMaximize, FiMinimize } from 'react-icons/fi'
+import ProductArt from '../components/ProductArt'
 import { formatCurrency } from '../utils/helpers'
 
 /**
@@ -398,9 +399,27 @@ export default function Signage() {
                     old board's look and perfectly readable — this is
                     why the price never sits on the picture alone.
                   */}
-                  {p.image_url && (
+                  {p.image_url ? (
                     <img src={p.image_url} alt=""
                          className="absolute inset-0 w-full h-full object-cover" />
+                  ) : (
+                    /*
+                      No photograph, so a drawing of the kind of thing it
+                      is. Not a generated photograph of the product: an
+                      invented battery with invented terminals is not the
+                      battery on the shelf, and on a price board a
+                      customer reads a picture as the thing they are
+                      buying. Flat, unbranded, obviously a symbol — and
+                      it costs nothing and waits on nobody.
+                    */
+                    <div className="absolute inset-0 grid place-items-center opacity-90">
+                      {/* Sized against the tile and lifted clear of the
+                          words: the drawing is what the tile is for, and
+                          at a quarter of a television a small one reads
+                          as a logo rather than as the goods. */}
+                      <ProductArt name={p.name} aspect={p.aspect} colour={a.colour}
+                                  className="w-[62%] h-[62%] -translate-y-[8%]" />
+                    </div>
                   )}
                   {/*
                     The dark wash under the words.
@@ -414,7 +433,7 @@ export default function Signage() {
                   <div className="absolute inset-0"
                        style={{ background: p.image_url
                          ? 'linear-gradient(to top, rgba(3,7,18,.95) 34%, rgba(3,7,18,.55) 62%, rgba(3,7,18,.15) 100%)'
-                         : 'none' }} />
+                         : 'linear-gradient(to top, rgba(3,7,18,.92) 26%, rgba(3,7,18,0) 62%)' }} />
                   <div className="absolute left-0 right-0 bottom-0 px-[1.6vw] py-[1.6vh]
                                   flex items-end justify-between gap-[1.2vw]">
                     <div className="min-w-0">
