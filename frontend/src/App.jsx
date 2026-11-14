@@ -10,6 +10,7 @@ import LoadingSpinner from './components/LoadingSpinner'
 import Login from './pages/Login'
 import Welcome from './pages/Welcome'
 import Signage from './pages/Signage'
+import Showcase from './pages/Showcase'
 import Dashboard from './pages/Dashboard'
 import POS from './pages/POS'
 import Products from './pages/Products'
@@ -203,6 +204,9 @@ export default function App() {
             Anyone may take an application; only an owner reads it back. */}
         <Route path="phone-sales" element={<ProtectedRoute minLevel={1}><PhoneSales /></ProtectedRoute>} />
         <Route path="service-charges" element={<ProtectedRoute minLevel={1}><ServiceCharges /></ProtectedRoute>} />
+        {/* What the shop shows of its own work on the board in the window.
+            A Manager's: choosing the shop's face is not a counter task. */}
+        <Route path="showcase" element={<ProtectedRoute minLevel={2}><Showcase /></ProtectedRoute>} />
         {/* Whoever finds the broken thing writes it down; it comes off stock. */}
         <Route path="damaged-goods" element={<ProtectedRoute minLevel={1}><DamagedGoods /></ProtectedRoute>} />
         {/* Somebody other than whoever took the money counts it. */}

@@ -36,11 +36,135 @@ const ASPECTS = {
   other: { label: '', colour: '#64748b' },
 }
 
-const PER_PAGE = 8
+/** Four prices a page, each one on its own photograph. */
+const PER_PAGE = 4
 const PAGE_SECONDS = 12
+/** How many pages of prices run between one piece of the shop's work. */
+const PAGES_BETWEEN_WORK = 2
+/**
+ * The longest a film may hold the board.
+ *
+ * A video that stalls halfway — a dropped connection, a file the device
+ * will not decode — would otherwise freeze the board on one frame until
+ * somebody noticed. Capped, the worst case is three-quarters of a minute
+ * of a still picture rather than a screen stuck until closing.
+ */
+const MAX_VIDEO_SECONDS = 45
+
+/**
+ * The running order: pages of prices, with the shop's work between them.
+ *
+ * Built so one full cycle shows every photograph and every film exactly
+ * once, however many prices there are. The alternative — picking the
+ * next piece of work with a counter — looks the same on a screen with
+ * four pages and quietly stops showing half the shop's work on a screen
+ * with twenty.
+ */
+export const buildSlides = (products, showcase) => {
+  const pages = []
+  for (let i = 0; i < products.length; i += PER_PAGE) {
+    pages.push({ key: `p${i}`, type: 'products', items: products.slice(i, i + PER_PAGE) })
+  }
+  if (!showcase.length) return pages
+  if (!pages.length) return showcase.map((item) => ({ key: `w${item.id}`, type: 'work', item }))
+
+  const out = []
+  let w = 0
+  pages.forEach((page, i) => {
+    out.push(page)
+    if ((i + 1) % PAGES_BETWEEN_WORK === 0 && w < showcase.length) {
+      out.push({ key: `w${showcase[w].id}`, type: 'work', item: showcase[w] })
+      w += 1
+    }
+  })
+  // Work the interleaving did not reach — a shop with twelve photographs
+  // and four pages of prices — goes on the end rather than being left
+  // off the board entirely.
+  while (w < showcase.length) {
+    out.push({ key: `w${showcase[w].id}`, type: 'work', item: showcase[w] })
+    w += 1
+  }
+  return out
+}
+
+
+/**
+ * One piece of the shop's work, filling the screen.
+ *
+ * A photograph or a short film of a job done — a roof of panels, an
+ * inverter wired in. Between pages of prices this is what people
+ * actually watch: a price is read in a second, a job somebody
+ * recognises holds the eye.
+ *
+ * Films play muted, because no browser will autoplay sound and a shop
+ * does not want its board talking over the counter anyway. They play
+ * once and hand the board on.
+ */
+function WorkSlide({ item, onDone }) {
+  const [failed, setFailed] = useState(false)
+
+  // A new slide is a new chance for the file to work. Without this, one
+  // dropped connection would leave every later slide showing the fallback.
+  useEffect(() => { setFailed(false) }, [item.id])
+
+  return (
+    <div className="relative h-full w-full overflow-hidden rounded-2xl bg-gray-900">
+      {failed ? (
+        // The file would not load. The board says the shop's own name
+        // rather than showing a broken picture to a room of customers.
+        <div className="h-full grid place-items-center text-center px-[4vw]">
+          <p className="text-[3.4vh] font-black text-gray-500">
+            {item.caption || 'Our work'}
+          </p>
+        </div>
+      ) : item.kind === 'video' ? (
+        <video
+          key={item.id}
+          src={item.url}
+          poster={item.poster_url || undefined}
+          autoPlay
+          muted
+          playsInline
+          // Not looped: it ends, and the board moves on. A looping film
+          // with a twelve-second cut would hold the screen for as long
+          // as the cap allows and show the same thing four times.
+          onEnded={onDone}
+          onError={() => setFailed(true)}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      ) : (
+        <img
+          src={item.url}
+          alt=""
+          onError={() => setFailed(true)}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      )}
+
+      {(item.caption || item.location) && !failed && (
+        <>
+          <div className="absolute inset-x-0 bottom-0 h-[26vh]"
+               style={{ background: 'linear-gradient(to top, rgba(3,7,18,.95), rgba(3,7,18,0))' }} />
+          <div className="absolute left-0 right-0 bottom-0 px-[3vw] py-[3vh]">
+            <p className="text-[1.6vh] font-black tracking-[0.18em] text-orange-500">OUR WORK</p>
+            {item.caption && (
+              <p className="text-[4.4vh] font-black leading-tight mt-[0.8vh]"
+                 style={{ textShadow: '0 2px 14px rgba(0,0,0,.9)' }}>
+                {item.caption}
+              </p>
+            )}
+            {item.location && (
+              <p className="text-[2.4vh] font-black text-gray-300 mt-[0.6vh]">{item.location}</p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 export default function Signage() {
-  const [page, setPage] = useState(0)
+  const [index, setIndex] = useState(0)
   const [now, setNow] = useState(new Date())
 
   const { data, isLoading, isError, dataUpdatedAt } = useQuery({
@@ -57,21 +181,43 @@ export default function Signage() {
   })
 
   const products = data?.products || []
-  const pages = Math.max(1, Math.ceil(products.length / PER_PAGE))
+  const showcase = data?.showcase || []
+
+  // Rebuilt only when the content actually changes, so the board does not
+  // jump back to the first slide every time the minute's refetch lands.
+  const slides = React.useMemo(
+    () => buildSlides(products, showcase),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [products.map((p) => p.id + ':' + p.price + ':' + p.left).join('|'),
+      showcase.map((w) => w.id).join('|')]
+  )
+  const slide = slides[index] || null
+  const next = useCallback(() => setIndex((i) => (slides.length ? (i + 1) % slides.length : 0)), [slides.length])
 
   /**
-   * Turn the page, on a timer that cannot drift out of step.
+   * Hold each slide for as long as it is worth holding.
    *
-   * Keyed on the number of pages so that a product added or sold out
-   * mid-afternoon does not leave the board cycling past a page that is
-   * no longer there.
+   * A timeout per slide rather than one interval for all of them,
+   * because they no longer last the same time: a page of prices gets its
+   * twelve seconds, a photograph gets however long the shop set, and a
+   * film runs until it ends. An interval would cut the film off
+   * mid-sentence or leave the prices up for a minute.
    */
   useEffect(() => {
-    const id = setInterval(() => setPage((p) => (p + 1) % pages), PAGE_SECONDS * 1000)
-    return () => clearInterval(id)
-  }, [pages])
+    if (!slide) return undefined
+    const isVideo = slide.type === 'work' && slide.item.kind === 'video'
+    const ms = isVideo
+      ? MAX_VIDEO_SECONDS * 1000
+      : (slide.type === 'work' ? slide.item.seconds : PAGE_SECONDS) * 1000
+    const t = setTimeout(next, ms)
+    return () => clearTimeout(t)
+  }, [index, slide, next])
 
-  useEffect(() => { if (page >= pages) setPage(0) }, [page, pages])
+  // A sold-out product or a slide switched off can shorten the running
+  // order under the board's feet.
+  useEffect(() => {
+    if (slides.length && index >= slides.length) setIndex(0)
+  }, [index, slides.length])
 
   // The clock. A board with yesterday's time on it reads as a board with
   // yesterday's prices on it.
@@ -158,7 +304,7 @@ export default function Signage() {
 
   const shop = data?.shop || {}
   const promo = data?.promo || null
-  const shown = products.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE)
+  const onWork = slide?.type === 'work'
   // Older than five minutes means the board has lost the shop, not that
   // the shop has no prices. Said quietly, in the corner, rather than
   // across a screen customers are reading.
@@ -221,39 +367,76 @@ export default function Signage() {
               </p>
             </div>
           </div>
-        ) : (
-          <div className="h-full grid grid-cols-2 grid-rows-4 gap-[1.4vh]">
-            {shown.map((p) => {
+        ) : onWork ? (
+          <WorkSlide item={slide.item} onDone={next} />
+        ) : slide ? (
+          <div className="h-full grid grid-cols-2 grid-rows-2 gap-[1.6vh]">
+            {slide.items.map((p) => {
               const a = ASPECTS[p.aspect] || ASPECTS.other
               return (
                 <div key={p.id}
-                     className="min-h-0 overflow-hidden rounded-2xl bg-gray-900 border-l-[0.9vh] px-[1.6vw] py-[1.2vh] flex items-center gap-[1.2vw]"
-                     style={{ borderLeftColor: a.colour }}>
-                  <div className="flex-1 min-w-0">
-                    {a.label && (
-                      <p className="text-[1.5vh] font-black tracking-[0.12em]" style={{ color: a.colour }}>
-                        {a.label}
+                     className="relative min-h-0 overflow-hidden rounded-2xl bg-gray-900">
+                  {/*
+                    The photograph, filling the tile.
+
+                    object-cover rather than contain: a tile with bars
+                    down the sides looks like a mistake from across a
+                    room, and a product photograph cropped a little is
+                    still obviously the product. A product with no
+                    photograph keeps the plain dark tile, which is the
+                    old board's look and perfectly readable — this is
+                    why the price never sits on the picture alone.
+                  */}
+                  {p.image_url && (
+                    <img src={p.image_url} alt=""
+                         className="absolute inset-0 w-full h-full object-cover" />
+                  )}
+                  {/*
+                    The dark wash under the words.
+
+                    Without it the price sits on whatever the photograph
+                    happens to be — white text on a white panel, read
+                    from four metres. The gradient is heavy at the foot
+                    where the words are and clears towards the top so the
+                    goods still show.
+                  */}
+                  <div className="absolute inset-0"
+                       style={{ background: p.image_url
+                         ? 'linear-gradient(to top, rgba(3,7,18,.95) 34%, rgba(3,7,18,.55) 62%, rgba(3,7,18,.15) 100%)'
+                         : 'none' }} />
+                  <div className="absolute left-0 right-0 bottom-0 px-[1.6vw] py-[1.6vh]
+                                  flex items-end justify-between gap-[1.2vw]">
+                    <div className="min-w-0">
+                      {a.label && (
+                        <p className="text-[1.5vh] font-black tracking-[0.12em]" style={{ color: a.colour }}>
+                          {a.label}
+                        </p>
+                      )}
+                      <p className="text-[3.1vh] font-black leading-tight mt-[0.3vh] line-clamp-2"
+                         style={{ textShadow: '0 2px 10px rgba(0,0,0,.9)' }}>
+                        {p.name}
                       </p>
-                    )}
-                    <p className="text-[2.9vh] font-black leading-tight mt-[0.3vh] line-clamp-2">
-                      {p.name}
+                      {p.left !== null && (
+                        <p className="text-[1.8vh] font-black text-amber-400 mt-[0.5vh]">
+                          ONLY {p.left} LEFT
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-[4.4vh] font-black tabular-nums whitespace-nowrap shrink-0"
+                       style={{ textShadow: '0 2px 10px rgba(0,0,0,.9)' }}>
+                      {formatCurrency(p.price)}
                     </p>
-                    {/* Said only when it is nearly gone, because that is
-                        the only time it is information rather than noise. */}
-                    {p.left !== null && (
-                      <p className="text-[1.7vh] font-black text-amber-400 mt-[0.5vh]">
-                        ONLY {p.left} LEFT
-                      </p>
-                    )}
                   </div>
-                  <p className="text-[4vh] font-black tabular-nums whitespace-nowrap shrink-0">
-                    {formatCurrency(p.price)}
-                  </p>
+                  {/* The side of the business, as a bar down the edge —
+                      the one piece of the old board worth keeping here,
+                      because colour survives being glanced at. */}
+                  <div className="absolute left-0 top-0 bottom-0 w-[0.9vh]"
+                       style={{ background: a.colour }} />
                 </div>
               )
             })}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Footer: the promotion if one is running, then how to reach the shop */}
@@ -272,11 +455,11 @@ export default function Signage() {
           <div className="flex items-center gap-[1.2vw] shrink-0">
             {/* Which page of how many, so a customer waiting for an item
                 knows whether it is worth standing there. */}
-            {pages > 1 && (
+            {slides.length > 1 && slides.length <= 14 && (
               <div className="flex gap-[0.5vw]">
-                {Array.from({ length: pages }).map((_, i) => (
-                  <span key={i}
-                        className={`rounded-full ${i === page ? 'bg-orange-500' : 'bg-gray-700'}`}
+                {slides.map((sl, i) => (
+                  <span key={sl.key}
+                        className={`rounded-full ${i === index ? 'bg-orange-500' : 'bg-gray-700'}`}
                         style={{ width: '1.2vh', height: '1.2vh' }} />
                 ))}
               </div>

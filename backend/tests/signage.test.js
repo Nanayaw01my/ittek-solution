@@ -21,6 +21,7 @@ const B = path.join(__dirname, '..');
 let lastFind = null;
 let products = [];
 let settings = null;
+let showcase = [];
 
 const orig = Module._load;
 Module._load = function (req) {
@@ -37,6 +38,15 @@ Module._load = function (req) {
     },
   };
   if (req.includes('models/Settings')) return { findOne: () => ({ lean: async () => settings }) };
+  // The board fetches the shop's own work in the same call as the
+  // prices, so this suite has to answer for it too — otherwise the
+  // controller reaches a real Mongoose model and the query buffers
+  // until the test times out.
+  if (req.includes('models/ShowcaseItem')) return {
+    find: () => ({
+      select: () => ({ sort: () => ({ limit: () => ({ lean: async () => showcase }) }) }),
+    }),
+  };
   return orig.apply(this, arguments);
 };
 const c = require(path.join(B, 'controllers/signageController.js'));
@@ -56,6 +66,7 @@ const board = async () => {
 
 test.beforeEach(() => {
   lastFind = null;
+  showcase = [];
   settings = {
     company_name: 'DAN & DOR SOLAR COMPANY LIMITED',
     company_address: 'Bogoso, Western Region',
@@ -169,4 +180,24 @@ test('the board says when it last heard from the shop', async () => {
   const r = await board();
   assert.ok(r.body.data.as_of instanceof Date,
     'so an old board can admit it is old rather than passing stale prices off as today\'s');
+});
+
+test('the shop\'s own work rides along with the prices', async () => {
+  // One call a minute from the television, however much is on the board:
+  // the work is fetched beside the prices rather than in a second request.
+  showcase = [{ _id: 'w1', kind: 'image', url: 'https://cdn/roof.jpg',
+    caption: 'Roof of 12 panels', location: 'Prestea', seconds: 15 }];
+
+  const r = await board();
+  assert.strictEqual(r.body.data.showcase.length, 1);
+  assert.strictEqual(r.body.data.showcase[0].caption, 'Roof of 12 panels');
+  assert.strictEqual(r.body.data.showcase[0].id, 'w1');
+});
+
+test('a shop with no work to show still gets its prices', async () => {
+  showcase = [];
+  const r = await board();
+  assert.strictEqual(r.code, 200);
+  assert.deepStrictEqual(r.body.data.showcase, []);
+  assert.strictEqual(r.body.data.products.length, 3);
 });

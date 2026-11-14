@@ -5,17 +5,41 @@ const cloudinary = require('../config/cloudinary');
 const { authenticate } = require('../middleware/auth');
 const { requireLevel } = require('../middleware/rbac');
 
+/**
+ * Films of the shop's work, as well as photographs.
+ *
+ * Only for the showcase folder, and only up to 60MB. A wall screen has
+ * to fetch whatever is uploaded here over the shop's own connection, so
+ * the limit is as much about what a board can play without stalling as
+ * about what Cloudinary will take. Everything else stays at 5MB and
+ * images only: nobody needs to attach a film to a product.
+ */
+const IMAGE_TYPES = /^image\/(jpeg|jpg|png|webp|gif)$/;
+const VIDEO_TYPES = /^video\/(mp4|quicktime|webm|x-m4v)$/;
+const isShowcase = (req) => req.query.folder === 'showcase';
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 60 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (/^image\/(jpeg|jpg|png|webp|gif)$/.test(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'), false);
-    }
+    if (IMAGE_TYPES.test(file.mimetype)) return cb(null, true);
+    if (isShowcase(req) && VIDEO_TYPES.test(file.mimetype)) return cb(null, true);
+    return cb(new Error(isShowcase(req)
+      ? 'Photos (JPG, PNG, WEBP) and videos (MP4, MOV, WEBM) only'
+      : 'Only image files are allowed'), false);
   },
 });
+
+/**
+ * The size limit, enforced per folder after multer has the file.
+ *
+ * multer takes one limit for the whole route, so it is set at the
+ * largest a showcase video may be and the smaller limit for everything
+ * else is applied here. Otherwise raising it for films would quietly
+ * raise it for product photographs too, and a 50MB picture on the till
+ * is a till that stops.
+ */
+const MAX_OTHER = 5 * 1024 * 1024;
 
 /**
  * POST /api/upload?folder=products|avatars|logo
@@ -53,16 +77,47 @@ router.post('/', authenticate, canUpload, upload.single('image'), async (req, re
       });
     }
 
+    if (!isShowcase(req) && req.file.size > MAX_OTHER) {
+      return res.status(400).json({
+        success: false,
+        message: 'That image is over 5MB. Use a smaller one.',
+      });
+    }
+
     const folder = `ittek/${req.query.folder || 'general'}`;
+    const isVideo = VIDEO_TYPES.test(req.file.mimetype);
 
     const result = await new Promise((resolve, reject) => {
       cloudinary.uploader.upload_stream(
-        { folder, resource_type: 'image', transformation: [{ quality: 'auto', fetch_format: 'auto' }] },
+        isVideo
+          // No transformation list for a film: asking Cloudinary to
+          // re-encode on upload makes the request wait for the encode,
+          // and a two-minute upload that times out looks to the person
+          // uploading exactly like a rejected file.
+          ? { folder, resource_type: 'video' }
+          : { folder, resource_type: 'image', transformation: [{ quality: 'auto', fetch_format: 'auto' }] },
         (err, data) => (err ? reject(err) : resolve(data))
       ).end(req.file.buffer);
     });
 
-    return res.status(200).json({ success: true, data: { url: result.secure_url } });
+    return res.status(200).json({
+      success: true,
+      data: {
+        url: result.secure_url,
+        public_id: result.public_id,
+        bytes: result.bytes,
+        kind: isVideo ? 'video' : 'image',
+        /**
+         * A still for the video, built by asking Cloudinary for the same
+         * asset as a jpg. Without one the board shows a black rectangle
+         * while the film arrives, which on a shop wall reads as a screen
+         * that has died.
+         */
+        poster_url: isVideo
+          ? result.secure_url.replace(/\.(mp4|mov|webm|m4v)$/i, '.jpg')
+          : undefined,
+      },
+    });
   } catch (err) {
     // The real reason, both in the log and on screen. Cloudinary's messages
     // are specific — a wrong key, a rejected file — and hiding them behind

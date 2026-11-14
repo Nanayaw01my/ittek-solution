@@ -281,6 +281,8 @@ app.use('/api/health', require('./routes/health'));
 // The customer-facing board on the shop wall. Read only, and it sends
 // only the fields a customer may see — see controllers/signageController.
 app.use('/api/signage', require('./routes/signage'));
+// The shop's own work, as shown between the prices on that board.
+app.use('/api/showcase', require('./routes/showcase'));
 app.use('/api/payables', require('./routes/payables'));
 app.use('/api/credit-agreements', require('./routes/creditAgreements'));
 app.use('/api/financial', require('./routes/financial'));

@@ -1,5 +1,6 @@
 const Product = require('../models/Product');
 const Settings = require('../models/Settings');
+const { activeForBoard } = require('./showcaseController');
 
 /**
  * The board on the shop wall.
@@ -34,7 +35,7 @@ const urgency = (p) => {
  */
 const getBoard = async (req, res) => {
   try {
-    const [products, settings] = await Promise.all([
+    const [products, settings, showcase] = await Promise.all([
       Product
         .find({
           is_active: true,
@@ -52,6 +53,10 @@ const getBoard = async (req, res) => {
         .limit(300)
         .lean(),
       Settings.findOne().lean(),
+      // Fetched in the same round trip as the prices, so a television on
+      // shop wifi still makes one request a minute however much work the
+      // shop has put on the board.
+      activeForBoard(),
     ]);
 
     const promo = settings?.gift_promo;
@@ -80,6 +85,12 @@ const getBoard = async (req, res) => {
           // past the window precisely what the shop is holding.
           left: urgency(p),
         })),
+        /**
+         * Photographs and films of work the shop has done, shown
+         * between the price pages. Already reduced to what a wall
+         * screen may know — see showcaseController.forTheWall.
+         */
+        showcase,
         // So the board can say when it last heard from the shop, rather
         // than showing yesterday's prices as though they were today's.
         as_of: new Date(),
