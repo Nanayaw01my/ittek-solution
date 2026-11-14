@@ -9,6 +9,7 @@ import LoadingSpinner from './components/LoadingSpinner'
 // Pages
 import Login from './pages/Login'
 import Welcome from './pages/Welcome'
+import Signage from './pages/Signage'
 import Dashboard from './pages/Dashboard'
 import POS from './pages/POS'
 import Products from './pages/Products'
@@ -152,6 +153,20 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       {/* Public receipt — the link sent to a customer over WhatsApp. No login. */}
       <Route path="/r/:token" element={<PublicReceipt />} />
+
+      {/*
+        The price board for the shop wall.
+
+        Outside Layout, like Welcome, because it is a whole screen with
+        no sidebar and no header — a customer must not be one stray tap
+        from the till. Still behind the guard: what it shows is public
+        by nature, but the whole catalogue with stock levels should not
+        be enumerable by anyone who finds the URL.
+      */}
+      <Route
+        path="/signage"
+        element={<ProtectedRoute path="/signage"><Signage /></ProtectedRoute>}
+      />
 
       {/* Root redirect */}
       <Route path="/" element={<RootRedirect />} />

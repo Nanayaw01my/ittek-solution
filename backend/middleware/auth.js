@@ -14,6 +14,9 @@ const User = require('../models/User');
  * it here. A denylist would have to be remembered every time, and would not be.
  */
 const FIELD_AGENT_ALLOWED = [
+  // The wall board. Any account can run the screen in the shop; what it
+  // returns is customer-safe by construction, not by role.
+  '/api/signage',
   '/api/auth',           // sign in, sign out, /me
   '/api/dispatches',     // their own sheets; issuing and Pay are barred on the routes
   '/api/phone-sales',    // taking a credit application in front of a customer
@@ -43,6 +46,9 @@ const FIELD_AGENT_ALLOWED = [
  * open window.
  */
 const MANAGING_DIRECTOR_ALLOWED = [
+  // The wall board. Any account can run the screen in the shop; what it
+  // returns is customer-safe by construction, not by role.
+  '/api/signage',
   '/api/auth',            // sign in, sign out, /me
   '/api/director',        // their own portal
   '/api/debts',           // what the shop is owed
@@ -76,6 +82,9 @@ const MANAGING_DIRECTOR_ALLOWED = [
  * who is sent out tomorrow needs no permission change.
  */
 const HEAD_OF_DEPARTMENT_ALLOWED = [
+  // The wall board. Any account can run the screen in the shop; what it
+  // returns is customer-safe by construction, not by role.
+  '/api/signage',
   '/api/auth',
   '/api/departments',     // their own stock, and sorting into it
   '/api/products',        // the picker inside a stock request
@@ -101,6 +110,9 @@ const HEAD_OF_DEPARTMENT_ALLOWED = [
  * typed address away from it.
  */
 const SALES_ALLOWED = [
+  // The wall board. Any account can run the screen in the shop; what it
+  // returns is customer-safe by construction, not by role.
+  '/api/signage',
   '/api/auth',
   '/api/pos',             // the till
   '/api/products',        // and the catalogue it sells from

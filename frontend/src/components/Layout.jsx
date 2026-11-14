@@ -10,7 +10,7 @@ import {
   FiHome, FiShoppingCart, FiPackage, FiTag, FiTruck, FiDollarSign, FiBriefcase, FiGrid,
   FiAlertCircle, FiUsers, FiShoppingBag, FiInbox, FiFileText,
   FiBarChart2, FiSettings, FiDatabase, FiBell, FiSearch, FiLogOut,
-  FiMenu, FiX, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
+  FiMenu, FiX, FiMonitor, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
   FiArchive, FiShield, FiGlobe, FiTrash2, FiClipboard, FiSend, FiSmartphone, FiTool, FiAlertTriangle, FiLock, FiCheckSquare, FiPhone, FiUserCheck, FiPieChart, FiCalendar } from 'react-icons/fi'
 import { logout as apiLogout } from '../api/auth'
 import toast from 'react-hot-toast'
@@ -20,7 +20,9 @@ import HelpAssistant from './HelpAssistant'
 import InstallAppButton from './InstallAppButton'
 
 /** The only screens a DSR out on the field ever sees. */
-export const FIELD_AGENT_PAGES = ['/field-dispatch', '/phone-sales', '/notifications']
+export const FIELD_AGENT_PAGES = [
+  // The wall board: customer-safe whoever opens it.
+  '/signage','/field-dispatch', '/phone-sales', '/notifications']
 
 /**
  * A head of department's screens.
@@ -31,6 +33,8 @@ export const FIELD_AGENT_PAGES = ['/field-dispatch', '/phone-sales', '/notificat
  * in the till itself and on the server, not on the door.
  */
 export const HEAD_OF_DEPARTMENT_PAGES = [
+  // The wall board: customer-safe whoever opens it.
+  '/signage',
   '/my-department', '/stock-requests', '/damaged-goods', '/field-dispatch',
   '/pos', '/my-week', '/notifications',
 ]
@@ -42,6 +46,8 @@ export const HEAD_OF_DEPARTMENT_PAGES = [
  * it is owed, who it buys from, and what the floor is asking for.
  */
 export const MANAGING_DIRECTOR_PAGES = [
+  // The wall board: customer-safe whoever opens it.
+  '/signage',
   '/director', '/debts', '/credit-agreements', '/suppliers', '/stock-requests',
   '/notifications',
 ]
@@ -56,6 +62,8 @@ export const MANAGING_DIRECTOR_PAGES = [
  * to the till, which reads as broken rather than as a permission.
  */
 export const SALES_PAGES = [
+  // The wall board: customer-safe whoever opens it.
+  '/signage',
   '/pos', '/refunds', '/field-dispatch', '/expenses', '/cash-up',
   '/service-charges', '/my-week', '/notifications',
 ]
@@ -145,6 +153,16 @@ const NAV_ITEMS = [
   // Everybody's own week, on a sheet they can print.
   { to: '/my-week', label: 'My Week', icon: FiCalendar, minLevel: 1, section: 'selling' },
   { to: '/notifications', label: 'Notifications', icon: FiBell, minLevel: 1, section: 'selling' },
+  /**
+   * The price board for the shop wall.
+   *
+   * In the menu so somebody can actually find it: it opens as a full
+   * screen with no way back except the browser, which is the point on a
+   * wall and a dead end if you arrived by accident. Open to every role
+   * because whoever is on the floor is who puts it up, and what it shows
+   * is customer-safe whoever opens it.
+   */
+  { to: '/signage', label: 'Price Board', icon: FiMonitor, minLevel: 1, section: 'selling' },
   // Sales+ (all logged-in users)
   { to: '/pos', label: 'Point of Sale', icon: FiShoppingCart, minLevel: 1, section: 'selling' },
   { to: '/refunds', label: 'Refunds', icon: FiRotateCcw, minLevel: 1, section: 'selling' },
