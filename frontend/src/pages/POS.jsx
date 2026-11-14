@@ -372,7 +372,21 @@ function ReceiptModal({
 
         <div className="flex gap-3">
           <button
-            onClick={() => printWhenReady(receiptWidthMm, { offsetMm: receiptOffsetMm })}
+            /**
+             * The same size the automatic print uses.
+             *
+             * This passed the width and the nudge but not the text scale,
+             * so the slip that printed itself when the sale closed came
+             * out at the shop's setting — 110% by default — and the one
+             * printed by pressing this button came out at 100%. Two
+             * different receipts for the same sale, and nothing on screen
+             * to say why: press Print for a second copy and it is visibly
+             * smaller than the one already in the customer's hand.
+             */
+            onClick={() => printWhenReady(receiptWidthMm, {
+              offsetMm: receiptOffsetMm,
+              textScale: receiptTextScale,
+            })}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold text-sm transition-colors"
           >
             <FiPrinter size={16} /> Print
