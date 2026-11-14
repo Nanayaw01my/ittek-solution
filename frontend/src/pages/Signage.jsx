@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getSignageBoard } from '../api/signage'
+import { FiMaximize, FiMinimize } from 'react-icons/fi'
 import { formatCurrency } from '../utils/helpers'
 
 /**
@@ -108,6 +109,53 @@ export default function Signage() {
     }
   }, [])
 
+
+  /**
+   * Getting rid of the browser.
+   *
+   * A board with an address bar across the top is a laptop someone left
+   * open, not a sign. The browser will only go away when a person asks
+   * it to — no page may put itself full screen unprompted — so there has
+   * to be a button, and a customer-facing board is the last place for a
+   * button to sit permanently.
+   *
+   * So it hides. Touch the screen or move a mouse and it fades in for
+   * four seconds, long enough to aim at; then the board is a board
+   * again, cursor and all. Staff learn it in one go: tap the screen,
+   * press the icon.
+   */
+  const [full, setFull] = useState(false)
+  const [showControls, setShowControls] = useState(false)
+  const hideTimer = useRef(null)
+
+  const wake = useCallback(() => {
+    setShowControls(true)
+    clearTimeout(hideTimer.current)
+    hideTimer.current = setTimeout(() => setShowControls(false), 4000)
+  }, [])
+
+  useEffect(() => () => clearTimeout(hideTimer.current), [])
+
+  // Tracked rather than assumed: the viewer can leave full screen with
+  // Escape at any moment, and a button still offering to do what has
+  // already been undone is how people end up pressing it twice.
+  useEffect(() => {
+    const sync = () => setFull(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', sync)
+    sync()
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
+
+  const toggleFull = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await document.documentElement.requestFullscreen()
+    } catch {
+      // Some television browsers refuse it outright. Nothing to say to a
+      // room of customers about it; the board carries on as it was.
+    }
+  }
+
   const shop = data?.shop || {}
   const promo = data?.promo || null
   const shown = products.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE)
@@ -132,8 +180,11 @@ export default function Signage() {
       first: the same board on a 4:3 office monitor and a wide television
       should show eight prices either way.
     */
-    <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden select-none"
-         style={{ cursor: 'none' }}>
+    <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden select-none relative"
+         onMouseMove={wake}
+         onTouchStart={wake}
+         style={{ cursor: showControls ? 'default' : 'none' }}>
+
       {/* Header: who you are standing in front of */}
       <div className="shrink-0 flex items-center justify-between gap-6 px-[2.5vw] py-[1.8vh] border-b-4 border-orange-500">
         <div className="min-w-0">
@@ -233,6 +284,24 @@ export default function Signage() {
             {stale && (
               <span className="text-[1.5vh] font-black text-gray-600">OFFLINE</span>
             )}
+
+            {/*
+              The only control on the board, and it is invisible until
+              asked for. In the footer rather than the top corner: up
+              there it sat squarely on the clock, which is one of the two
+              things on this screen a customer actually reads. Down here
+              it has the strip to itself.
+            */}
+            <button
+              onClick={toggleFull}
+              aria-label={full ? 'Leave full screen' : 'Full screen'}
+              className={`rounded-lg bg-white/10 hover:bg-white/20 p-[1vh] transition-opacity duration-300
+                          ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+            >
+              {full
+                ? <FiMinimize style={{ width: '2.4vh', height: '2.4vh' }} />
+                : <FiMaximize style={{ width: '2.4vh', height: '2.4vh' }} />}
+            </button>
           </div>
         </div>
       </div>

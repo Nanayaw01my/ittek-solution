@@ -70,6 +70,14 @@ export default defineConfig({
             url: '/sales-history',
             icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }],
           },
+          // The wall board, so the shop screen can be installed as its own
+          // icon and opened straight into the prices with no address bar.
+          {
+            name: 'Price Board',
+            short_name: 'Board',
+            url: '/signage',
+            icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }],
+          },
         ],
       },
       // Don't generate a dev SW — only in production build
