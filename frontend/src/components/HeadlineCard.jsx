@@ -43,7 +43,7 @@ const spark = (values, w = 220, h = 42) => {
 }
 
 export default function HeadlineCard({
-  label, value, delta, note, icon: Icon, tone = 'indigo', series,
+  label, value, delta, note, footnote, icon: Icon, tone = 'indigo', series,
 }) {
   const s = spark(series)
   const up = Number(delta) >= 0
@@ -73,6 +73,13 @@ export default function HeadlineCard({
         )}
         {delta == null && note && (
           <p className="text-[11px] font-semibold text-white/70 mt-2">{note}</p>
+        )}
+        {/* A second line, for a card whose headline figure does not say
+            enough on its own — refunds being the case it was added for:
+            the amount matters less than how many, and whether any are
+            still waiting on somebody. */}
+        {footnote && (
+          <p className="text-[10.5px] font-semibold text-white/70 mt-1 truncate">{footnote}</p>
         )}
       </div>
 

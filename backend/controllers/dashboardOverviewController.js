@@ -4,6 +4,7 @@ const Product = require('../models/Product');
 const Expense = require('../models/Expense');
 const Debt = require('../models/Debt');
 const Customer = require('../models/Customer');
+const Refund = require('../models/Refund');
 const Category = require('../models/Category');
 const { classify, ASPECTS } = require('../config/aspects');
 
@@ -29,6 +30,21 @@ const delta = (now, before) => {
 };
 
 const money = (n) => Number((Number(n) || 0).toFixed(2));
+
+/**
+ * Money actually given back, over a window.
+ *
+ * Only an approved refund counts. A request waiting for a decision has
+ * returned nothing to anybody, and putting it on the dashboard would
+ * have the shop reading money as gone while it is still in the drawer.
+ */
+const refundsBetween = async (from, to) => {
+  const r = await Refund.aggregate([
+    { $match: { status: 'approved', refund_date: { $gte: from, $lt: to } } },
+    { $group: { _id: null, total: { $sum: '$refund_amount' }, count: { $sum: 1 } } },
+  ]);
+  return { total: money(r[0]?.total), count: r[0]?.count || 0 };
+};
 
 /** Takings never count a layaway's release — see Sale.layaway_ref. */
 const COUNTED = { layaway_ref: { $in: [null, undefined] } };
@@ -77,6 +93,7 @@ const getOverview = async (req, res) => {
     const [
       today, yesterday, thisMonth, lastMonth,
       profitToday, profitYesterday,
+      refundsToday, refundsYesterday, refundsMonth, refundsPending,
       stock, customersTotal, customersThisMonth, customersLastMonth,
       debts, debtsLastMonth,
       dailySeries, monthlySeries,
@@ -88,6 +105,14 @@ const getOverview = async (req, res) => {
       sumBetween(startOfLastMonth, startOfMonth),
       profitBetween(startOfToday, now),
       profitBetween(startOfYesterday, startOfToday),
+
+      refundsBetween(startOfToday, now),
+      refundsBetween(startOfYesterday, startOfToday),
+      refundsBetween(startOfMonth, now),
+      // Waiting on somebody's decision. Not money back yet, so it is kept
+      // off the figure and said beside it — a queue of refunds nobody has
+      // looked at is its own thing worth knowing.
+      Refund.countDocuments({ status: 'pending' }),
 
       // What the shelves are worth, at what the goods cost. Selling value
       // would flatter it by the whole margin — a figure the shop has not
@@ -258,7 +283,13 @@ const getOverview = async (req, res) => {
           today_sales: { value: today.total, delta: delta(today.total, yesterday.total), count: today.count },
           month_sales: { value: thisMonth.total, delta: delta(thisMonth.total, lastMonth.total), count: thisMonth.count },
           today_profit: { value: profitToday, delta: delta(profitToday, profitYesterday) },
-          stock_value: { value: money(stock[0]?.value), retail: money(stock[0]?.retail), items: stock[0]?.items || 0, pieces: stock[0]?.pieces || 0 },
+          refunds: {
+            value: refundsToday.total,
+            delta: delta(refundsToday.total, refundsYesterday.total),
+            count: refundsToday.count,
+            month: refundsMonth.total,
+            pending: refundsPending,
+          },
           customers: { value: customersTotal, delta: delta(customersThisMonth, customersLastMonth), new_this_month: customersThisMonth },
           outstanding: { value: outstanding, delta: delta(outstanding, owed(debtsLastMonth)), count: debts.length },
         },

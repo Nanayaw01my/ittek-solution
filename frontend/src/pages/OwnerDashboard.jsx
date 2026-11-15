@@ -6,7 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import {
-  FiShoppingBag, FiBarChart2, FiDollarSign, FiBox, FiUsers, FiCreditCard,
+  FiShoppingBag, FiBarChart2, FiDollarSign, FiUsers, FiCreditCard,
   FiAlertTriangle, FiArrowRight, FiSun, FiWifi, FiZap, FiGrid,
   FiSmartphone, FiRotateCcw,
 } from 'react-icons/fi'
@@ -158,9 +158,22 @@ export default function OwnerDashboard({ username }) {
         <HeadlineCard tone="amber" icon={FiDollarSign} label="Today's Profit"
           value={cash(h.today_profit.value)} delta={h.today_profit.delta}
           note="vs yesterday" series={profitSeries} />
-        <HeadlineCard tone="blue" icon={FiBox} label="Stock Value"
-          value={cash(h.stock_value.value)}
-          note={`${h.stock_value.items} products · ${h.stock_value.pieces} pieces`} />
+        {/*
+          Refunds, where the stock value used to be. The shelves are still
+          valued below, department by department; what was not anywhere was
+          money going back out of the till, which is a thing an owner wants
+          to see the moment it happens rather than at the month's end.
+
+          A rise here is not good news, so the card says what it is
+          counting rather than leaving an upward arrow to be read as
+          growth: how many today, and how many are still waiting on a
+          decision — a queue nobody has looked at is its own problem.
+        */}
+        <HeadlineCard tone="blue" icon={FiRotateCcw} label="Refunds today"
+          value={cash(h.refunds.value)} delta={h.refunds.delta} note="vs yesterday"
+          footnote={h.refunds.pending
+            ? `${h.refunds.count} today · ${h.refunds.pending} awaiting approval`
+            : `${h.refunds.count} today · ${cash(h.refunds.month)} this month`} />
         <HeadlineCard tone="pink" icon={FiUsers} label="Customers"
           value={String(h.customers.value)} delta={h.customers.delta}
           note="new vs last month" />
