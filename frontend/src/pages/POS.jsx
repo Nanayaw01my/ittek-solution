@@ -245,7 +245,14 @@ function ReceiptModal({
           {/* Items */}
           <div className="border-b border-dashed border-gray-300 pb-3 mb-3">
             <div className="flex justify-between text-xs font-bold mb-2">
-              <span className="flex-1">Item</span>
+              {/* The name column is what is left after the quantity and
+                  the two money columns, and on a narrow roll at a large
+                  text size that can come to a few millimetres — enough to
+                  break the word "Item" into "Ite" and "m" on the heading
+                  of every receipt. The heading never wraps; the product
+                  names below it still do, onto their own line, which is
+                  where a wrap belongs. */}
+              <span className="flex-1 whitespace-nowrap">Item</span>
               <span className="w-8 text-center">Qty</span>
               <span className="w-20 text-right">Price</span>
               <span className="w-20 text-right">Total</span>

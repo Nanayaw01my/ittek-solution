@@ -158,8 +158,12 @@ function CompanyTab({ settings, onSave, loading }) {
           <span className="text-sm text-gray-500">mm wide</span>
         </div>
         <p className="text-xs text-gray-500 mt-1">
-          Measure the paper itself with a ruler and type what it says. 7.8cm is 78. Common
-          rolls are 58mm and 80mm, but use your measurement, not the nearest common size.
+          How wide the printer can actually print, which is usually a little less than the
+          paper. Start with the paper measured by ruler &mdash; 7.8cm is 78 &mdash; and if the
+          right-hand end of each line comes out cut (&ldquo;CAS&rdquo; instead of
+          &ldquo;CASH&rdquo;), bring this down a millimetre at a time until it stops. Most
+          print heads lose two or three millimetres at each edge, so a 78mm roll often prints
+          about <span className="font-semibold">73</span>.
         </p>
 
         <label className="block text-sm font-semibold text-gray-700 mt-4 mb-1">Receipt text size</label>

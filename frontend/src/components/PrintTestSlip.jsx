@@ -122,7 +122,11 @@ export default function PrintTestSlip({ widthMm = 80, offsetMm = 0, textScale = 
                 <span style={{ background: '#000', color: '#fff', padding: '0 2px' }}>LEFT</span>
                 <span style={{ background: '#000', color: '#fff', padding: '0 2px' }}>RIGHT</span>
               </div>
-              <p className="text-xs">If either word is cut, the paper is narrower than the setting.</p>
+              <p className="text-xs">
+                If the right-hand block is cut, bring <span className="font-bold">Receipt Paper
+                Width</span> down a millimetre at a time until it prints whole. If the
+                left-hand one is cut, raise the nudge instead.
+              </p>
             </div>
 
             <div className="my-2 border-t border-dashed border-gray-400" />
