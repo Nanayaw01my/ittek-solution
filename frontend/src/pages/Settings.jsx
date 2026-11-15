@@ -202,9 +202,12 @@ function CompanyTab({ settings, onSave, loading }) {
           <span className="text-sm text-gray-500">mm</span>
         </div>
         <p className="text-xs text-gray-500 mt-1">
-          Leave at 0 unless the printing sits off to one side. Minus moves it left, plus moves
-          it right. Print the test slip, measure the white margin on each side, and put half
-          the difference here — leaning right by 12mm means <span className="font-semibold">-6</span>.
+          How far in from the left edge of the paper the printing starts. Most print heads
+          cannot reach the first few millimetres of the roll, so if the first letter of each
+          line is missing &mdash; &ldquo;nvoice&rdquo; instead of &ldquo;Invoice&rdquo; &mdash;
+          raise this a millimetre at a time until nothing is cut. Most printers need
+          <span className="font-semibold"> 3 to 6</span>. The receipt gives up that width
+          rather than hanging off the paper, so a large number here makes a narrow slip.
         </p>
 
         <label className="mt-3 flex items-start gap-2.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3 cursor-pointer">

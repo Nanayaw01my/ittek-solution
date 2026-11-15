@@ -79,9 +79,20 @@ export default function PrintTestSlip({ widthMm = 80, offsetMm = 0, textScale = 
                 Set to {width}mm ({(width / 25.4).toFixed(2)} in) roll, printing {m.contentMm}mm wide
                 {offset ? `, nudged ${offset > 0 ? '+' : ''}${offset}mm` : ''}, text at {type}%.
               </p>
+              {/*
+                The nudge no longer centres the slip within its margins —
+                it sets where the printing starts from the paper's left
+                edge and narrows the receipt to suit. So "half the
+                difference" is the wrong sum, and this says what to do
+                about the fault people actually have: a print head that
+                starts a few millimetres in, eating the first letter of
+                every line.
+              */}
               <p className="text-xs">
-                Measure the white margin on each side. If they differ, put half the
-                difference in &ldquo;Nudge the printing&rdquo; — leaning right means a minus.
+                Letters cut off the left? Raise &ldquo;Nudge the printing&rdquo; by a
+                millimetre at a time until nothing is missing — most printers need
+                3 to 6. A wide gap on the left with the right edge cut means it is
+                set too high.
               </p>
             </div>
 
