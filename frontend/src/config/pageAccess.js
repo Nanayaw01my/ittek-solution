@@ -109,6 +109,30 @@ export const maySell = (role) => SELLING_ROLES.includes(role)
 export const roleLevel = (role) => ROLE_LEVELS[role] || 0
 
 /**
+ * Who may see how many of a thing the shop is holding, at the till.
+ *
+ * The shop's decision, and a narrow one: the CEO and nobody else. A
+ * sales attendant does not need the figure to sell — the till already
+ * refuses to add what is not there, and it refuses in the same way
+ * whether the cashier can read the count or not. What the figure does
+ * do, printed beside every line, is tell anyone who can see the screen
+ * exactly what the shop is holding: staff, a customer leaning over the
+ * counter, a photograph of the till taken over somebody's shoulder.
+ *
+ * Deliberately not a level. Level 2 and above would quietly include
+ * every Manager and head of department, and level 3 the COO and the
+ * Managing Director. The shop asked for one person.
+ *
+ * This hides a figure on a screen. It is not a security boundary: the
+ * stock figures still reach the browser, because the till needs them to
+ * know what it may sell. Anyone who can open the Products screen can
+ * read them there, and anyone who can open the developer tools can read
+ * them here. Keeping them off the counter screen is what was asked for
+ * and what this does.
+ */
+export const seesStockCounts = (role) => role === 'CEO'
+
+/**
  * The roles that run the business.
  *
  * One list, because half a dozen screens were each carrying their own

@@ -7,7 +7,7 @@ import { formatCurrency } from '../utils/helpers'
  * Which variant is the customer buying? Shown when a product with variants is
  * tapped at the till — a product with variants is never sold as itself.
  */
-export default function VariantPickerModal({ isOpen, onClose, product, onSelect }) {
+export default function VariantPickerModal({ isOpen, onClose, product, onSelect, showStock }) {
   const { t } = useTranslation()
   if (!product) return null
 
@@ -46,9 +46,15 @@ export default function VariantPickerModal({ isOpen, onClose, product, onSelect 
                 <p className="text-[11px] text-gray-400 font-mono mt-0.5">{variant.sku}</p>
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-sm font-black text-orange-600">{formatCurrency(variant.selling_price)}</span>
-                  <span className={`text-xs font-semibold ${variant.quantity <= 5 ? 'text-orange-500' : 'text-gray-400'}`}>
-                    Qty: {variant.quantity}
-                  </span>
+                  {/* The count, for whoever may see counts. The picker
+                      works without it: a variant that has run out is
+                      greyed, disabled and labelled, which is what a
+                      cashier actually needs from this screen. */}
+                  {showStock && (
+                    <span className={`text-xs font-semibold ${variant.quantity <= 5 ? 'text-orange-500' : 'text-gray-400'}`}>
+                      Qty: {variant.quantity}
+                    </span>
+                  )}
                 </div>
               </button>
             )

@@ -8,7 +8,7 @@ import { getProducts, getOfflineCatalogue, getProductByBarcode } from '../api/pr
 import { createSale, createShortPayment } from '../api/pos'
 import { getSettings } from '../api/settings'
 import useAuthStore from '../store/authStore'
-import { maySell } from '../config/pageAccess'
+import { maySell, seesStockCounts } from '../config/pageAccess'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import useOnlineStatus from '../hooks/useOnlineStatus'
 import useBarcodeScanner from '../hooks/useBarcodeScanner'
@@ -33,7 +33,7 @@ import { format, addDays } from 'date-fns'
 
 const PAYMENT_METHODS = ['Cash', 'Card', 'Mobile Money']
 
-function ProductCard({ product, onAdd }) {
+function ProductCard({ product, onAdd, showStock }) {
   const outOfStock = product.quantity <= 0
   return (
     <button
@@ -63,9 +63,20 @@ function ProductCard({ product, onAdd }) {
           reads for a moment as two different numbers. */}
       <div>
         <p className="text-base font-black text-gray-900 leading-none whitespace-nowrap">{formatCurrency(product.selling_price)}</p>
-        <p className={`mt-1 text-[11px] font-black uppercase tracking-wide leading-none ${product.quantity <= (product.low_stock_level || 5) ? 'text-orange-600' : 'text-gray-500'}`}>
-          {product.quantity} left
-        </p>
+        {/*
+          How many are left, for the CEO alone.
+
+          The count used to sit under every price, where anyone at the
+          counter could read it — staff, a customer leaning over, a phone
+          held over somebody's shoulder. Nobody needs it to sell: the
+          till refuses to add what is not there whether or not the figure
+          is on screen, and an item that has run out still says OUT.
+        */}
+        {showStock && (
+          <p className={`mt-1 text-[11px] font-black uppercase tracking-wide leading-none ${product.quantity <= (product.low_stock_level || 5) ? 'text-orange-600' : 'text-gray-500'}`}>
+            {product.quantity} left
+          </p>
+        )}
       </div>
     </button>
   )
@@ -526,6 +537,9 @@ export default function POS() {
    * says why is kinder than a red toast after a cart has been built.
    */
   const canSell = maySell(user?.role)
+  // The stock figures beside each price. See seesStockCounts in
+  // config/pageAccess.js for who, and why it is not a level.
+  const showStock = seesStockCounts(user?.role)
   const queryClient = useQueryClient()
   const searchRef = useRef(null)
   const isOnline = useOnlineStatus()
@@ -795,7 +809,12 @@ export default function POS() {
     const lineId = variant ? `${product._id}:${variant.sku}` : product._id
     const line = cart.find(i => i.lineId === lineId || (!i.lineId && i._id === lineId))
     if (line && line.qty >= stock) {
-      toast.error(`Only ${stock} of ${label} left — all of it is in the cart`)
+      // The same refusal either way, with the figure only for whoever
+      // may see figures. Saying "only 3 left" to a cashier who is not
+      // allowed the count would hand it over through the back door.
+      toast.error(showStock
+        ? `Only ${stock} of ${label} left — all of it is in the cart`
+        : `No more ${label} can be added — the rest is in the cart`)
       return
     }
 
@@ -1279,7 +1298,7 @@ export default function POS() {
           ) : (
             <div className={`grid grid-cols-2 gap-2 ${canSell ? 'sm:grid-cols-3' : 'sm:grid-cols-3 lg:grid-cols-4'}`}>
               {products.map(p => (
-                <ProductCard key={p._id} product={p} onAdd={addToCart} />
+                <ProductCard key={p._id} product={p} onAdd={addToCart} showStock={showStock} />
               ))}
             </div>
           )}
@@ -1631,6 +1650,7 @@ export default function POS() {
         onClose={() => setVariantProduct(null)}
         product={variantProduct}
         onSelect={addToCart}
+        showStock={showStock}
       />
 
       {/* Receipt Modal */}
