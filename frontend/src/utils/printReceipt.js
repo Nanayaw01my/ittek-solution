@@ -42,7 +42,38 @@ const SIDE_MARGIN_MM = 1.5
 
 const metricsFor = (widthMm, offsetMm = 0, textScale = 100) => {
   const scale = widthMm / BASELINE_MM
-  const contentMm = Math.max(30, widthMm - SIDE_MARGIN_MM * 2)
+
+  /**
+   * Where the receipt starts across the paper, and how wide it may be.
+   *
+   * A thermal head does not always start printing where the paper
+   * begins. On this shop's printer it starts about 4mm in, so a slip
+   * laid out from 1.5mm lost the first character of every left-hand
+   * label — "Invoice #" came out as "nvoice #", "TOTAL" as "OTAL" —
+   * while a clear strip of paper went unused down the right.
+   *
+   * The nudge used to move the slip *within* the side margins, which
+   * sounds right and is useless: the content is the page less 1.5mm
+   * each side, so there were three millimetres of slack in total and
+   * the nudge was worth at most one and a half. A shop whose head
+   * starts 4mm in could type any number it liked and watch the same
+   * character disappear. (The comment that used to sit here claimed 8mm
+   * of slack, which was true when the side margin was 4mm and quietly
+   * stopped being true when it became 1.5mm.)
+   *
+   * So the nudge now makes the room it needs: it moves the left edge,
+   * and the receipt gives up that width rather than hanging off the
+   * paper. A browser does not print what falls outside the page — it
+   * clips it — so the slip is kept inside the page and narrowed
+   * instead, which is the difference between a receipt that is a few
+   * millimetres narrower and one with its first column shaved off.
+   */
+  const nudge = Math.max(-20, Math.min(20, Number(offsetMm) || 0))
+  const marginLeftMm = Math.max(0, Math.min(
+    Math.max(0, widthMm - 30 - SIDE_MARGIN_MM),
+    SIDE_MARGIN_MM + nudge
+  ))
+  const contentMm = Math.max(30, widthMm - marginLeftMm - SIDE_MARGIN_MM)
   /**
    * The shop's own say over how big the print is.
    *
@@ -73,29 +104,6 @@ const metricsFor = (widthMm, offsetMm = 0, textScale = 100) => {
   // and each column is rounded to a whole pixel afterwards, which can tip
   // an exact fit one pixel over into a wrap.
   const type = Math.min(askedScale, (contentPx * 0.96) / columnsAtFullSize)
-  /**
-   * Where the receipt sits across the paper.
-   *
-   * Centred, then nudged by whatever the shop has measured. A thermal head
-   * does not always start where the paper does — this shop's begins about
-   * 6mm in — and no web page can discover that, so the shop prints the test
-   * slip, sees which way it leans and types the correction. Clamped so a
-   * typo cannot push the slip clean off the roll.
-   */
-  const slack = Math.max(0, widthMm - contentMm)
-  /**
-   * The nudge moves the receipt within the slack, and no further.
-   *
-   * Pushing it past either end would put part of the slip outside the page
-   * box, and a browser does not print what falls outside the page — it
-   * clips it. So an over-large nudge pins the receipt to that edge instead
-   * of quietly cutting a column off, which is the fault it was added to
-   * cure. With a 78mm roll the slack is 8mm, so the nudge is worth at most
-   * 4mm either way; if the slip is still off the paper at the limit, the
-   * roll width is set too wide and that is the number to change.
-   */
-  const asked = Number(offsetMm) || 0
-  const marginLeftMm = Math.max(0, Math.min(slack, slack / 2 + asked))
   return {
     /** The paper. The receipt is centred on it, then nudged. */
     pageMm: widthMm,
