@@ -16,6 +16,10 @@ router.get('/dashboard-stats', authenticate, getDashboardStats);
 // Whole-shop takings over time — owners only. The dashboard already asks for
 // it only at CEO level; this is the matching check on the server.
 router.get('/sales-trend', authenticate, requireLevel(3), getSalesTrend);
+// Everything the owner's dashboard draws, in one request rather than
+// fourteen — see controllers/dashboardOverviewController.js.
+router.get('/overview', authenticate, requireLevel(3),
+  require('../controllers/dashboardOverviewController').getOverview);
 
 // Price list carries selling prices only — no cost or margin — so any signed-in
 // staff member can print one for a customer without needing admin rights.

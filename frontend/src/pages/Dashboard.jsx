@@ -10,6 +10,7 @@ import useAuthStore from '../store/authStore'
 import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import Badge from '../components/Badge'
 import RefreshButton from '../components/RefreshButton'
+import OwnerDashboard from './OwnerDashboard'
 import { format } from 'date-fns'
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -28,9 +29,8 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null
 }
 
-export default function Dashboard() {
-  const { user } = useAuthStore()
-  const userLevel = getRoleLevel(user?.role)
+/** Everybody below the owners: their own day, and the few things they act on. */
+function StaffDashboard({ user, userLevel }) {
 
   const { data: statsData, isLoading: statsLoading, isError: statsError, error: statsErrObj } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -215,260 +215,26 @@ export default function Dashboard() {
     )
   }
 
-  // CEO / Super Admin full dashboard
-  return (
-    <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-black text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 text-sm">Welcome back, {user?.username}! Here's the business overview.</p>
-        </div>
-        <RefreshButton keys={['dashboard-stats', 'sales-trend', 'top-products', 'recent-sales']} />
-      </div>
+}
 
-      {statsError && <StatsError />}
-
-      {/* Row 1 - Key metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard
-          icon={FiShoppingCart}
-          /**
-           * What the day actually came to: what was taken, less what was
-           * handed back.
-           *
-           * A refund is money that left the shop today, so the shop expects
-           * to see it gone from today's figure rather than noted beside it.
-           * `todaySalesNet` is never clamped, so a day that gives back more
-           * than it takes shows as the minus it is — the old clamp to zero
-           * was what made a busy day read as a dead one.
-           */
-          value={formatCurrency(
-            // A server older than this app sends no net figure. Working it
-            // out here keeps the headline and the line under it telling the
-            // same story rather than contradicting each other.
-            stats.todaySalesNet !== undefined
-              ? stats.todaySalesNet
-              : (stats.todaySales || 0) - (stats.todayRefunds || 0)
-          )}
-          label="Today's Sales"
-          color="orange"
-          loading={statsLoading}
-          hint={statsError ? null : (() => {
-            /**
-             * And a zero here has to say which kind of zero it is.
-             *
-             * Nothing sold, everything refunded, and a day of Pay & Pick
-             * Later collections all used to print the same GHC 0.00, and the
-             * only way to find out which was to open Cash Up and compare.
-             */
-            const counted = stats.todaySalesCount ?? 0
-            const plans = stats.todayLayawaySalesCount ?? 0
-            const refunded = stats.todayRefunds || 0
-            const taken = stats.todaySales || 0
-            const parts = []
-            if (counted > 0) parts.push(`${counted} sale${counted === 1 ? '' : 's'} today`)
-            if (plans > 0) parts.push(`${plans} plan collection${plans === 1 ? '' : 's'} (counted when paid)`)
-            if (stats.todayLayawayCollections > 0) parts.push('includes plan instalments')
-            // Both halves of the sum, so the figure above can be checked
-            // against the drawer without opening another screen.
-            if (refunded > 0) parts.push(`${formatCurrency(taken)} taken, less ${formatCurrency(refunded)} refunded`)
-            if (!parts.length) return 'nothing sold yet today'
-            return parts.join(' · ')
-          })()}
-        />
-        <StatCard
-          icon={FiTrendingUp}
-          value={formatCurrency(stats.monthlySales || 0)}
-          label="Monthly Sales"
-          color="blue"
-          loading={statsLoading}
-        />
-        <StatCard
-          icon={FiPackage}
-          value={stats.totalProducts || 0}
-          label="Total Products"
-          color="green"
-          loading={statsLoading}
-        />
-        <StatCard
-          icon={FiAlertTriangle}
-          value={stats.lowStockCount || 0}
-          label="Low Stock Alerts"
-          color="yellow"
-          loading={statsLoading}
-        />
-      </div>
-
-      {/* Row 2 */}
-      {/* Four across, not seven.
-          Seven tiles share a 1440px screen at about 140px each, which is
-          narrower than "GH₵ 12,480.00" — so every figure on the row was cut
-          to "GH₵ 0…". A money tile too narrow to show the money is not a
-          tile. */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-        {/* Already counted inside Today's Sales — this says how much of the
-            day came from agents on the field rather than over the counter. */}
-        <StatCard
-          icon={FiSend}
-          value={formatCurrency(stats.todayFieldSales || 0)}
-          label="Field Sales Today"
-          color="purple"
-          loading={statsLoading}
-          hint={statsError ? null
-            : `${stats.todayFieldSalesCount ?? 0} paid in by agents`}
-        />
-        {/* Also already inside Today's Sales — work done rather than goods sold. */}
-        <StatCard
-          icon={FiTool}
-          value={formatCurrency(stats.todayServiceCharges || 0)}
-          label="Service Charges Today"
-          color="green"
-          loading={statsLoading}
-          hint={statsError ? null
-            : `${stats.todayServiceChargesCount ?? 0} job${stats.todayServiceChargesCount === 1 ? '' : 's'} \u2014 in Today\u2019s Sales`}
-        />
-        <StatCard
-          icon={FiDollarSign}
-          value={formatCurrency(stats.todayExpenses || 0)}
-          label="Today's Expenses"
-          color="red"
-          loading={statsLoading}
-        />
-        <StatCard
-          icon={FiActivity}
-          value={formatCurrency(stats.netProfit || 0)}
-          label="Net Profit (Month)"
-          color={!statsLoading && (stats.netProfit || 0) < 0 ? 'red' : 'green'}
-          loading={statsLoading}
-        />
-        {/* Instalments taken today. Already inside Today's Sales — this breaks
-            out how much of the day came from plans rather than the counter. */}
-        <StatCard
-          icon={FiClock}
-          value={formatCurrency(stats.todayLayawayCollections || 0)}
-          label="Pay & Pick Later Today"
-          color="blue"
-          loading={statsLoading}
-          hint={statsError ? null : 'included in Today\u2019s Sales'}
-        />
-        <StatCard
-          icon={FiCreditCard}
-          value={formatCurrency(stats.outstandingDebtAmount || 0)}
-          label="Outstanding Debts"
-          color="orange"
-          loading={statsLoading}
-        />
-        <StatCard
-          icon={FiUsers}
-          value={stats.activeUsers || 0}
-          label="Active Users"
-          color="purple"
-          loading={statsLoading}
-        />
-      </div>
-
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        {/* Sales Trend */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="font-bold text-gray-900 mb-4">7-Day Sales Trend</h3>
-          {trendLoading ? (
-            <div className="h-48 bg-gray-100 animate-pulse rounded-lg" />
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={trendData?.trend || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
-                <Tooltip content={<CustomTooltip />} />
-                <Line
-                  type="monotone"
-                  dataKey="total"
-                  stroke="#F97316"
-                  strokeWidth={2.5}
-                  dot={{ fill: '#F97316', r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        {/* Top Products */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="font-bold text-gray-900 mb-4">Top 5 Products</h3>
-          {topProductsList.length === 0 ? (
-            <div className="h-48 flex items-center justify-center text-gray-400 text-sm">No sales data yet</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={topProductsList.slice(0, 5)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                <XAxis dataKey="product_name" tick={{ fontSize: 10, fill: '#9ca3af' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `${v}`} />
-                <Tooltip />
-                <Bar dataKey="total_quantity" fill="#F97316" radius={[4, 4, 0, 0]} name="Units Sold" />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
-
-      {/* Bottom row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        {/* Recent Sales */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="font-bold text-gray-900">Recent Sales</h3>
-            <Link to="/pos" className="text-xs text-orange-500 font-semibold hover:text-orange-600">View POS →</Link>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {recentSalesList.slice(0, 5).map(sale => (
-              <div key={sale._id} className="px-5 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-gray-800">{sale.customer_name || 'Walk-in'}</p>
-                  <p className="text-xs text-gray-500">{formatDate(sale.sale_date || sale.createdAt)}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-orange-600">{formatCurrency(sale.cart_total || sale.total_amount || 0)}</p>
-                  <Badge status={sale.payment_status} size="xs" />
-                </div>
-              </div>
-            ))}
-            {recentSalesList.length === 0 && (
-              <p className="px-5 py-6 text-sm text-gray-400 text-center">No sales yet</p>
-            )}
-          </div>
-        </div>
-
-        {/* Low Stock Alerts */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="font-bold text-gray-900">Low Stock Alerts</h3>
-            <Link to="/products" className="text-xs text-orange-500 font-semibold hover:text-orange-600">View All →</Link>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {(stats.lowStockProducts || []).slice(0, 5).map(p => (
-              <div key={p._id} className="px-5 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-gray-800">{p.name}</p>
-                  <p className="text-xs text-gray-500">{p.category?.name || '—'}</p>
-                </div>
-                <div className="text-right">
-                  <span className={`text-sm font-bold ${p.quantity === 0 ? 'text-red-500' : 'text-orange-500'}`}>
-                    {p.quantity} left
-                  </span>
-                  {p.quantity === 0 && (
-                    <p className="text-xs text-red-400">OUT OF STOCK</p>
-                  )}
-                </div>
-              </div>
-            ))}
-            {!(stats.lowStockProducts?.length) && (
-              <p className="px-5 py-6 text-sm text-gray-400 text-center">All products are well-stocked</p>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+/**
+ * Which dashboard a person gets.
+ *
+ * A switch and nothing else, because the two views do not share a single
+ * hook: the owner's draws everything from one request, and the staff
+ * view below fetches four smaller reports it actually uses.
+ *
+ * It has to be a switch at this level rather than an early return inside
+ * one component. The stored role is refreshed from the server shortly
+ * after the app mounts, so a person whose role changed would re-render
+ * this component at a different level — and a component that calls four
+ * hooks on one render and none on the next is how React throws
+ * "rendered fewer hooks than expected" and takes the screen with it.
+ */
+export default function Dashboard() {
+  const { user } = useAuthStore()
+  const userLevel = getRoleLevel(user?.role)
+  return userLevel >= 3
+    ? <OwnerDashboard username={user?.username} />
+    : <StaffDashboard user={user} userLevel={userLevel} />
 }

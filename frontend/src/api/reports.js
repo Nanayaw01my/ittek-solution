@@ -28,3 +28,12 @@ export const getPriceList = (params) =>
 export const getMargins = (params) => api.get('/reports/margins', { params })
 /** What each person sold over a period. */
 export const getStaffPerformance = (params) => api.get('/reports/staff', { params })
+
+/**
+ * Everything the owner's dashboard draws, in one request.
+ *
+ * Fourteen panels fetched one at a time is fourteen round trips on a
+ * mobile connection before anything appears. See
+ * backend/controllers/dashboardOverviewController.js.
+ */
+export const getDashboardOverview = () => api.get('/reports/overview')
