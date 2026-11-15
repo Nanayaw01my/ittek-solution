@@ -58,7 +58,24 @@ export default function PrintTestSlip({ widthMm = 80, offsetMm = 0, textScale = 
             <div>
               <p className="text-xs font-bold">1. Measure this bar</p>
               <div style={{ width: '50mm', height: '3mm', background: '#000' }} />
-              <p className="text-xs">It must be exactly 50mm. Shorter = the printer is shrinking the page.</p>
+              {/*
+                The one check that has to come first, because every other
+                measurement on this slip is meaningless if it fails — and
+                it now says what to do about it rather than only naming
+                the fault. Chrome's print box defaults to "Fit to
+                printable area", which quietly scales the whole page down
+                to whatever the driver claims it can print: a 50mm bar
+                comes out at 39, the ruler lies, and the shop spends the
+                afternoon adjusting a nudge that was never the problem.
+              */}
+              <p className="text-xs">
+                It must be exactly 50mm. If it is shorter, nothing else on this slip can be
+                trusted: in Chrome&rsquo;s print box open <span className="font-bold">More
+                settings</span>, set <span className="font-bold">Scale</span> to
+                <span className="font-bold"> Custom 100</span> and
+                <span className="font-bold"> Margins</span> to
+                <span className="font-bold"> None</span>, then print this again.
+              </p>
             </div>
 
             <div className="my-2 border-t border-dashed border-gray-400" />
