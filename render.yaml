@@ -29,10 +29,21 @@ services:
       - key: SIMPLEMDM_API_KEY
         sync: false
       # The relay for staff meetings, used when two phones cannot reach
-      # each other directly — common on mobile data, where a carrier puts
-      # many customers behind one address. Calls work without it for
-      # anyone whose network allows a direct line, and that is most people
-      # on wifi and fewer on mobile. Set all three to switch the relay on.
+      # each other directly — the normal case when one person is on wifi
+      # and another on mobile data, because a carrier puts thousands of
+      # customers behind one address and there is no route in.
+      #
+      # Cloudflare's TURN service is the one to use: credentials are
+      # minted per meeting and expire, so nothing long-lived is stored
+      # here. Create a TURN key in the Cloudflare dashboard and set these
+      # two. Their free allowance is far beyond what a shop can use — a
+      # voice call is about 13 MB an hour per person.
+      - key: CLOUDFLARE_TURN_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_TURN_API_TOKEN
+        sync: false
+      # Or a relay of the shop's own (a self-hosted coturn). Used only
+      # when the Cloudflare pair above is not set.
       - key: TURN_URL
         sync: false
       - key: TURN_USERNAME

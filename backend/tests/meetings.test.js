@@ -139,24 +139,50 @@ test('a relayed message cannot name its own sender', () => {
     'the relayed message must have the server-set sender last so it cannot be overridden');
 });
 
-test('ICE config offers STUN always and TURN only when configured', () => {
-  const { iceServers } = require('../controllers/meetingsController');
+test('ICE config offers STUN always and a relay only when configured', async () => {
+  const { iceServers, hasRelay } = require('../controllers/meetingsController');
 
   delete process.env.TURN_URL;
-  const bare = iceServers();
+  delete process.env.CLOUDFLARE_TURN_KEY_ID;
+  delete process.env.CLOUDFLARE_TURN_API_TOKEN;
+
+  const bare = await iceServers();
   assert.equal(bare.length, 1);
   assert.ok(bare[0].urls.some((u) => u.startsWith('stun:')));
+  assert.equal(hasRelay(), false, 'with nothing configured the room must admit it has no relay');
 
   process.env.TURN_URL = 'turn:relay.example.com:3478';
   process.env.TURN_USERNAME = 'shop';
   process.env.TURN_PASSWORD = 'secret';
-  const withTurn = iceServers();
+  const withTurn = await iceServers();
   assert.equal(withTurn.length, 2);
   assert.deepEqual(withTurn[1].urls, ['turn:relay.example.com:3478']);
   assert.equal(withTurn[1].username, 'shop');
+  assert.equal(hasRelay(), true);
   delete process.env.TURN_URL;
   delete process.env.TURN_USERNAME;
   delete process.env.TURN_PASSWORD;
+});
+
+test('a relay that cannot be reached does not stop the meeting', async () => {
+  /**
+   * Everyone on one network still connects without a relay. A join
+   * that threw because Cloudflare was slow would take the meeting away
+   * from the people who could have held it.
+   */
+  const { iceServers } = require('../controllers/meetingsController');
+  process.env.CLOUDFLARE_TURN_KEY_ID = 'nope';
+  process.env.CLOUDFLARE_TURN_API_TOKEN = 'nope';
+
+  const real = global.fetch;
+  global.fetch = async () => { throw new Error('network down'); };
+  const servers = await iceServers();
+  global.fetch = real;
+
+  assert.ok(servers.length >= 1, 'STUN must survive a failed relay');
+  assert.ok(servers[0].urls.some((u) => u.startsWith('stun:')));
+  delete process.env.CLOUDFLARE_TURN_KEY_ID;
+  delete process.env.CLOUDFLARE_TURN_API_TOKEN;
 });
 
 test('every role can reach the meetings API', () => {
@@ -220,4 +246,59 @@ test('no arriving voice is ever handed to Web Audio', () => {
 
   assert.ok(hook.includes('audioLevel'),
     'remote speaking must be read from the connection statistics, which only read');
+});
+
+test('Cloudflare relay credentials are passed through, in either shape, and cached', async () => {
+  /**
+   * Their API has returned `iceServers` both as one object and as an
+   * array across versions. Accepting either costs a line and means a
+   * shape change does not take the shop's meetings down.
+   */
+  const { iceServers } = require('../controllers/meetingsController');
+  process.env.CLOUDFLARE_TURN_KEY_ID = 'key123';
+  process.env.CLOUDFLARE_TURN_API_TOKEN = 'token123';
+
+  const real = global.fetch;
+  let calls = 0;
+  let sentAuth = null;
+  let sentUrl = null;
+
+  global.fetch = async (url, opts) => {
+    calls += 1;
+    sentUrl = url;
+    sentAuth = opts.headers.Authorization;
+    return {
+      ok: true,
+      json: async () => ({
+        iceServers: {
+          urls: ['turn:turn.cloudflare.com:3478?transport=udp', 'turns:turn.cloudflare.com:5349?transport=tcp'],
+          username: 'minted-user',
+          credential: 'minted-secret',
+        },
+      }),
+    };
+  };
+
+  const first = await iceServers();
+  global.fetch = real;
+
+  assert.ok(String(sentUrl).includes('/v1/turn/keys/key123/credentials/generate-ice-servers'),
+    `wrong endpoint: ${sentUrl}`);
+  assert.equal(sentAuth, 'Bearer token123');
+
+  const relay = first.find((s) => (s.urls || []).some((u) => String(u).startsWith('turn')));
+  assert.ok(relay, 'the minted relay must reach the browser');
+  assert.equal(relay.username, 'minted-user');
+  assert.equal(relay.credential, 'minted-secret');
+  assert.ok(first[0].urls.some((u) => u.startsWith('stun:')), 'STUN stays alongside it');
+
+  // A meeting of eight is eight joins in a minute; one mint serves them.
+  global.fetch = async () => { throw new Error('should not be called again'); };
+  const second = await iceServers();
+  global.fetch = real;
+  assert.equal(calls, 1, 'credentials must be cached, not minted per join');
+  assert.deepEqual(second, first);
+
+  delete process.env.CLOUDFLARE_TURN_KEY_ID;
+  delete process.env.CLOUDFLARE_TURN_API_TOKEN;
 });

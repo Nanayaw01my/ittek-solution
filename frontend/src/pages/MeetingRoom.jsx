@@ -22,7 +22,7 @@ import useMeetingRoom from '../hooks/useMeetingRoom'
  */
 
 /** A remote tile's audio has to be played; a video tile plays its own. */
-function PeerTile({ peer, onBlocked }) {
+function PeerTile({ peer, onBlocked, hasRelay }) {
   const audioRef = useRef(null)
   const videoRef = useRef(null)
 
@@ -84,8 +84,17 @@ function PeerTile({ peer, onBlocked }) {
           <p className="text-white font-bold text-xs mt-2">
             Could not connect to {peer.name}
           </p>
+          {/*
+            Not anybody's fault, and not one network's. Two phones on
+            different networks often have no route to each other at all
+            — a phone on mobile data sits behind an address shared with
+            thousands of other customers. Naming the remedy is more use
+            than naming a culprit, since only the shop can apply it.
+          */}
           <p className="text-white/60 font-semibold text-[11px] mt-1">
-            Their network is blocking a direct line.
+            {hasRelay
+              ? 'No direct route between your two networks, and the relay could not carry it either.'
+              : 'Your two networks have no direct route. The shop needs a relay server set up.'}
           </p>
         </div>
       )}
@@ -263,7 +272,8 @@ export default function MeetingRoom() {
           <MeView name="You" speaking={room.speaking} cameraOn={room.cameraOn}
                   stream={room.cameraStream} muted={room.muted} />
           {room.peers.map((p) => (
-            <PeerTile key={p.id} peer={p} onBlocked={() => setSoundBlocked(true)} />
+            <PeerTile key={p.id} peer={p} hasRelay={ticket?.has_relay}
+                      onBlocked={() => setSoundBlocked(true)} />
           ))}
         </div>
       </div>

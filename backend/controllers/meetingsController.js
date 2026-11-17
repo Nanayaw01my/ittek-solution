@@ -227,7 +227,8 @@ const joinMeeting = async (req, res) => {
         title: meeting.title,
         meeting_id: String(meeting._id),
         me: { id: String(req.user._id), name: req.user.username, role: req.user.role },
-        ice_servers: iceServers(),
+        ice_servers: await iceServers(),
+        has_relay: hasRelay(),
         /**
          * How many cameras the room will carry at once.
          *
@@ -251,31 +252,109 @@ const joinMeeting = async (req, res) => {
  * Where the phones should look to find each other.
  *
  * STUN is how a phone discovers its own public address, and the public
- * servers are free and enough for most connections. TURN is the relay
- * used when two phones cannot reach each other directly at all — which
- * on mobile networks is common rather than rare, because the carrier
- * puts many customers behind one address. Without a TURN server some
- * staff will connect and others will silently fail to, depending on
- * whose network they are on.
+ * servers are free. It is enough only when the two phones can reach
+ * each other directly.
  *
- * So: set TURN_URL, TURN_USERNAME and TURN_PASSWORD in the environment
- * and the relay is used. Leave them unset and calls still work for
- * everyone whose network allows a direct connection, which is most
- * people on wifi and fewer people on mobile data.
+ * TURN is the relay used when they cannot — which on mobile networks is
+ * the normal case, not the exception, because a carrier puts thousands
+ * of customers behind one address and there is no route in. One person
+ * on the shop wifi and one on LTE is exactly that case. Without a
+ * relay, those two never connect, however good both connections are.
+ *
+ * Two ways to provide one:
+ *
+ *   CLOUDFLARE_TURN_KEY_ID + CLOUDFLARE_TURN_API_TOKEN — credentials
+ *   are minted here, per meeting, and expire. Nothing long-lived sits
+ *   in the configuration, so a credential lifted from a browser is
+ *   worth a day at most.
+ *
+ *   TURN_URL + TURN_USERNAME + TURN_PASSWORD — a fixed relay, for a
+ *   self-hosted coturn.
+ *
+ * With neither, calls still work for anyone whose network allows a
+ * direct line, and the tile says plainly when one did not.
  */
-const iceServers = () => {
-  const servers = [
-    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-  ];
-  if (process.env.TURN_URL) {
-    servers.push({
-      urls: process.env.TURN_URL.split(',').map((u) => u.trim()).filter(Boolean),
-      username: process.env.TURN_USERNAME || undefined,
-      credential: process.env.TURN_PASSWORD || undefined,
-    });
-  }
+
+const STUN = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+];
+
+/**
+ * Minted credentials, kept until they are nearly out of time.
+ *
+ * A meeting of eight people is eight joins within a minute, and asking
+ * Cloudflare to mint a fresh credential for each is eight round trips
+ * on the one request a person is waiting on. One credential serves the
+ * shop for its lifetime.
+ */
+let turnCache = { servers: null, expires: 0 };
+
+const cloudflareTurn = async () => {
+  const keyId = process.env.CLOUDFLARE_TURN_KEY_ID;
+  const token = process.env.CLOUDFLARE_TURN_API_TOKEN;
+  if (!keyId || !token) return null;
+
+  if (turnCache.servers && Date.now() < turnCache.expires) return turnCache.servers;
+
+  const ttl = 86400; // a day
+  const res = await fetch(
+    `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ttl }),
+      signal: AbortSignal.timeout(6000),
+    }
+  );
+  if (!res.ok) throw new Error(`Cloudflare TURN said ${res.status}`);
+
+  const body = await res.json();
+  // The field has been both an object and an array across versions of
+  // their API; accept either rather than break on a shape change.
+  const raw = body?.iceServers;
+  const servers = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+  if (servers.length === 0) throw new Error('Cloudflare TURN returned no servers');
+
+  // Let it go stale an hour early, so a credential never expires
+  // in the middle of the meeting it was handed to.
+  turnCache = { servers, expires: Date.now() + (ttl - 3600) * 1000 };
   return servers;
 };
+
+const staticTurn = () => {
+  if (!process.env.TURN_URL) return null;
+  return [{
+    urls: process.env.TURN_URL.split(',').map((u) => u.trim()).filter(Boolean),
+    username: process.env.TURN_USERNAME || undefined,
+    credential: process.env.TURN_PASSWORD || undefined,
+  }];
+};
+
+const iceServers = async () => {
+  try {
+    const cf = await cloudflareTurn();
+    if (cf) return [...STUN, ...cf];
+  } catch (err) {
+    /**
+     * A relay we could not reach must not stop the meeting.
+     *
+     * Everyone on the same network still connects without it, and a
+     * meeting that refuses to open is worse than one where two people
+     * on different networks cannot hear each other — which is what
+     * happens anyway when there is no relay at all.
+     */
+    console.error('Cloudflare TURN unavailable:', err.message);
+  }
+
+  const fixed = staticTurn();
+  return fixed ? [...STUN, ...fixed] : [...STUN];
+};
+
+/** Whether a relay is configured at all — the room says so if not. */
+const hasRelay = () => Boolean(
+  (process.env.CLOUDFLARE_TURN_KEY_ID && process.env.CLOUDFLARE_TURN_API_TOKEN)
+  || process.env.TURN_URL
+);
 
 /**
  * POST /api/meetings/:id/leave
@@ -366,5 +445,6 @@ const updateMeeting = async (req, res) => {
 };
 
 module.exports = {
-  listMeetings, createMeeting, joinMeeting, leaveMeeting, endMeeting, updateMeeting, iceServers,
+  listMeetings, createMeeting, joinMeeting, leaveMeeting, endMeeting, updateMeeting,
+  iceServers, hasRelay,
 };
