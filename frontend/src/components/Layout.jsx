@@ -10,7 +10,7 @@ import {
   FiHome, FiShoppingCart, FiPackage, FiTag, FiTruck, FiDollarSign, FiBriefcase, FiGrid,
   FiAlertCircle, FiUsers, FiShoppingBag, FiInbox, FiFileText,
   FiBarChart2, FiSettings, FiDatabase, FiBell, FiSearch, FiLogOut,
-  FiMenu, FiX, FiMonitor, FiImage, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
+  FiMenu, FiX, FiMonitor, FiImage, FiMic, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
   FiArchive, FiShield, FiGlobe, FiTrash2, FiClipboard, FiSend, FiSmartphone, FiTool, FiAlertTriangle, FiLock, FiCheckSquare, FiPhone, FiUserCheck, FiPieChart, FiCalendar } from 'react-icons/fi'
 import { logout as apiLogout } from '../api/auth'
 import toast from 'react-hot-toast'
@@ -22,7 +22,7 @@ import InstallAppButton from './InstallAppButton'
 /** The only screens a DSR out on the field ever sees. */
 export const FIELD_AGENT_PAGES = [
   // The wall board: customer-safe whoever opens it.
-  '/signage','/field-dispatch', '/phone-sales', '/notifications']
+  '/signage','/field-dispatch', '/phone-sales', '/notifications', '/meetings']
 
 /**
  * A head of department's screens.
@@ -36,7 +36,7 @@ export const HEAD_OF_DEPARTMENT_PAGES = [
   // The wall board: customer-safe whoever opens it.
   '/signage',
   '/my-department', '/stock-requests', '/damaged-goods', '/field-dispatch',
-  '/pos', '/my-week', '/notifications',
+  '/pos', '/my-week', '/notifications', '/meetings',
 ]
 
 /**
@@ -49,7 +49,7 @@ export const MANAGING_DIRECTOR_PAGES = [
   // The wall board: customer-safe whoever opens it.
   '/signage',
   '/director', '/debts', '/credit-agreements', '/suppliers', '/stock-requests',
-  '/notifications',
+  '/notifications', '/meetings',
 ]
 
 /**
@@ -75,7 +75,7 @@ export const SALES_PAGES = [
   // The wall board: customer-safe whoever opens it.
   '/signage',
   '/pos', '/refunds', '/field-dispatch', '/expenses', '/cash-up',
-  '/service-charges', '/my-week', '/notifications',
+  '/service-charges', '/my-week', '/notifications', '/meetings',
 ]
 
 /**
@@ -163,6 +163,12 @@ const NAV_ITEMS = [
   // Everybody's own week, on a sheet they can print.
   { to: '/my-week', label: 'My Week', icon: FiCalendar, minLevel: 1, section: 'selling' },
   { to: '/notifications', label: 'Notifications', icon: FiBell, minLevel: 1, section: 'selling' },
+  /**
+   * Staff meetings, held in the app. Open to every role: calling one is
+   * the owners' job and is refused on the server, but everybody has to
+   * be able to walk into a meeting they were invited to.
+   */
+  { to: '/meetings', label: 'Meetings', icon: FiMic, minLevel: 1, section: 'selling' },
   /**
    * The price board for the shop wall.
    *

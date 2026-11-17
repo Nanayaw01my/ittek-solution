@@ -28,6 +28,22 @@ services:
         sync: false
       - key: SIMPLEMDM_API_KEY
         sync: false
+      # The relay for staff meetings, used when two phones cannot reach
+      # each other directly — common on mobile data, where a carrier puts
+      # many customers behind one address. Calls work without it for
+      # anyone whose network allows a direct line, and that is most people
+      # on wifi and fewer on mobile. Set all three to switch the relay on.
+      - key: TURN_URL
+        sync: false
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_PASSWORD
+        sync: false
+      # How many cameras one meeting carries at once. Voice is the point;
+      # every camera is another video stream every other phone must send
+      # and receive. Defaults to 3.
+      - key: MEETING_CAMERA_LIMIT
+        sync: false
       # Web push. Generate once with `npm run vapid` in backend/.
       # Listed here so a blueprint sync cannot quietly drop them.
       - key: VAPID_PUBLIC_KEY

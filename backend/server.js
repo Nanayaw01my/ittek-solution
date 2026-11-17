@@ -304,6 +304,7 @@ app.use('/api/fraud', require('./routes/fraud'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/data-admin', require('./routes/dataAdmin'));
 app.use('/api/forms', require('./routes/forms'));
+app.use('/api/meetings', require('./routes/meetings'));
 
 /**
  * An API path nobody serves is an error, not the app's front page.
@@ -447,7 +448,25 @@ const ensureSuperAdmin = async () => {
 // ─── SERVER START ─────────────────────────────────────────────────────────────
 
 const startServer = async () => {
-  app.listen(PORT, () => {
+  /**
+   * One HTTP server for both the API and the meeting signalling.
+   *
+   * app.listen() creates a server and hides it, and the WebSocket
+   * upgrade has to be attached to that same object — a meeting socket
+   * arrives as an ordinary HTTP request asking to be upgraded, on the
+   * same port as everything else. Creating it here makes it reachable.
+   */
+  const http = require('http');
+  const server = http.createServer(app);
+
+  try {
+    require('./utils/meetingSignals').attach(server);
+  } catch (err) {
+    // A shop with no meetings in progress should still get its till.
+    console.error('Meeting signalling unavailable:', err.message);
+  }
+
+  server.listen(PORT, () => {
     console.log(`\n========================================`);
     console.log(`  ITTEK Solution — DAN & DOR SOLAR`);
     console.log(`  Port: ${PORT} | Env: ${process.env.NODE_ENV || 'development'}`);

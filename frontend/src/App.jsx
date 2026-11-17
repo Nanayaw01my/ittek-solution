@@ -10,6 +10,8 @@ import LoadingSpinner from './components/LoadingSpinner'
 import Login from './pages/Login'
 import Welcome from './pages/Welcome'
 import Signage from './pages/Signage'
+import Meetings from './pages/Meetings'
+import MeetingRoom from './pages/MeetingRoom'
 import Showcase from './pages/Showcase'
 import Dashboard from './pages/Dashboard'
 import POS from './pages/POS'
@@ -169,6 +171,20 @@ export default function App() {
         element={<ProtectedRoute path="/signage"><Signage /></ProtectedRoute>}
       />
 
+      {/*
+        Inside a meeting.
+
+        Outside Layout, like the price board, because a call is a whole
+        screen: the controls have to be reachable with a thumb and the
+        sidebar would push the Leave button off a phone. The guard still
+        applies, and the server checks the invitation again before it
+        hands out the room.
+      */}
+      <Route
+        path="/meetings/:id/room"
+        element={<ProtectedRoute path="/meetings"><MeetingRoom /></ProtectedRoute>}
+      />
+
       {/* Root redirect */}
       <Route path="/" element={<RootRedirect />} />
 
@@ -192,6 +208,9 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="expenses" element={<Expenses />} />
         <Route path="notifications" element={<Notifications />} />
+        {/* Everyone may walk into a meeting they were invited to; only an
+            owner may call one, which the server refuses rather than the door. */}
+        <Route path="meetings" element={<Meetings />} />
         {/* Open to anyone who may reach it: a Manager checking a price or
             a stock level has every reason to be here. Finishing a sale is
             the part that is restricted, and the restriction lives in the

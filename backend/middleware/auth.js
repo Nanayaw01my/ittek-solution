@@ -21,6 +21,7 @@ const FIELD_AGENT_ALLOWED = [
   '/api/dispatches',     // their own sheets; issuing and Pay are barred on the routes
   '/api/phone-sales',    // taking a credit application in front of a customer
   '/api/upload',         // the Ghana card photographs that go with one
+  '/api/meetings',       // staff meetings: joining one, and being told about it
   '/api/notifications',
   '/api/settings',       // company name and logo for the printed sheet
 ];
@@ -64,6 +65,7 @@ const MANAGING_DIRECTOR_ALLOWED = [
   '/api/credit-agreements',
   '/api/stock-requests',  // and approving what the floor asks for
   '/api/products',        // the picker inside a stock request, and supplier lookups
+  '/api/meetings',       // staff meetings: joining one, and being told about it
   '/api/notifications',
   '/api/settings',        // company name, currency, the shop's own thresholds
 ];
@@ -91,6 +93,7 @@ const HEAD_OF_DEPARTMENT_ALLOWED = [
   '/api/stock-requests',  // asking for more of what they run
   '/api/dispatches',      // when they also carry a sheet
   '/api/damaged-goods',   // breakages in their own stock
+  '/api/meetings',       // staff meetings: joining one, and being told about it
   '/api/notifications',
   '/api/settings',
   '/api/upload',          // a photograph of a damaged item
@@ -123,6 +126,7 @@ const SALES_ALLOWED = [
   '/api/service-charges',
   '/api/loyalty',         // the points panel inside the till
   '/api/layaways',        // Pay & Pick Later, also inside the till
+  '/api/meetings',        // staff meetings: joining one, never calling one
   '/api/notifications',   // the bell in the header of every screen
   '/api/settings',        // company name and currency on the receipt
   '/api/complaints',      // writing down what a customer was unhappy about
