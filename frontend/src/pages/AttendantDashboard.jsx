@@ -27,17 +27,29 @@ import { formatCurrency } from '../utils/helpers'
  * gets quietly undone by somebody adding a helpful panel.
  */
 
-const GREEN = {
-  deep: '#14532d',
-  mid: '#16a34a',
-  light: '#4ade80',
-  pale: '#bbf7d0',
+/**
+ * The shop's own colours.
+ *
+ * Built first in the greens of the reference layout, which made the one
+ * screen an attendant lives on look like it belonged to a different
+ * business from the till beside it. The layout was what the shop liked;
+ * the palette was never part of the ask.
+ */
+const BRAND = {
+  deep: '#9A3412',   // orange-800 — the filled card
+  mid: '#F97316',    // orange-500 — the brand itself
+  light: '#FB923C',  // orange-400
+  pale: '#FED7AA',   // orange-200
+  faint: '#FFEDD5',  // orange-100
 }
 
+/** Five shades of the one colour, dark to pale, for the pie. */
+const SLICES = [BRAND.deep, '#C2410C', BRAND.mid, BRAND.light, BRAND.pale]
+
 const METHODS = {
-  cash: { label: 'Cash', Icon: FiDollarSign, colour: GREEN.deep },
-  mobile_money: { label: 'Mobile Money', Icon: FiSmartphone, colour: GREEN.mid },
-  card: { label: 'Card', Icon: FiCreditCard, colour: GREEN.light },
+  cash: { label: 'Cash', Icon: FiDollarSign, colour: BRAND.deep },
+  mobile_money: { label: 'Mobile Money', Icon: FiSmartphone, colour: BRAND.mid },
+  card: { label: 'Card', Icon: FiCreditCard, colour: BRAND.light },
   split: { label: 'Split', Icon: FiCreditCard, colour: '#94a3b8' },
 }
 
@@ -52,7 +64,7 @@ const compact = (n) => {
 const Figure = ({ label, value, sub, delta, icon: Icon, filled }) => (
   <div className={`relative overflow-hidden rounded-2xl p-4 ${
     filled ? 'text-white' : 'bg-white border border-gray-200'}`}
-       style={filled ? { background: GREEN.deep } : undefined}>
+       style={filled ? { background: BRAND.deep } : undefined}>
     <div className="flex items-start justify-between gap-2">
       <span className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${
         filled ? 'bg-white/15 text-white' : 'bg-gray-100 text-gray-500'}`}>
@@ -60,7 +72,7 @@ const Figure = ({ label, value, sub, delta, icon: Icon, filled }) => (
       </span>
       {delta !== undefined && delta !== null && (
         <span className={`text-[11px] font-black px-2 py-1 rounded-full ${
-          Number(delta) >= 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+          Number(delta) >= 0 ? 'bg-orange-500 text-white' : 'bg-red-500 text-white'}`}>
           {Number(delta) >= 0 ? '+' : ''}{Number(delta).toFixed(1)}%
         </span>
       )}
@@ -154,7 +166,7 @@ export default function AttendantDashboard({ username }) {
           <RefreshButton keys={[['my-today']]} />
           <Link to="/pos"
                 className="px-4 py-2.5 rounded-xl text-white font-black text-sm"
-                style={{ background: GREEN.deep }}>
+                style={{ background: BRAND.deep }}>
             Sell
           </Link>
         </div>
@@ -181,14 +193,14 @@ export default function AttendantDashboard({ username }) {
                          axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={compact} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
                          axisLine={false} tickLine={false} width={46} />
-                  <Tooltip content={<Tip />} cursor={{ fill: '#f0fdf4' }} />
+                  <Tooltip content={<Tip />} cursor={{ fill: '#fff7ed' }} />
                   <Bar dataKey="takings" radius={[8, 8, 0, 0]} maxBarSize={38}>
                     {days.map((d, i) => (
                       // Today stands out; the days still to come are left
                       // pale rather than drawn as a day that took nothing.
                       <Cell key={d.day}
                             fill={d.future ? '#e5e7eb'
-                              : (i === days.findIndex((x) => x.future) - 1 ? GREEN.deep : GREEN.mid)} />
+                              : (i === days.findIndex((x) => x.future) - 1 ? BRAND.deep : BRAND.mid)} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -203,7 +215,7 @@ export default function AttendantDashboard({ username }) {
 
         <div className="space-y-4">
           <Panel title="What I sold" note="Today, by value"
-                 className="bg-gradient-to-b from-green-50 to-white">
+                 className="bg-gradient-to-b from-orange-50 to-white">
             {products.length === 0 ? (
               <p className="text-sm text-gray-400 py-10 text-center">Nothing sold yet today.</p>
             ) : (
@@ -215,7 +227,7 @@ export default function AttendantDashboard({ username }) {
                            outerRadius="92%" stroke="#fff" strokeWidth={2}>
                         {products.map((p, i) => (
                           <Cell key={p.name}
-                                fill={[GREEN.deep, GREEN.mid, GREEN.light, GREEN.pale, '#86efac'][i % 5]} />
+                                fill={SLICES[i % 5]} />
                         ))}
                       </Pie>
                       <Tooltip content={<Tip />} />
@@ -226,10 +238,10 @@ export default function AttendantDashboard({ username }) {
                   {products.map((p, i) => (
                     <div key={p.name} className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ background: [GREEN.deep, GREEN.mid, GREEN.light, GREEN.pale, '#86efac'][i % 5] }} />
+                            style={{ background: SLICES[i % 5] }} />
                       <span className="flex-1 min-w-0 text-[12.5px] font-bold text-gray-700 truncate">{p.name}</span>
                       <span className="text-[12px] font-black tabular-nums text-gray-500">{p.pieces}</span>
-                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-green-100 text-green-800 tabular-nums">
+                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 tabular-nums">
                         {Math.round((p.value / productTotal) * 100)}%
                       </span>
                     </div>
@@ -269,7 +281,7 @@ export default function AttendantDashboard({ username }) {
                   <span className="flex items-center gap-2 text-[12.5px] font-black text-gray-700">
                     <FiLock size={13} /> Cash up
                   </span>
-                  <FiArrowRight size={14} className="text-gray-300 group-hover:text-green-700" />
+                  <FiArrowRight size={14} className="text-gray-300 group-hover:text-orange-600" />
                 </Link>
               </div>
             )}
@@ -280,13 +292,13 @@ export default function AttendantDashboard({ username }) {
       {data.recent?.length > 0 && (
         <Panel title="My last few sales"
                action={<Link to="/my-week"
-                             className="text-[11px] font-black text-green-700 inline-flex items-center gap-1">
+                             className="text-[11px] font-black text-orange-600 inline-flex items-center gap-1">
                  MY WEEK <FiArrowRight size={11} /></Link>}>
           <div className="divide-y divide-gray-50">
             {data.recent.map((s) => (
               <div key={s.invoice_no} className="flex items-center gap-3 py-2.5">
-                <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0 bg-green-50"
-                      style={{ color: GREEN.deep }}>
+                <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0 bg-orange-50"
+                      style={{ color: BRAND.deep }}>
                   <FiShoppingBag size={15} />
                 </span>
                 <span className="flex-1 min-w-0">
