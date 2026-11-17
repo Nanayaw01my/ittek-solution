@@ -178,3 +178,18 @@ test('every confined role is shut out of the others\' screens', () => {
     && !hod('/api/credit-agreements'));
   assert.ok(!md('/api/pos/sale') && !md('/api/cash-up'));
 });
+
+test('an attendant\'s own dashboard does not widen what they can reach', () => {
+  const ok = prefixed(SALES_ALLOWED);
+  // Their day comes from /api/my-week, which is scoped on the server to
+  // the person asking and was already open to them.
+  assert.ok(ok('/api/my-week'), 'their own week');
+  assert.ok(ok('/api/my-week/today'), 'and their own day');
+  // What it must NOT have brought with it: the shop's figures. The
+  // owner's dashboard reads /api/reports/overview, and a Sales account
+  // must get nowhere near it.
+  for (const url of ['/api/reports/overview', '/api/reports/dashboard-stats',
+    '/api/reports/sales-trend', '/api/reports/top-products', '/api/director/overview']) {
+    assert.ok(!ok(url), `${url} is the shop's figures, not an attendant's`);
+  }
+});

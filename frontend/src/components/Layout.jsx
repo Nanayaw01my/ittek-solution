@@ -62,6 +62,16 @@ export const MANAGING_DIRECTOR_PAGES = [
  * to the till, which reads as broken rather than as a permission.
  */
 export const SALES_PAGES = [
+  /**
+   * Their own day — their sales, their week, what they sold.
+   *
+   * The screen is scoped on the server to the person asking, so adding
+   * it to the counter's list does not widen what an attendant can see
+   * of the shop. It is not their landing page: that is still the till,
+   * because a sale should never start one tap further away than it
+   * has to.
+   */
+  '/dashboard',
   // The wall board: customer-safe whoever opens it.
   '/signage',
   '/pos', '/refunds', '/field-dispatch', '/expenses', '/cash-up',

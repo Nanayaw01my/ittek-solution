@@ -126,4 +126,126 @@ const getMyWeek = async (req, res) => {
   }
 };
 
-module.exports = { getMyWeek, weekStarting };
+/**
+ * GET /api/my-week/today
+ *
+ * An attendant's own dashboard: their day, their week, what they sold
+ * and how the customers paid for it.
+ *
+ * Scoped to the person asking and nothing else — every query below is
+ * keyed on req.user._id. A sales attendant has no business reading the
+ * shop's takings off a screen they stand in front of all day, and this
+ * is the screen that would leak them if it were written carelessly.
+ *
+ * Deliberately absent: profit, margin and anything derived from cost
+ * price, which is the shop's and not the counter's; and stock counts,
+ * which the shop has decided are the CEO's alone.
+ */
+const getMyToday = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const now = new Date();
+    const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
+    const startOfYesterday = new Date(startOfToday); startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+    const weekStart = weekStarting(now);
+
+    /** Counter sales only: a debt payment is money collected, not sold. */
+    const mine = (from, to) => ({
+      user_id: me,
+      sale_date: { $gte: from, ...(to ? { $lt: to } : {}) },
+      layaway_ref: { $in: [null, undefined] },
+    });
+
+    const [todaySales, yesterdaySales, weekSales] = await Promise.all([
+      Sale.find(mine(startOfToday)).select('total_amount items payment_method payment_status sale_date customer_name invoice_no').lean(),
+      Sale.find(mine(startOfYesterday, startOfToday)).select('total_amount payment_status').lean(),
+      Sale.find(mine(weekStart)).select('total_amount payment_status sale_date').lean(),
+    ]);
+
+    const counter = (rows) => rows.filter((s) => s.payment_status !== 'debt_payment');
+    const sum = (rows) => money(rows.reduce((t, s) => t + (Number(s.total_amount) || 0), 0));
+
+    const todayCounter = counter(todaySales);
+    const yesterdayCounter = counter(yesterdaySales);
+    const takings = sum(todayCounter);
+    const before = sum(yesterdayCounter);
+
+    const pieces = todayCounter.reduce(
+      (n, s) => n + (s.items || []).reduce((q, i) => q + (Number(i.quantity) || 0), 0), 0);
+
+    // How the customers paid. Cash-up counts the drawer against the cash
+    // line, so an attendant seeing their own split can spot a wrong
+    // button before somebody counts the money at the end of the day.
+    const byMethod = new Map();
+    for (const s of todayCounter) {
+      const k = s.payment_method || 'cash';
+      byMethod.set(k, money((byMethod.get(k) || 0) + (Number(s.total_amount) || 0)));
+    }
+
+    const byProduct = new Map();
+    for (const s of todayCounter) {
+      for (const i of s.items || []) {
+        const key = i.name || 'Item';
+        const row = byProduct.get(key) || { name: key, pieces: 0, value: 0 };
+        row.pieces += Number(i.quantity) || 0;
+        row.value = money(row.value + (Number(i.unit_price) || 0) * (Number(i.quantity) || 0));
+        byProduct.set(key, row);
+      }
+    }
+
+    // The week so far, a day at a time, with days that have not happened
+    // left in: a bar chart that skips Wednesday draws a quiet day as
+    // though it never came round.
+    const days = DAY_NAMES.map((day, i) => {
+      const from = new Date(weekStart); from.setDate(from.getDate() + i);
+      const to = new Date(from); to.setDate(to.getDate() + 1);
+      const rows = counter(weekSales).filter((s) => {
+        const d = new Date(s.sale_date);
+        return d >= from && d < to;
+      });
+      return {
+        day: day.slice(0, 3),
+        future: from > now,
+        takings: sum(rows),
+        sales: rows.length,
+      };
+    });
+
+    const collections = todaySales.filter((s) => s.payment_status === 'debt_payment');
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        who: req.user.username,
+        as_of: now,
+        today: {
+          takings,
+          delta: before ? Number((((takings - before) / before) * 100).toFixed(1)) : (takings ? 100 : 0),
+          sales: todayCounter.length,
+          pieces,
+          average: todayCounter.length ? money(takings / todayCounter.length) : 0,
+        },
+        week: { takings: sum(counter(weekSales)), sales: counter(weekSales).length, days },
+        methods: [...byMethod.entries()]
+          .map(([method, total]) => ({ method, total }))
+          .sort((a, b) => b.total - a.total),
+        top_products: [...byProduct.values()].sort((a, b) => b.value - a.value).slice(0, 5),
+        collections: { amount: sum(collections), count: collections.length },
+        recent: todayCounter
+          .sort((a, b) => new Date(b.sale_date) - new Date(a.sale_date))
+          .slice(0, 5)
+          .map((s) => ({
+            invoice_no: s.invoice_no,
+            customer_name: s.customer_name || '',
+            total: money(s.total_amount),
+            at: s.sale_date,
+          })),
+      },
+    });
+  } catch (err) {
+    console.error('My today error:', err.message);
+    return res.status(500).json({ success: false, message: 'Could not work out your figures.' });
+  }
+};
+
+module.exports = { getMyWeek, getMyToday, weekStarting };

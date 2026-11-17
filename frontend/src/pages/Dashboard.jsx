@@ -11,6 +11,7 @@ import { formatCurrency, formatDate, getRoleLevel } from '../utils/helpers'
 import Badge from '../components/Badge'
 import RefreshButton from '../components/RefreshButton'
 import OwnerDashboard from './OwnerDashboard'
+import AttendantDashboard from './AttendantDashboard'
 import { format } from 'date-fns'
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -234,7 +235,9 @@ function StaffDashboard({ user, userLevel }) {
 export default function Dashboard() {
   const { user } = useAuthStore()
   const userLevel = getRoleLevel(user?.role)
-  return userLevel >= 3
-    ? <OwnerDashboard username={user?.username} />
-    : <StaffDashboard user={user} userLevel={userLevel} />
+  if (userLevel >= 3) return <OwnerDashboard username={user?.username} />
+  // A sales attendant's day is their own sales and nothing else, which is
+  // a different question from the one the staff view answers.
+  if (user?.role === 'Sales') return <AttendantDashboard username={user?.username} />
+  return <StaffDashboard user={user} userLevel={userLevel} />
 }
