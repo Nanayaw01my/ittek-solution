@@ -13,6 +13,12 @@ export const getDispatchesByAgent = () => api.get('/dispatches/by-agent')
 
 /** Who a sheet can be issued to. Shop staff only. */
 export const getFieldAgents = () => api.get('/dispatches/agents')
+
+/**
+ * Traders, stall holders and other shops that sell for us and have no
+ * login — the plain names used on past sheets, offered as suggestions.
+ */
+export const getOutsideSellers = () => api.get('/dispatches/outside-sellers')
 export const getDispatch = (id) => api.get(`/dispatches/${id}`)
 export const createDispatch = (data) => api.post('/dispatches', data)
 export const returnDispatchItems = (id, data) => api.put(`/dispatches/${id}/return`, data)

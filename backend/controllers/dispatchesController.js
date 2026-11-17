@@ -99,9 +99,15 @@ const stillOut = (item) =>
 /**
  * GET /api/dispatches/agents
  *
- * The field agents a sheet can be issued to. Its own endpoint because the
- * counter staff who hand out the goods are not allowed near user management,
- * and this exposes only a name and an id — nothing else about the account.
+ * Who a sheet can be issued to. Its own endpoint because the counter staff
+ * who hand out the goods are not allowed near user management, and this
+ * exposes only a name and an id — nothing else about the account.
+ *
+ * Staff only. Outside sellers have their own endpoint below rather than
+ * being mixed in here: this response has been a plain array since the
+ * screen was written, the app is a PWA, and a phone can run last week's
+ * bundle for days. Changing its shape would empty the picker on every
+ * phone that had not reloaded.
  */
 const getFieldAgents = async (req, res) => {
   try {
@@ -117,6 +123,30 @@ const getFieldAgents = async (req, res) => {
     return res.status(200).json({ success: true, data: agents });
   } catch (err) {
     console.error('Get field agents error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
+/**
+ * GET /api/dispatches/outside-sellers
+ *
+ * The traders, stall holders and other shops that sell for the shop and
+ * have no login — every plain name used on a past sheet.
+ *
+ * Offered back as suggestions so the same person is not written down as
+ * "Kwesi", "kwesi" and "Kwesi Tarkwa" over three months and counted as
+ * three different people holding the shop's goods. Nothing stops a new
+ * name being typed; this only makes the old one easy to pick.
+ */
+const getOutsideSellers = async (req, res) => {
+  try {
+    const names = await Dispatch.distinct('agent_name', { agent_user_id: null });
+    return res.status(200).json({
+      success: true,
+      data: names.filter(Boolean).sort((a, b) => a.localeCompare(b)),
+    });
+  } catch (err) {
+    console.error('Get outside sellers error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 };
@@ -778,6 +808,7 @@ const getDispatchSheet = async (req, res) => {
 module.exports = {
   getDispatchesByAgent,
   getFieldAgents,
+  getOutsideSellers,
   getDispatches,
   getDispatch,
   createDispatch,

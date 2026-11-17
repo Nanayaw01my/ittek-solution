@@ -4,7 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const { requireLevel, isConfinedFieldAgent, maySettleFieldSheet } = require('../middleware/rbac');
 const { auditLog } = require('../middleware/auditLogger');
 const {
-  getFieldAgents, getDispatches, getDispatch, createDispatch,
+  getFieldAgents, getOutsideSellers, getDispatches, getDispatch, createDispatch,
   returnDispatchItems, payDispatchItems, closeDispatch, deleteDispatch, getDispatchSheet,
   getDispatchesByAgent,
 } = require('../controllers/dispatchesController');
@@ -38,6 +38,8 @@ router.get('/by-agent', getDispatchesByAgent);
 // Who a sheet can be issued to. Counter staff need this and cannot reach
 // /api/users, which is CEO only.
 router.get('/agents', shopStaffOnly, getFieldAgents);
+// Traders and stall holders who sell for the shop and have no login.
+router.get('/outside-sellers', shopStaffOnly, getOutsideSellers);
 router.post('/', shopStaffOnly, auditLog('CREATE_DISPATCH'), createDispatch);
 router.get('/:id', getDispatch);
 router.get('/:id/sheet', getDispatchSheet);

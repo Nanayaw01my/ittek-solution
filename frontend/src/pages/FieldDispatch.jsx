@@ -14,7 +14,7 @@ import { formatCurrency, getRoleLevel } from '../utils/helpers'
 import { openPdfInNewTab } from '../utils/openPdf'
 import { getProducts } from '../api/products'
 import {
-  getDispatches, getFieldAgents, createDispatch, returnDispatchItems, payDispatchItems,
+  getDispatches, getFieldAgents, getOutsideSellers, createDispatch, returnDispatchItems, payDispatchItems,
   closeDispatch, deleteDispatch, getDispatchSheet, getDispatchesByAgent,
 } from '../api/dispatches'
 import useAuthStore from '../store/authStore'
@@ -39,7 +39,20 @@ const stillOut = (item) =>
 /** Pick products and quantities, then issue the sheet. */
 function NewDispatchModal({ onClose }) {
   const queryClient = useQueryClient()
+  /**
+   * Who is taking the goods — one of the shop's own people, or somebody
+   * outside it.
+   *
+   * The shop gives stock to both: a member of staff going out for the
+   * day, and a trader, stall holder or shop in another town who sells on
+   * its behalf and has no business holding a login to the till. The
+   * movement is identical — the goods leave the shelf, what comes back
+   * goes on it again, what was sold is rung up — so it is one sheet
+   * either way, and only the name on it differs.
+   */
+  const [who, setWho] = useState('staff')      // 'staff' | 'outside'
   const [agentId, setAgentId] = useState('')
+  const [outsideName, setOutsideName] = useState('')
   const [agentPhone, setAgentPhone] = useState('')
   const [destination, setDestination] = useState('')
   // Stock for an agent already out joins the sheet they have. Ticked only
@@ -49,13 +62,27 @@ function NewDispatchModal({ onClose }) {
   const [search, setSearch] = useState('')
   const [lines, setLines] = useState([])
 
-  // Who the goods can be handed to. A sheet must be tied to a real login, or
-  // it would never appear in that rep's portal.
+  // Staff who carry sheets. A sheet tied to a login shows in that
+  // person's own portal, which is why it is chosen rather than typed.
   const { data: agentData } = useQuery({
     queryKey: ['field-agents'],
     queryFn: () => getFieldAgents().then((r) => r.data),
   })
-  const agents = agentData || []
+  const agents = Array.isArray(agentData) ? agentData : []
+
+  /**
+   * Outside sellers the shop has used before.
+   *
+   * Only suggestions — any new name can be typed. They exist so the same
+   * trader is not written down as "Kwesi", "kwesi" and "Kwesi Tarkwa"
+   * over three months, which would show as three different people each
+   * holding some of the shop's goods and none of them owing all of it.
+   */
+  const { data: outsideData } = useQuery({
+    queryKey: ['outside-sellers'],
+    queryFn: () => getOutsideSellers().then((r) => r.data),
+  })
+  const knownOutside = Array.isArray(outsideData) ? outsideData : []
 
   const { data, isLoading } = useQuery({
     queryKey: ['dispatch-products', search],
@@ -93,7 +120,10 @@ function NewDispatchModal({ onClose }) {
 
   const mutation = useMutation({
     mutationFn: () => createDispatch({
-      agent_user_id: agentId,
+      // One or the other, never both: the server reads the name off the
+      // account whenever an id is given.
+      agent_user_id: who === 'staff' ? agentId : undefined,
+      agent_name: who === 'outside' ? outsideName.trim() : undefined,
       agent_phone: agentPhone || undefined,
       destination: destination || undefined,
       notes: notes || undefined,
@@ -122,28 +152,85 @@ function NewDispatchModal({ onClose }) {
     onError: (err) => toast.error(err.response?.data?.message || 'Could not issue the dispatch'),
   })
 
-  const canSubmit = agentId && lines.length > 0 && overStocked.length === 0
+  const namedSomebody = who === 'staff' ? Boolean(agentId) : outsideName.trim().length > 1
+  const canSubmit = namedSomebody && lines.length > 0 && overStocked.length === 0
     && lines.every((l) => Number(l.quantity) > 0)
 
   return (
-    <Modal isOpen onClose={onClose} title="Issue goods to a field agent" size="lg">
+    <Modal isOpen onClose={onClose} title="Issue goods" size="lg">
       <div className="p-5 space-y-4">
+        {/* Staff, or somebody outside the shop. Asked first, because it
+            changes what the next field is. */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+            Who is taking the goods? *
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { key: 'staff', label: 'Our staff', note: 'Goes out and comes back' },
+              { key: 'outside', label: 'Someone outside', note: 'Sells for us, no login' },
+            ].map((o) => (
+              <button key={o.key} type="button"
+                      onClick={() => { setWho(o.key); setAgentId(''); setOutsideName('') }}
+                      className={`px-3 py-2.5 rounded-xl border-2 text-left ${
+                        who === o.key
+                          ? 'bg-orange-500 text-white border-orange-500'
+                          : 'bg-white text-gray-700 border-gray-300'}`}>
+                <span className="block text-sm font-bold leading-tight">{o.label}</span>
+                <span className={`block text-[11px] font-semibold leading-tight mt-0.5 ${
+                  who === o.key ? 'text-white/80' : 'text-gray-500'}`}>{o.note}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Field agent *</label>
-            <select
-              value={agentId} onChange={(e) => setAgentId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="">Who is taking the goods?</option>
-              {agents.map((a) => (
-                <option key={a._id} value={a._id}>{a.username}</option>
-              ))}
-            </select>
-            {agents.length === 0 && (
-              <p className="text-xs text-red-600 mt-1">
-                No field agents yet. Ask the CEO to create one in User Management.
-              </p>
+            {who === 'staff' ? (
+              <>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Field agent *</label>
+                <select
+                  value={agentId} onChange={(e) => setAgentId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  <option value="">Who is taking the goods?</option>
+                  {agents.map((a) => (
+                    <option key={a._id} value={a._id}>{a.username}</option>
+                  ))}
+                </select>
+                {agents.length === 0 && (
+                  <p className="text-xs text-red-600 mt-1">
+                    No field agents yet. Ask the CEO to create one in User Management.
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  Their name *
+                </label>
+                {/*
+                  Typed, with the names already used offered underneath.
+                  A trader has no account, so there is nothing to choose
+                  from — but writing the same person down three different
+                  ways would split what they are holding across three
+                  sheets that never add up.
+                */}
+                <input
+                  value={outsideName} onChange={(e) => setOutsideName(e.target.value)}
+                  list="known-outside-sellers"
+                  placeholder="Trader, shop or stall"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+                <datalist id="known-outside-sellers">
+                  {knownOutside.map((n) => <option key={n} value={n} />)}
+                </datalist>
+                {knownOutside.length > 0 && (
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Start typing — people you have used before will show.
+                  </p>
+                )}
+              </>
             )}
           </div>
           <div>
@@ -169,9 +256,10 @@ function NewDispatchModal({ onClose }) {
           <span>
             <span className="font-bold">Start a separate sheet</span>
             <span className="block text-gray-500">
-              Normally goods for an agent who is still out are added to the sheet
-              they already have, so everything of theirs is reconciled in one
-              place. Tick this only when it is genuinely a different trip.
+              Normally goods for somebody who is still holding stock are added
+              to the sheet they already have, so everything of theirs is
+              reconciled in one place. Tick this only when it is genuinely
+              separate.
             </span>
           </span>
         </label>
