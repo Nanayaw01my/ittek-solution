@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
-  FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiAlertTriangle, FiWifiOff,
+  FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiAlertTriangle, FiWifiOff, FiVolume2,
 } from 'react-icons/fi'
 import { joinMeeting, leaveMeeting } from '../api/meetings'
 import useMeetingRoom from '../hooks/useMeetingRoom'
@@ -22,7 +22,7 @@ import useMeetingRoom from '../hooks/useMeetingRoom'
  */
 
 /** A remote tile's audio has to be played; a video tile plays its own. */
-function PeerTile({ peer }) {
+function PeerTile({ peer, onBlocked }) {
   const audioRef = useRef(null)
   const videoRef = useRef(null)
 
@@ -35,7 +35,15 @@ function PeerTile({ peer }) {
        * get here, so this nearly always succeeds; when it does not,
        * saying nothing is still better than a thrown error on a tile.
        */
-      audioRef.current.play?.().catch(() => {})
+      /**
+       * Phones will not start audio on their own unless the page has
+       * been touched, and refusing is silent. Tapping Join counts, so
+       * this nearly always succeeds — but a phone that was locked, or
+       * a tab restored from the background, can still refuse. When it
+       * does, the room offers a button rather than playing nothing and
+       * saying nothing.
+       */
+      audioRef.current.play?.().catch(() => onBlocked?.())
     }
     if (videoRef.current && peer.stream) videoRef.current.srcObject = peer.stream
   }, [peer.stream, peer.camera])
@@ -127,6 +135,8 @@ export default function MeetingRoom() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [joining, setJoining] = useState(true)
+  /** The phone refused to start the sound until the screen is touched. */
+  const [soundBlocked, setSoundBlocked] = useState(false)
   const [ticket, setTicket] = useState(null)
   const [error, setError] = useState('')
 
@@ -231,6 +241,18 @@ export default function MeetingRoom() {
         )}
       </div>
 
+      {soundBlocked && (
+        <button
+          onClick={() => {
+            document.querySelectorAll('audio').forEach((el) => el.play?.().catch(() => {}))
+            setSoundBlocked(false)
+          }}
+          className="mx-3 mt-3 py-3 rounded-xl bg-amber-400 text-gray-900 font-black
+                     flex items-center justify-center gap-2">
+          <FiVolume2 size={18} /> Tap here to turn the sound on
+        </button>
+      )}
+
       <div className="flex-1 p-3 sm:p-4 overflow-y-auto">
         {room.peers.length === 0 && (
           <p className="text-white/40 font-bold text-center py-8 text-sm">
@@ -240,7 +262,9 @@ export default function MeetingRoom() {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <MeView name="You" speaking={room.speaking} cameraOn={room.cameraOn}
                   stream={room.cameraStream} muted={room.muted} />
-          {room.peers.map((p) => <PeerTile key={p.id} peer={p} />)}
+          {room.peers.map((p) => (
+            <PeerTile key={p.id} peer={p} onBlocked={() => setSoundBlocked(true)} />
+          ))}
         </div>
       </div>
 

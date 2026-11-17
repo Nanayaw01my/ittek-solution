@@ -181,3 +181,43 @@ test('the browser and the server agree on who may call a meeting', () => {
   assert.deepEqual(listed.sort(), [...OWNER_ROLES].sort(),
     'the Meetings screen hides New Meeting using the browser copy of OWNER_ROLES; if it drifts, a role sees a button the server refuses');
 });
+
+test('no arriving voice is ever handed to Web Audio', () => {
+  /**
+   * createMediaStreamSource does not observe a stream, it takes it: the
+   * stream's playback is re-routed into the Web Audio graph, and
+   * anything the graph does not pass on to a destination is never
+   * heard.
+   *
+   * The speaking indicator was built on it and pointed at every voice
+   * arriving from another person. The result was a meeting that
+   * connected perfectly, decoded every packet, lit every tile — and was
+   * completely silent. No measurement of the stream could show it,
+   * because the audio was all still there; it was simply taken
+   * somewhere other than the speaker.
+   *
+   * Our own microphone is the one safe case: it is never played back.
+   * Everybody else's loudness comes from the connection's statistics.
+   *
+   * The browser test in the scratchpad proves this end to end by
+   * watching createMediaStreamSource itself. This is the cheap version
+   * that runs on every commit.
+   */
+  const hook = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'frontend', 'src', 'hooks', 'useMeetingRoom.js'), 'utf8'
+  );
+
+  const ontrack = hook.slice(hook.indexOf('pc.ontrack'), hook.indexOf('pc.onconnectionstatechange'));
+  assert.ok(!ontrack.includes('meter('),
+    'a stream arriving from another person must never be passed to the Web Audio meter');
+
+  // The meter may be pointed at exactly one thing: our own microphone.
+  const calls = hook.match(/[^a-zA-Z]meter\(([^,)]+)/g) || [];
+  calls.forEach((c) => {
+    assert.ok(c.includes('localStream.current'),
+      `meter() may only be given our own microphone, not ${c.trim()}`);
+  });
+
+  assert.ok(hook.includes('audioLevel'),
+    'remote speaking must be read from the connection statistics, which only read');
+});

@@ -71,15 +71,34 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
   }, [])
 
   /**
-   * Who is talking.
+   * How loud our own microphone is, for the ring around our own tile.
    *
-   * With five voices and no faces, the single most useful thing a screen
-   * can show is which name is making the sound. It is measured from the
-   * audio itself rather than asked for: a running average of loudness,
-   * with a floor low enough to catch a quiet speaker and high enough to
-   * ignore a fan.
+   * THIS MUST NEVER BE POINTED AT A STREAM FROM ANOTHER PERSON.
+   *
+   * createMediaStreamSource does not observe a stream, it *takes* it:
+   * the stream's playback is re-routed into the Web Audio graph, and
+   * whatever the graph does not send onward to a destination is simply
+   * not heard. This was first written to light up a name when its owner
+   * spoke, and it was pointed at every arriving voice — each of which
+   * was then quietly diverted into an analyser that led nowhere.
+   *
+   * The effect was a meeting that worked perfectly and was completely
+   * silent. The connection was real, the tiles were right, the bytes
+   * arrived and were decoded; the sound was simply taken somewhere
+   * other than the speaker. Nothing on screen could show it, and no
+   * measurement of the stream could either, because the audio was all
+   * still there.
+   *
+   * Our own microphone is safe because it is never played back — doing
+   * so would be an echo, not a feature. Everybody else's loudness now
+   * comes from the connection's own statistics, below, which only
+   * reads.
    */
   const meter = useCallback((stream, report) => {
+    /**
+     * Only ever our own microphone. Never a stream arriving from
+     * somebody else — see the warning above this function.
+     */
     let ctx
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)()
@@ -157,10 +176,6 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
       const stream = new MediaStream(tracks)
       remote.current.set(peerId, stream)
       patchPeer(peerId, { stream })
-
-      if (e.track.kind === 'audio') {
-        meter(stream, (on) => patchPeer(peerId, { speaking: on }))
-      }
     }
 
     pc.onconnectionstatechange = () => {
@@ -367,6 +382,43 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
       cameraTrack.current = null
     }
   }, [roomKey, callPeer, answerPeer, say, patchPeer, drop, meter, onError])
+
+  /**
+   * Who else is talking, read from each connection's own statistics.
+   *
+   * WebRTC already measures the loudness of every voice it decodes and
+   * will hand the figure over for the asking. Asking costs a poll and
+   * changes nothing about where the sound goes, which is the entire
+   * point: the previous way of answering this question was what made
+   * the room silent.
+   *
+   * `heard` is kept beside it as plain diagnostics — whether any sound
+   * at all is arriving from that person — so a silent meeting can be
+   * told apart from a meeting where nobody is speaking.
+   */
+  useEffect(() => {
+    const tick = setInterval(async () => {
+      for (const [peerId, pc] of pcs.current.entries()) {
+        if (pc.connectionState !== 'connected') continue
+        try {
+          const stats = await pc.getStats()
+          let level = null
+          stats.forEach((r) => {
+            // Chrome reports it on inbound-rtp; older builds on `track`.
+            if ((r.type === 'inbound-rtp' || r.type === 'track')
+                && (r.kind === 'audio' || r.trackIdentifier)
+                && typeof r.audioLevel === 'number') {
+              level = Math.max(level ?? 0, r.audioLevel)
+            }
+          })
+          if (level !== null) {
+            patchPeer(peerId, { speaking: level > 0.02, heard: true })
+          }
+        } catch { /* a connection that closed mid-poll */ }
+      }
+    }, 400)
+    return () => clearInterval(tick)
+  }, [patchPeer])
 
   // ── The three controls ─────────────────────────────────────────────
 
