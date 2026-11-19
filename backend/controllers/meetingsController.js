@@ -34,7 +34,11 @@ const forList = (m, user) => ({
   ended_at: m.ended_at,
   notes: m.notes,
   created_by_name: m.created_by_name,
+  host_id: m.host_id ? String(m.host_id) : null,
+  host_name: m.host_name,
   mine: String(m.created_by) === String(user._id),
+  /** Whether this person runs it, which is what the End button needs. */
+  i_host: Boolean(m.host_id && String(m.host_id) === String(user._id)),
   attendee_count: (m.attendance || []).length,
   /**
    * Who is in the room at this moment — a left_at that is still empty.
@@ -81,6 +85,23 @@ const listMeetings = async (req, res) => {
 };
 
 /**
+ * The person who will run the meeting.
+ *
+ * Read off the account rather than taken from the request, the same way
+ * the staff message screen reads a recipient: a name typed in by hand
+ * that matches no login would put somebody in charge of a meeting they
+ * can never be recognised in.
+ */
+const resolveHost = async (hostId, fallback) => {
+  if (!hostId || String(hostId) === String(fallback._id)) {
+    return { host_id: fallback._id, host_name: fallback.username };
+  }
+  const user = await User.findById(hostId).select('username is_active').lean();
+  if (!user || user.is_active === false) return null;
+  return { host_id: user._id, host_name: user.username };
+};
+
+/**
  * POST /api/meetings
  */
 const createMeeting = async (req, res) => {
@@ -111,6 +132,11 @@ const createMeeting = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Pick at least one person.' });
     }
 
+    const host = await resolveHost(req.body?.host_id, req.user);
+    if (!host) {
+      return res.status(400).json({ success: false, message: 'Choose an active member of staff to host it.' });
+    }
+
     const meeting = await Meeting.create({
       title,
       agenda: String(req.body?.agenda || '').trim(),
@@ -120,6 +146,7 @@ const createMeeting = async (req, res) => {
       user_ids: audience === 'people' ? user_ids : [],
       created_by: req.user._id,
       created_by_name: req.user.username,
+      ...host,
     });
 
     /**
@@ -387,11 +414,23 @@ const leaveMeeting = async (req, res) => {
  */
 const endMeeting = async (req, res) => {
   try {
-    if (!isOwner(req.user.role)) {
-      return res.status(403).json({ success: false, message: 'Only an owner can end a meeting.' });
-    }
     const meeting = await Meeting.findById(req.params.id);
     if (!meeting) return res.status(404).json({ success: false, message: 'Meeting not found.' });
+
+    /**
+     * Whoever is running it closes it, plus any owner.
+     *
+     * The point of naming a host is that they can run the meeting
+     * without coming back to an owner for every step, and closing it
+     * at the end is the step they would hit every single time.
+     */
+    const hosts = meeting.host_id && String(meeting.host_id) === String(req.user._id);
+    if (!hosts && !isOwner(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the host or an owner can end this meeting.',
+      });
+    }
 
     meeting.status = 'ended';
     meeting.ended_at = new Date();
@@ -431,6 +470,14 @@ const updateMeeting = async (req, res) => {
     }
     if (req.body?.status === 'cancelled') {
       meeting.status = 'cancelled';
+    }
+    if (req.body?.host_id) {
+      const host = await resolveHost(req.body.host_id, req.user);
+      if (!host) {
+        return res.status(400).json({ success: false, message: 'Choose an active member of staff to host it.' });
+      }
+      meeting.host_id = host.host_id;
+      meeting.host_name = host.host_name;
     }
     await meeting.save();
 

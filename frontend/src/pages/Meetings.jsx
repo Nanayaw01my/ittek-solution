@@ -49,6 +49,11 @@ function NewMeetingModal({ onClose }) {
     const pad = (n) => String(n).padStart(2, '0')
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   })
+  /**
+   * Who will run it. Empty means whoever is creating it, which is the
+   * usual case and needs no decision.
+   */
+  const [hostId, setHostId] = useState('')
   const [audience, setAudience] = useState('everyone')
   const [roles, setRoles] = useState([])
   const [userIds, setUserIds] = useState([])
@@ -84,6 +89,7 @@ function NewMeetingModal({ onClose }) {
     save.mutate({
       title, agenda, scheduled_for: new Date(at).toISOString(),
       audience, roles, user_ids: userIds,
+      host_id: hostId || undefined,
     })
   }
 
@@ -122,6 +128,25 @@ function NewMeetingModal({ onClose }) {
                       placeholder="What will be discussed"
                       className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-xl font-semibold
                                  focus:border-orange-500 outline-none resize-none" />
+          </div>
+
+          {/*
+            Calling a meeting and running it are different jobs. Left
+            alone this is you, which is what it usually is.
+          */}
+          <div>
+            <label className="block text-sm font-bold mb-1">Who will run it?</label>
+            <select value={hostId} onChange={(e) => setHostId(e.target.value)}
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-xl font-semibold
+                               bg-white focus:border-orange-500 outline-none">
+              <option value="">Me</option>
+              {recipients.map((u) => (
+                <option key={u._id} value={u._id}>{u.username} — {u.role}</option>
+              ))}
+            </select>
+            <p className="text-[12px] font-semibold text-gray-500 mt-1">
+              The host can end the meeting without asking an owner.
+            </p>
           </div>
 
           <div>
@@ -289,6 +314,9 @@ function MeetingCard({ m, canManage }) {
               : m.audience === 'roles' ? m.roles.join(', ')
                 : 'Selected people'}
             <span className="text-gray-400">· called by {m.created_by_name}</span>
+            {m.host_name && m.host_name !== m.created_by_name && (
+              <span className="text-gray-400">· run by {m.host_name}</span>
+            )}
           </p>
 
           {m.in_room?.length > 0 && !over && (
@@ -314,18 +342,24 @@ function MeetingCard({ m, canManage }) {
             <FiMic size={16} /> {live ? 'Join the meeting' : 'Start the meeting'}
           </button>
         )}
+        {/* Closing it is the host's job, and theirs without asking. */}
+        {(canManage || m.i_host) && !over && (
+          <button onClick={() => close.mutate()} disabled={close.isPending}
+                  className="px-4 py-3 rounded-xl font-bold border-2 border-gray-300 flex items-center gap-2">
+            <FiCheckCircle size={15} /> End
+          </button>
+        )}
+        {/*
+          Calling it off is not. That belongs to whoever put it in the
+          diary, and the server refuses it to anybody else — so drawing
+          the button for a host would be offering them a refusal.
+        */}
         {canManage && !over && (
-          <>
-            <button onClick={() => close.mutate()} disabled={close.isPending}
-                    className="px-4 py-3 rounded-xl font-bold border-2 border-gray-300 flex items-center gap-2">
-              <FiCheckCircle size={15} /> End
-            </button>
-            <button onClick={() => cancel.mutate()} disabled={cancel.isPending}
-                    className="px-4 py-3 rounded-xl font-bold border-2 border-gray-300 text-gray-600
-                               flex items-center gap-2">
-              <FiXCircle size={15} /> Cancel
-            </button>
-          </>
+          <button onClick={() => cancel.mutate()} disabled={cancel.isPending}
+                  className="px-4 py-3 rounded-xl font-bold border-2 border-gray-300 text-gray-600
+                             flex items-center gap-2">
+            <FiXCircle size={15} /> Cancel
+          </button>
         )}
         {canManage && over && m.status === 'ended' && (
           <button onClick={() => setNotesFor(m)}

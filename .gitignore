@@ -4,3 +4,11 @@ backend/public/
 .env
 *.local
 uploads/
+
+# Scratch harnesses for driving the app in a real browser — stub servers,
+# stand-in media, screenshot scripts. They live in the session scratchpad
+# and are copied into backend/ only to borrow its node_modules. Five of
+# them were committed by a careless `git add -A`; this is so that cannot
+# happen twice.
+backend/_*.cjs
+backend/_*.js

@@ -68,11 +68,13 @@ test('the list query matches the door, clause for clause', () => {
    */
   const f = Meeting.invitedFilter(SALES);
   const clauses = f.$or;
-  assert.equal(clauses.length, 4);
+  assert.equal(clauses.length, 5);
   assert.deepEqual(clauses[0], { created_by: 'sales1' });
-  assert.deepEqual(clauses[1], { audience: 'everyone' });
-  assert.deepEqual(clauses[2], { audience: 'roles', roles: 'Sales' });
-  assert.deepEqual(clauses[3], { audience: 'people', user_ids: 'sales1' });
+  // Running a meeting puts you in it, the same as calling one does.
+  assert.deepEqual(clauses[1], { host_id: 'sales1' });
+  assert.deepEqual(clauses[2], { audience: 'everyone' });
+  assert.deepEqual(clauses[3], { audience: 'roles', roles: 'Sales' });
+  assert.deepEqual(clauses[4], { audience: 'people', user_ids: 'sales1' });
 });
 
 test('a room key is random, long, and different every time', () => {
@@ -89,17 +91,70 @@ test('a room key is random, long, and different every time', () => {
   assert.ok(/^[A-Za-z0-9_-]+$/.test(a), 'room key must be URL-safe');
 });
 
-test('only an owner may call a meeting, end one, or change one', () => {
+test('only an owner may call a meeting or change one', () => {
   const src = require('fs').readFileSync(
     require('path').join(__dirname, '..', 'controllers', 'meetingsController.js'), 'utf8'
   );
-  // Each of the three owner-only handlers must carry the check. A new
-  // handler added without one is the failure this guards against.
-  ['createMeeting', 'endMeeting', 'updateMeeting'].forEach((fn) => {
+  ['createMeeting', 'updateMeeting'].forEach((fn) => {
     const body = src.slice(src.indexOf(`const ${fn} = async`));
     const head = body.slice(0, body.indexOf('const meeting') > 0 ? body.indexOf('const meeting') : 400);
     assert.ok(head.includes('isOwner(req.user.role)'), `${fn} is missing the owner check`);
   });
+});
+
+test('the host ends their own meeting; nobody else but an owner can', () => {
+  /**
+   * The point of naming a host is that they run the meeting without
+   * coming back to an owner at every step, and closing it is the step
+   * they would hit every single time. Cancelling is deliberately not
+   * theirs: calling a meeting off belongs to whoever put it in the
+   * diary.
+   */
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'controllers', 'meetingsController.js'), 'utf8'
+  );
+  const end = src.slice(src.indexOf('const endMeeting = async'), src.indexOf('PUT /api/meetings/:id'));
+  assert.ok(end.includes('meeting.host_id') && end.includes('req.user._id'),
+    'ending must recognise the host');
+  assert.ok(end.includes('!hosts && !isOwner(req.user.role)'),
+    'and still allow any owner');
+
+  const page = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'frontend', 'src', 'pages', 'Meetings.jsx'), 'utf8'
+  );
+  assert.ok(page.includes('{(canManage || m.i_host) && !over && ('),
+    'the End button must be drawn for the host');
+  assert.ok(page.includes('{canManage && !over && ('),
+    'Cancel must not be — the server refuses it, and offering a refusal is worse than offering nothing');
+});
+
+test('a host is in the meeting they are running, whatever the audience says', () => {
+  /**
+   * A manager asked to chair the sales attendants' meeting is not a
+   * sales attendant. Shut out of the meeting they were told to run,
+   * the feature looks untested the first time it is used.
+   */
+  const Meeting = require('../models/Meeting');
+  const m = {
+    created_by: 'owner1', audience: 'roles', roles: ['Sales'], user_ids: [], host_id: 'mgr1',
+  };
+  assert.equal(Meeting.invites(m, { _id: 'mgr1', role: 'Manager' }), true);
+  assert.equal(Meeting.invites(m, { _id: 'mgr2', role: 'Manager' }), false);
+
+  // And it must be listed for them too, or they would never find it.
+  const clauses = Meeting.invitedFilter({ _id: 'mgr1', role: 'Manager' }).$or;
+  assert.ok(clauses.some((c) => c.host_id === 'mgr1'),
+    'the list query must include meetings they host');
+});
+
+test('a host is read off an account, never taken from the request', () => {
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'controllers', 'meetingsController.js'), 'utf8'
+  );
+  const fn = src.slice(src.indexOf('const resolveHost'), src.indexOf('POST /api/meetings', src.indexOf('const resolveHost')));
+  assert.ok(fn.includes('User.findById'), 'the account decides the name');
+  assert.ok(fn.includes('is_active === false'), 'a disabled account cannot be put in charge');
+  assert.ok(fn.includes('fallback'), 'and a meeting with no host named falls to its caller');
 });
 
 test('joining hands back a room key; listing never does', () => {

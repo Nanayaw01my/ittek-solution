@@ -53,6 +53,22 @@ const MeetingSchema = new mongoose.Schema(
     created_by_name: { type: String, trim: true },
 
     /**
+     * Who runs the meeting.
+     *
+     * Calling a meeting and running it are different jobs. The owner
+     * who puts "Monday staff meeting" in the diary is often not the
+     * person who will actually chair it — a manager runs their own
+     * team's, a head of department runs the stock review — and that
+     * person needs to be able to close the meeting when it is over
+     * without coming back to an owner for it.
+     *
+     * Defaults to whoever called the meeting, so a meeting always has
+     * exactly one host and the field is never empty.
+     */
+    host_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    host_name: { type: String, trim: true },
+
+    /**
      * The room's name on the wire, and the one secret in this document.
      *
      * Anyone holding it can be put through to the call by the signalling
@@ -113,6 +129,13 @@ MeetingSchema.index({ status: 1, scheduled_for: -1 });
 MeetingSchema.statics.invites = function invites(meeting, user) {
   if (!meeting || !user) return false;
   if (String(meeting.created_by) === String(user._id)) return true;
+  /**
+   * The host is in the meeting they are running, whatever the audience
+   * says. A manager asked to chair the sales attendants' meeting is not
+   * a sales attendant, and being shut out of a meeting you were told to
+   * run is the kind of thing that makes a feature look untested.
+   */
+  if (meeting.host_id && String(meeting.host_id) === String(user._id)) return true;
   if (meeting.audience === 'everyone') return true;
   if (meeting.audience === 'roles') {
     return (meeting.roles || []).includes(user.role);
@@ -131,6 +154,7 @@ MeetingSchema.statics.invitedFilter = function invitedFilter(user) {
   return {
     $or: [
       { created_by: user._id },
+      { host_id: user._id },
       { audience: 'everyone' },
       { audience: 'roles', roles: user.role },
       { audience: 'people', user_ids: user._id },
