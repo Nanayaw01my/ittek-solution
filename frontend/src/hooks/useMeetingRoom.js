@@ -42,6 +42,15 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
   const [muted, setMuted] = useState(false)
   const [cameraOn, setCameraOn] = useState(false)
   const [speaking, setSpeaking] = useState(false)
+  /**
+   * Whether this phone's own microphone has ever registered a sound.
+   *
+   * If somebody says "I talk and nobody hears me", this is the fact that
+   * settles it without anybody guessing: a microphone that never once
+   * moved the meter is not being heard at the other end either, and the
+   * fault is on this phone rather than in the call.
+   */
+  const [micWorks, setMicWorks] = useState(false)
   const [refusal, setRefusal] = useState('')
   /**
    * The camera's own stream, for showing yourself.
@@ -58,7 +67,6 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
   const localStream = useRef(null)
   const remote = useRef(new Map())     // peerId -> what we have received from them
   const cameraTrack = useRef(null)
-  const meters = useRef([])            // audio meters to tear down
   const retry = useRef(null)
   const closing = useRef(false)
 
@@ -71,73 +79,25 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
   }, [])
 
   /**
-   * How loud our own microphone is, for the ring around our own tile.
+   * NOTHING IN THIS FILE MAY PASS A STREAM TO WEB AUDIO.
    *
-   * THIS MUST NEVER BE POINTED AT A STREAM FROM ANOTHER PERSON.
+   * createMediaStreamSource does not observe a stream, it takes it: the
+   * stream's playback is re-routed into the Web Audio graph, and what
+   * the graph does not pass on to a destination is never heard. Pointed
+   * at the arriving voices to light up a name while its owner spoke, it
+   * made a meeting that connected perfectly and could not be heard at
+   * all.
    *
-   * createMediaStreamSource does not observe a stream, it *takes* it:
-   * the stream's playback is re-routed into the Web Audio graph, and
-   * whatever the graph does not send onward to a destination is simply
-   * not heard. This was first written to light up a name when its owner
-   * spoke, and it was pointed at every arriving voice — each of which
-   * was then quietly diverted into an analyser that led nowhere.
+   * It was then kept for our own microphone, which is safe from that
+   * because it is never played back — but not safe from the other half
+   * of the problem: a phone leaves an AudioContext suspended until the
+   * screen is touched, so the meter sat at zero and reported a working
+   * microphone as picking up nothing.
    *
-   * The effect was a meeting that worked perfectly and was completely
-   * silent. The connection was real, the tiles were right, the bytes
-   * arrived and were decoded; the sound was simply taken somewhere
-   * other than the speaker. Nothing on screen could show it, and no
-   * measurement of the stream could either, because the audio was all
-   * still there.
-   *
-   * Our own microphone is safe because it is never played back — doing
-   * so would be an echo, not a feature. Everybody else's loudness now
-   * comes from the connection's own statistics, below, which only
-   * reads.
+   * Every loudness figure now comes from the connection's own
+   * statistics, which WebRTC computes anyway and hands over for the
+   * asking. Asking only reads.
    */
-  const meter = useCallback((stream, report) => {
-    /**
-     * Only ever our own microphone. Never a stream arriving from
-     * somebody else — see the warning above this function.
-     */
-    let ctx
-    try {
-      ctx = new (window.AudioContext || window.webkitAudioContext)()
-    } catch {
-      return () => {}
-    }
-    const source = ctx.createMediaStreamSource(stream)
-    const analyser = ctx.createAnalyser()
-    analyser.fftSize = 512
-    source.connect(analyser)
-    const data = new Uint8Array(analyser.frequencyBinCount)
-    let on = false
-    let quietFor = 0
-
-    const tick = setInterval(() => {
-      analyser.getByteFrequencyData(data)
-      let sum = 0
-      for (let i = 0; i < data.length; i += 1) sum += data[i]
-      const level = sum / data.length
-
-      if (level > 12) {
-        quietFor = 0
-        if (!on) { on = true; report(true) }
-      } else if (on) {
-        // A pause between words is not the end of a sentence; without
-        // this the name flickers on and off while somebody speaks.
-        quietFor += 1
-        if (quietFor > 6) { on = false; report(false) }
-      }
-    }, 100)
-
-    const stop = () => {
-      clearInterval(tick)
-      try { source.disconnect() } catch { /* already gone */ }
-      try { ctx.close() } catch { /* already closed */ }
-    }
-    meters.current.push(stop)
-    return stop
-  }, [])
 
   /**
    * The connection to one other person, with its handlers but no media
@@ -196,7 +156,7 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
 
     pcs.current.set(peerId, pc)
     return pc
-  }, [iceServers, say, patchPeer, meter])
+  }, [iceServers, say, patchPeer])
 
   /** Put our microphone, and the camera if it is on, into these slots. */
   const fill = useCallback((peerId, audio, video) => {
@@ -265,7 +225,6 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
       try {
         if (!localStream.current) {
           localStream.current = await navigator.mediaDevices.getUserMedia(MIC)
-          meter(localStream.current, setSpeaking)
         }
       } catch (err) {
         /**
@@ -374,14 +333,12 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
       pcs.current.clear()
       senders.current.clear()
       remote.current.clear()
-      meters.current.forEach((stop) => stop())
-      meters.current = []
       localStream.current?.getTracks().forEach((t) => t.stop())
       cameraTrack.current?.stop()
       localStream.current = null
       cameraTrack.current = null
     }
-  }, [roomKey, callPeer, answerPeer, say, patchPeer, drop, meter, onError])
+  }, [roomKey, callPeer, answerPeer, say, patchPeer, drop, onError])
 
   /**
    * Who else is talking, read from each connection's own statistics.
@@ -392,9 +349,22 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
    * point: the previous way of answering this question was what made
    * the room silent.
    *
-   * `heard` is kept beside it as plain diagnostics — whether any sound
-   * at all is arriving from that person — so a silent meeting can be
-   * told apart from a meeting where nobody is speaking.
+   * The same poll is where the room learns whether it is working.
+   *
+   * A meeting that cannot be heard looks, on screen, exactly like a
+   * meeting where nobody happens to be speaking — and that cost a round
+   * of "it works" followed by a round of "I hear nothing", with nothing
+   * on either screen to tell the two apart. So three plain facts are
+   * carried out of the statistics and shown:
+   *
+   *   `packets` — anything at all arriving from that person
+   *   `everHeard` — sound that was not silence has arrived at least once
+   *   `level` — how loud they are right now
+   *
+   * Between them they place the fault: no packets is a connection that
+   * never formed, packets but never any sound is a microphone that is
+   * muted or broken at their end, and sound arriving while nothing can
+   * be heard is this phone's own playback.
    */
   useEffect(() => {
     const tick = setInterval(async () => {
@@ -403,22 +373,46 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
         try {
           const stats = await pc.getStats()
           let level = null
+          let bytes = 0
+          /**
+           * Our own microphone, measured where it is encoded rather
+           * than in a Web Audio graph that a phone may never start.
+           * Any connected peer can answer it, since the same
+           * microphone feeds them all.
+           */
+          stats.forEach((r) => {
+            if (r.type === 'media-source' && r.kind === 'audio'
+                && typeof r.audioLevel === 'number') {
+              setSpeaking(r.audioLevel > 0.02)
+              if (r.audioLevel > 0.01) setMicWorks(true)
+            }
+          })
           stats.forEach((r) => {
             // Chrome reports it on inbound-rtp; older builds on `track`.
             if ((r.type === 'inbound-rtp' || r.type === 'track')
-                && (r.kind === 'audio' || r.trackIdentifier)
-                && typeof r.audioLevel === 'number') {
-              level = Math.max(level ?? 0, r.audioLevel)
+                && (r.kind === 'audio' || r.trackIdentifier)) {
+              if (typeof r.audioLevel === 'number') level = Math.max(level ?? 0, r.audioLevel)
+              if (typeof r.bytesReceived === 'number') bytes += r.bytesReceived
             }
           })
-          if (level !== null) {
-            patchPeer(peerId, { speaking: level > 0.02, heard: true })
-          }
+          if (level === null && bytes === 0) continue
+
+          setPeers((list) => list.map((p) => (p.id === peerId
+            ? {
+              ...p,
+              level: level ?? 0,
+              speaking: (level ?? 0) > 0.02,
+              packets: bytes > 0,
+              // Once true it stays true: a pause in the conversation is
+              // not the same as never having heard them.
+              everHeard: p.everHeard || (level ?? 0) > 0.01,
+            }
+            : p)))
         } catch { /* a connection that closed mid-poll */ }
       }
     }, 400)
     return () => clearInterval(tick)
-  }, [patchPeer])
+  }, [])
 
   // ── The three controls ─────────────────────────────────────────────
 
@@ -472,7 +466,7 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
   }, [say])
 
   return {
-    peers, status, refusal, muted, cameraOn, speaking,
+    peers, status, refusal, muted, cameraOn, speaking, micWorks,
     camerasOn, cameraLimit,
     cameraStream,
     toggleMute, toggleCamera, hangUp,

@@ -51,6 +51,26 @@ function PeerTile({ peer, onBlocked, hasRelay }) {
   /** Do we actually have their voice yet? */
   const connected = Boolean(peer.stream?.getAudioTracks?.().length)
 
+  /**
+   * Long enough in the room for silence to mean something.
+   *
+   * Judged immediately, every tile would accuse somebody of being
+   * silent during the two seconds before their first packet arrives.
+   */
+  const [settled, setSettled] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(true), 9000)
+    return () => clearTimeout(t)
+  }, [])
+
+  /**
+   * Nothing but silence has ever come from this person, long after they
+   * connected. Their microphone is muted, blocked or broken at their
+   * end — the call itself is fine, and saying so stops the whole room
+   * being pulled apart looking for a fault that is on one phone.
+   */
+  const silent = settled && connected && peer.packets && !peer.everHeard
+
   const initial = (peer.name || '?').charAt(0).toUpperCase()
 
   return (
@@ -104,11 +124,20 @@ function PeerTile({ peer, onBlocked, hasRelay }) {
           <p className="text-white/50 font-bold text-xs">connecting…</p>
         </div>
       )}
+
+      {silent && (
+        <div className="absolute top-2 inset-x-2">
+          <p className="text-[10.5px] font-bold text-amber-300 bg-black/70 rounded-lg px-2 py-1
+                        text-center leading-tight">
+            Connected, but no sound from them — their microphone
+          </p>
+        </div>
+      )}
     </div>
   )
 }
 
-function MeView({ name, speaking, cameraOn, stream, muted }) {
+function MeView({ name, speaking, cameraOn, stream, muted, micWorks, settled, hasCompany }) {
   const videoRef = useRef(null)
   useEffect(() => {
     if (videoRef.current && stream) videoRef.current.srcObject = stream
@@ -136,6 +165,21 @@ function MeView({ name, speaking, cameraOn, stream, muted }) {
         <p className="text-white font-bold text-sm">You</p>
         {muted && <FiMicOff className="text-red-400" size={13} />}
       </div>
+
+      {/*
+        Your own microphone, judged by whether it has ever moved.
+        "I talk and nobody hears me" is otherwise impossible to tell
+        from "nobody is listening", and the two have nothing to do with
+        each other.
+      */}
+      {settled && !micWorks && !muted && hasCompany && (
+        <div className="absolute top-2 inset-x-2">
+          <p className="text-[10.5px] font-bold text-amber-300 bg-black/70 rounded-lg px-2 py-1
+                        text-center leading-tight">
+            Your microphone is not picking up anything — say something
+          </p>
+        </div>
+      )}
     </div>
   )
 }
@@ -146,6 +190,12 @@ export default function MeetingRoom() {
   const [joining, setJoining] = useState(true)
   /** The phone refused to start the sound until the screen is touched. */
   const [soundBlocked, setSoundBlocked] = useState(false)
+  /** Long enough in the room that silence is worth remarking on. */
+  const [settled, setSettled] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(true), 9000)
+    return () => clearTimeout(t)
+  }, [])
   const [ticket, setTicket] = useState(null)
   const [error, setError] = useState('')
 
@@ -270,7 +320,9 @@ export default function MeetingRoom() {
         )}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <MeView name="You" speaking={room.speaking} cameraOn={room.cameraOn}
-                  stream={room.cameraStream} muted={room.muted} />
+                  stream={room.cameraStream} muted={room.muted}
+                  micWorks={room.micWorks} settled={settled}
+                  hasCompany={room.peers.length > 0} />
           {room.peers.map((p) => (
             <PeerTile key={p.id} peer={p} hasRelay={ticket?.has_relay}
                       onBlocked={() => setSoundBlocked(true)} />
