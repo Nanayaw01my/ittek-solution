@@ -374,6 +374,7 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
           const stats = await pc.getStats()
           let level = null
           let bytes = 0
+          let energy = 0
           /**
            * Our own microphone, measured where it is encoded rather
            * than in a Web Audio graph that a phone may never start.
@@ -392,6 +393,15 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
             if ((r.type === 'inbound-rtp' || r.type === 'track')
                 && (r.kind === 'audio' || r.trackIdentifier)) {
               if (typeof r.audioLevel === 'number') level = Math.max(level ?? 0, r.audioLevel)
+              /**
+               * Energy as well as level, because the two fail
+               * differently: level is a snapshot and reads zero
+               * between words, energy accumulates and only stays at
+               * zero if nothing has ever been heard.
+               */
+              if (typeof r.totalAudioEnergy === 'number') {
+                energy = Math.max(energy, r.totalAudioEnergy)
+              }
               if (typeof r.bytesReceived === 'number') bytes += r.bytesReceived
             }
           })
@@ -405,7 +415,7 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
               packets: bytes > 0,
               // Once true it stays true: a pause in the conversation is
               // not the same as never having heard them.
-              everHeard: p.everHeard || (level ?? 0) > 0.01,
+              everHeard: p.everHeard || (level ?? 0) > 0.01 || energy > 0,
             }
             : p)))
         } catch { /* a connection that closed mid-poll */ }

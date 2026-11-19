@@ -21,32 +21,66 @@ import useMeetingRoom from '../hooks/useMeetingRoom'
  * see the cap in the hook.
  */
 
-/** A remote tile's audio has to be played; a video tile plays its own. */
+/**
+ * One other person in the room.
+ *
+ * Their sound and picture both come out of a single <video> element,
+ * even when there is no camera and the tile is showing nothing but a
+ * letter in a circle. That looks like a detail and is the difference
+ * between a working call and a silent one on an iPhone.
+ *
+ * Safari will not start a media element that is paused, has never been
+ * played and has nothing on screen to draw into. A hidden <audio> tag
+ * is all three of those, so it sat there, never started, and the call
+ * was silent with nothing to show for it. A <video> element that is
+ * actually on the page has a renderer, so it starts.
+ *
+ * It is also why the element is always mounted rather than swapped in
+ * when somebody turns a camera on. Replacing the element mid-call tears
+ * down the one that was playing and puts up a fresh one that has never
+ * been started — silent again, in the middle of a meeting, for the one
+ * person who turned their camera on.
+ */
 function PeerTile({ peer, onBlocked, hasRelay }) {
-  const audioRef = useRef(null)
-  const videoRef = useRef(null)
+  const mediaRef = useRef(null)
 
+  const showsCamera = Boolean(peer.camera && peer.stream?.getVideoTracks?.().length)
+
+  /**
+   * Attach, start, and then check that it really started.
+   *
+   * play() returning without throwing is not proof on Safari: the
+   * element can stay paused with no error at all. So the result is
+   * looked at rather than trusted, and when it is still paused the room
+   * offers a button — a tap is a gesture, and a gesture always works.
+   */
   useEffect(() => {
-    if (audioRef.current && peer.stream) {
-      audioRef.current.srcObject = peer.stream
-      /**
-       * Phones will not start audio on their own unless the page has
-       * been touched, and refusing is silent. The user tapped Join to
-       * get here, so this nearly always succeeds; when it does not,
-       * saying nothing is still better than a thrown error on a tile.
-       */
-      /**
-       * Phones will not start audio on their own unless the page has
-       * been touched, and refusing is silent. Tapping Join counts, so
-       * this nearly always succeeds — but a phone that was locked, or
-       * a tab restored from the background, can still refuse. When it
-       * does, the room offers a button rather than playing nothing and
-       * saying nothing.
-       */
-      audioRef.current.play?.().catch(() => onBlocked?.())
-    }
-    if (videoRef.current && peer.stream) videoRef.current.srcObject = peer.stream
-  }, [peer.stream, peer.camera])
+    const el = mediaRef.current
+    if (!el || !peer.stream) return undefined
+
+    if (el.srcObject !== peer.stream) el.srcObject = peer.stream
+    el.muted = false
+    el.volume = 1
+
+    let dead = false
+    const start = () => { el.play?.().catch(() => {}) }
+    start()
+
+    // Checked rather than assumed, twice, a beat apart.
+    const checks = [700, 2500].map((ms) => setTimeout(() => {
+      if (dead || !mediaRef.current) return
+      if (mediaRef.current.paused) {
+        start()
+        if (ms === 2500 && mediaRef.current.paused) onBlocked?.()
+      }
+    }, ms))
+
+    return () => { dead = true; checks.forEach(clearTimeout) }
+    // The stream object changes identity whenever a track arrives, which
+    // is what re-attaches it — a renegotiation that brings in another
+    // person's tracks has been known to silence the ones already
+    // playing, and re-attaching is the cure.
+  }, [peer.stream, onBlocked])
 
   /** Do we actually have their voice yet? */
   const connected = Boolean(peer.stream?.getAudioTracks?.().length)
@@ -64,12 +98,24 @@ function PeerTile({ peer, onBlocked, hasRelay }) {
   }, [])
 
   /**
-   * Nothing but silence has ever come from this person, long after they
-   * connected. Their microphone is muted, blocked or broken at their
-   * end — the call itself is fine, and saying so stops the whole room
-   * being pulled apart looking for a fault that is on one phone.
+   * Their voice is arriving and none of it has made a sound.
+   *
+   * Deliberately NOT phrased as a fault of theirs, because the two
+   * causes are indistinguishable from here. A browser only works out
+   * how loud an arriving voice is while it is playing it out, so a
+   * phone that is not playing anything — an iPhone with the ringer
+   * switch set to silent, a device with no output at all — reports the
+   * same flat zero as a colleague whose microphone is muted.
+   *
+   * Measured in a container with no speaker, a perfectly healthy call
+   * read: 650,000 samples decoded, nothing concealed, and a loudness of
+   * zero. Blaming the other person on that evidence would be wrong as
+   * often as it was right, and would send the shop chasing the wrong
+   * phone. So the message names both, and the shape of it tells you
+   * which: one tile saying this is probably them, every tile saying it
+   * is certainly you.
    */
-  const silent = settled && connected && peer.packets && !peer.everHeard
+  const noSound = settled && connected && peer.packets && !peer.everHeard
 
   const initial = (peer.name || '?').charAt(0).toUpperCase()
 
@@ -77,14 +123,17 @@ function PeerTile({ peer, onBlocked, hasRelay }) {
     <div className={`relative rounded-2xl overflow-hidden border-4 transition-colors
                      ${peer.speaking ? 'border-orange-400' : 'border-transparent'}
                      bg-gray-800 aspect-[4/3]`}>
-      {/* Always present, never shown: this is what carries the voice. */}
-      <audio ref={audioRef} autoPlay playsInline />
+      {/*
+        Sound and picture both. Mounted always and never swapped, so it
+        keeps playing when a camera goes on or off — and on screen even
+        with no camera, because an element with nothing to draw into is
+        one Safari will not start.
+      */}
+      <video ref={mediaRef} autoPlay playsInline
+             className={`w-full h-full object-cover ${showsCamera ? '' : 'opacity-0'}`} />
 
-      {peer.camera && peer.stream?.getVideoTracks?.().length ? (
-        <video ref={videoRef} autoPlay playsInline
-               className="w-full h-full object-cover" />
-      ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center">
+      {!showsCamera && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
           <div className={`w-16 h-16 rounded-full flex items-center justify-center
                            text-2xl font-black text-white transition-colors
                            ${peer.speaking ? 'bg-orange-500' : 'bg-gray-600'}`}>
@@ -125,11 +174,12 @@ function PeerTile({ peer, onBlocked, hasRelay }) {
         </div>
       )}
 
-      {silent && (
+      {noSound && (
         <div className="absolute top-2 inset-x-2">
           <p className="text-[10.5px] font-bold text-amber-300 bg-black/70 rounded-lg px-2 py-1
                         text-center leading-tight">
-            Connected, but no sound from them — their microphone
+            Connected, but no sound detected — their microphone, or your
+            own volume and silent switch
           </p>
         </div>
       )}
@@ -190,6 +240,13 @@ export default function MeetingRoom() {
   const [joining, setJoining] = useState(true)
   /** The phone refused to start the sound until the screen is touched. */
   const [soundBlocked, setSoundBlocked] = useState(false)
+  /**
+   * Stable, because a tile's playback effect depends on it. An inline
+   * arrow would be a new function on every render, restarting the
+   * attach-and-check cycle several times a second and never settling.
+   */
+  const blocked = useCallback(() => setSoundBlocked(true), [])
+
   /** Long enough in the room that silence is worth remarking on. */
   const [settled, setSettled] = useState(false)
   useEffect(() => {
@@ -303,7 +360,10 @@ export default function MeetingRoom() {
       {soundBlocked && (
         <button
           onClick={() => {
-            document.querySelectorAll('audio').forEach((el) => el.play?.().catch(() => {}))
+            document.querySelectorAll('video, audio').forEach((el) => {
+              el.muted = false
+              el.play?.().catch(() => {})
+            })
             setSoundBlocked(false)
           }}
           className="mx-3 mt-3 py-3 rounded-xl bg-amber-400 text-gray-900 font-black
@@ -324,8 +384,7 @@ export default function MeetingRoom() {
                   micWorks={room.micWorks} settled={settled}
                   hasCompany={room.peers.length > 0} />
           {room.peers.map((p) => (
-            <PeerTile key={p.id} peer={p} hasRelay={ticket?.has_relay}
-                      onBlocked={() => setSoundBlocked(true)} />
+            <PeerTile key={p.id} peer={p} hasRelay={ticket?.has_relay} onBlocked={blocked} />
           ))}
         </div>
       </div>
