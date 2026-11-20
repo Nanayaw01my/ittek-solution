@@ -36,10 +36,20 @@ test('whoever carries the sheet settles it, whatever their role', () => {
     'and the role carries a sheet without needing the flag');
 });
 
-test('a counter hand carrying nothing does not settle a field sale', () => {
-  // They issue sheets and take goods back. Recording the sale is the
-  // seller's to do: see maySettleFieldSheet in middleware/rbac.js.
-  assert.strictEqual(maySettleFieldSheet({ role: 'Sales' }), false);
+test('the counter settles a field sheet, because the counter takes the money', () => {
+  /**
+   * The shop's decision, and a change from how this started.
+   *
+   * A rep back from Tarkwa hands the cash to whoever is on the till.
+   * That is a sales attendant, and barring them meant the money sat
+   * unrecorded until somebody senior was free — a payment entered
+   * hours late against a sheet is one nobody can reconcile against the
+   * day's drawer.
+   */
+  assert.strictEqual(maySettleFieldSheet({ role: 'Sales' }), true);
+
+  // An Engineer is level 1 and not in SELLING_ROLES: they do not ring
+  // up sales at the counter either, so they do not settle sheets.
   assert.strictEqual(maySettleFieldSheet({ role: 'Engineer' }), false);
 });
 
@@ -52,7 +62,7 @@ test('Manager and above settle anybody\'s sheet', () => {
 
 test('nothing leaks in from a missing or odd user', () => {
   for (const bad of [null, undefined, {}, { role: '' }, { role: 'Intern' },
-    { field_duty: 'yes' }, { role: 'Sales', field_duty: 1 }]) {
+    { field_duty: 'yes' }]) {
     assert.strictEqual(maySettleFieldSheet(bad), false, JSON.stringify(bad));
   }
 });
@@ -78,10 +88,16 @@ const clientRule = () => {
   const levels = src.match(/export const ROLE_LEVELS = (\{[\s\S]*?\})\n/);
   assert.ok(levels, 'ROLE_LEVELS not found in pageAccess.js');
 
+  // The counter settles sheets now, so the rule leans on maySell too.
+  const selling = src.match(/export const SELLING_ROLES = (\[[^\]]*\])/);
+  assert.ok(selling, 'SELLING_ROLES not found in pageAccess.js');
+
   // eslint-disable-next-line no-new-func
   return new Function(`
     const ROLE_LEVELS = ${levels[1]};
     const roleLevel = (role) => ROLE_LEVELS[role] || 0;
+    const SELLING_ROLES = ${selling[1]};
+    const maySell = (role) => SELLING_ROLES.includes(role);
     const carriesFieldSheets = ${grab('carriesFieldSheets')};
     const maySettleFieldSheet = ${grab('maySettleFieldSheet')};
     return maySettleFieldSheet;

@@ -61,7 +61,7 @@ const compact = (n) => {
 }
 
 /** One of the four figures at the top. The first one is filled. */
-const Figure = ({ label, value, sub, delta, icon: Icon, filled }) => (
+const Figure = ({ label, value, sub, delta, icon: Icon, filled, note }) => (
   <div className={`relative overflow-hidden rounded-2xl p-4 ${
     filled ? 'text-white' : 'bg-white border border-gray-200'}`}
        style={filled ? { background: BRAND.deep } : undefined}>
@@ -87,6 +87,15 @@ const Figure = ({ label, value, sub, delta, icon: Icon, filled }) => (
           filled ? 'text-white/60' : 'text-gray-400'}`}>{sub}</p>
       )}
     </div>
+    {/*
+      A figure that quietly shrank because somebody returned a battery
+      reads as a fault in the till. Saying what came back costs one
+      line and answers the question before it is asked.
+    */}
+    {note && (
+      <p className={`text-[10.5px] font-bold mt-1.5 ${
+        filled ? 'text-white/70' : 'text-gray-500'}`}>{note}</p>
+    )}
   </div>
 )
 
@@ -176,7 +185,10 @@ export default function AttendantDashboard({ username }) {
         <div className="lg:col-span-2 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Figure filled icon={FiShoppingBag} label="My takings today"
-                    value={formatCurrency(t.takings)} delta={t.delta} sub="vs yesterday" />
+                    value={formatCurrency(t.takings)} delta={t.delta} sub="vs yesterday"
+                    note={t.refunded > 0
+                      ? `${formatCurrency(t.gross)} sold, ${formatCurrency(t.refunded)} refunded`
+                      : null} />
             <Figure icon={FiFileText} label="Sales rung up" value={String(t.sales)}
                     sub={t.sales === 1 ? 'sale' : 'sales'} />
             <Figure icon={FiPackage} label="Items sold" value={String(t.pieces)} sub="pieces" />

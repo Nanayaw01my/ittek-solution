@@ -92,8 +92,15 @@ export const carriesFieldSheets = (user) => user?.role === 'Field Agent' || user
  * backend/tests/fieldSettlement.test.js reads this very line and checks
  * it against the server's, so the two cannot part company again.
  */
-export const maySettleFieldSheet = (user) =>
-  carriesFieldSheets(user) || roleLevel(user?.role) >= 2
+export const maySettleFieldSheet = (user) => carriesFieldSheets(user)
+  /**
+   * The counter takes money for field goods too — a rep back from
+   * Tarkwa hands the cash to whoever is on the till, which is a sales
+   * attendant rather than a manager. Barred, the money sat unrecorded
+   * until somebody senior was free.
+   */
+  || maySell(user?.role)
+  || roleLevel(user?.role) >= 2
 
 /**
  * Who may ring up a sale, mirroring SELLING_ROLES on the server.

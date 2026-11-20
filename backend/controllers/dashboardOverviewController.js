@@ -280,8 +280,33 @@ const getOverview = async (req, res) => {
       data: {
         as_of: now,
         headline: {
-          today_sales: { value: today.total, delta: delta(today.total, yesterday.total), count: today.count },
-          month_sales: { value: thisMonth.total, delta: delta(thisMonth.total, lastMonth.total), count: thisMonth.count },
+          /**
+           * Takings NET of what was handed back.
+           *
+           * The shop's decision, and the right one: money refunded
+           * today left the drawer today, so a "total sales" figure that
+           * ignores it reports takings the shop does not have. The day
+           * it matters is the day somebody returns a GH₵3,400 battery
+           * and the dashboard still shows the morning's number.
+           *
+           * The gross is kept beside it rather than thrown away — what
+           * was sold and what came back are different facts, and the
+           * card shows both.
+           */
+          today_sales: {
+            value: money(today.total - refundsToday.total),
+            delta: delta(today.total - refundsToday.total, yesterday.total - refundsYesterday.total),
+            count: today.count,
+            gross: today.total,
+            refunded: refundsToday.total,
+          },
+          month_sales: {
+            value: money(thisMonth.total - refundsMonth.total),
+            delta: delta(thisMonth.total, lastMonth.total),
+            count: thisMonth.count,
+            gross: thisMonth.total,
+            refunded: refundsMonth.total,
+          },
           today_profit: { value: profitToday, delta: delta(profitToday, profitYesterday) },
           refunds: {
             value: refundsToday.total,

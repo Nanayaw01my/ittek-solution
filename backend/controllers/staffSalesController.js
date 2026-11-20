@@ -98,6 +98,24 @@ const getSummary = async (req, res) => {
       if (s.customer_phone) row.customers.add(String(s.customer_phone));
     }
 
+    /**
+     * What each of them handed back, over the same window.
+     *
+     * Against whoever MADE the sale rather than whoever processed the
+     * return: the sale is being undone, and a figure that credits the
+     * seller with money the shop gave back is not that person's sales.
+     *
+     * Approved refunds only — one waiting on a decision has returned
+     * nothing to anybody.
+     */
+    const refundRows = await Refund.aggregate([
+      { $match: { status: 'approved', refund_date: { $gte: from, $lte: to } } },
+      { $lookup: { from: 'sales', localField: 'sale_id', foreignField: '_id', as: 'sale' } },
+      { $unwind: '$sale' },
+      { $group: { _id: '$sale.user_id', total: { $sum: '$refund_amount' }, count: { $sum: 1 } } },
+    ]);
+    const refundOf = new Map(refundRows.map((r) => [String(r._id), r]));
+
     const ids = [...byUser.keys()].filter((id) => mongoose.isValidObjectId(id));
     const users = await User.find({ _id: { $in: ids } }).select('username role').lean();
     const nameOf = new Map(users.map((u) => [String(u._id), u]));
@@ -105,12 +123,18 @@ const getSummary = async (req, res) => {
     const rows = [...byUser.values()].map((r) => {
       const who = nameOf.get(r.user_id);
       const before = r.gross + r.discount_total;
+      const back = refundOf.get(r.user_id);
+      const refunded = Number(((back?.total) || 0).toFixed(2));
       return {
         user_id: r.user_id,
         username: who?.username || 'Unknown',
         role: who?.role || '—',
         sales_count: r.sales_count,
         gross: Number(r.gross.toFixed(2)),
+        refunded,
+        refund_count: back?.count || 0,
+        /** What they actually sold, once returns are taken off. */
+        net: Number((r.gross - refunded).toFixed(2)),
         discount_total: Number(r.discount_total.toFixed(2)),
         // What share of what the shop would have taken was given away. The
         // cash figure alone says nothing without the size of the trade
@@ -132,6 +156,8 @@ const getSummary = async (req, res) => {
         totals: {
           sales_count: rows.reduce((n, r) => n + r.sales_count, 0),
           gross: Number(rows.reduce((n, r) => n + r.gross, 0).toFixed(2)),
+          refunded: Number(rows.reduce((n, r) => n + r.refunded, 0).toFixed(2)),
+          net: Number(rows.reduce((n, r) => n + r.net, 0).toFixed(2)),
           discount_total: Number(rows.reduce((n, r) => n + r.discount_total, 0).toFixed(2)),
         },
       },

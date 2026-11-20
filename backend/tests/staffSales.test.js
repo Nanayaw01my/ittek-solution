@@ -29,6 +29,9 @@ const chain = (rows) => {
   return c;
 };
 
+/** Grouped per seller, the shape the controller's pipeline returns. */
+const refundsByStaff = [];
+
 const orig = Module._load;
 Module._load = function (req) {
   if (req.includes('models/Sale')) return {
@@ -38,7 +41,16 @@ Module._load = function (req) {
       : sales),
     findById: () => chain(sales[0]),
   };
-  if (req.includes('models/Refund')) return { find: () => chain(refunds) };
+  if (req.includes('models/Refund')) return {
+    find: () => chain(refunds),
+    /**
+     * The summary nets refunds off each person's takings, joining each
+     * refund back to the sale it undoes. Stubbed here as the grouped
+     * result that aggregation would return — these tests are about the
+     * arithmetic, not about Mongo's pipeline.
+     */
+    aggregate: async () => refundsByStaff,
+  };
   if (req.includes('models/Debt')) return { findOne: () => chain(debt) };
   if (req.includes('models/Layaway')) return { find: () => chain(layaways) };
   if (req.includes('models/Product')) return { find: () => chain(products) };
@@ -234,5 +246,52 @@ test('one sale, and what happened to it after', async (t) => {
   await t.test('a bad id is refused rather than searched for', async () => {
     const r = await call(c.getTrail, { params: { id: 'not-an-id' } });
     assert.strictEqual(r.code, 400);
+  });
+});
+
+test('refunds come off the seller who made the sale', async (t) => {
+  t.beforeEach(() => {
+    users = [
+      { _id: 'u1', username: 'ama', role: 'Sales' },
+      { _id: 'u2', username: 'kofi', role: 'Engineer' },
+    ];
+    sales = [
+      { user_id: 'u1', subtotal: 3400, discount: 0, total_amount: 3400, customer_phone: '', payment_status: 'paid' },
+      { user_id: 'u2', subtotal: 500, discount: 0, total_amount: 500, customer_phone: '', payment_status: 'paid' },
+    ];
+    refundsByStaff.length = 0;
+  });
+
+  await t.test('a returned battery leaves the seller’s figure, not the shop’s whole day', async () => {
+    // Ama sold GH₵3,400 and GH₵3,400 came back: she sold nothing, net.
+    refundsByStaff.push({ _id: 'u1', total: 3400, count: 1 });
+
+    const r = await call(c.getSummary);
+    const ama = r.body.data.staff.find((s) => s.username === 'ama');
+    const kofi = r.body.data.staff.find((s) => s.username === 'kofi');
+
+    assert.equal(ama.gross, 3400, 'what she rang up is still shown');
+    assert.equal(ama.refunded, 3400, 'and what came back beside it');
+    assert.equal(ama.net, 0, 'leaving nothing sold');
+    assert.equal(kofi.net, 500, 'and nobody else is touched by it');
+  });
+
+  await t.test('the total is the sum of the net figures', async () => {
+    refundsByStaff.push({ _id: 'u1', total: 400, count: 1 });
+
+    const r = await call(c.getSummary);
+    assert.equal(r.body.data.totals.gross, 3900);
+    assert.equal(r.body.data.totals.refunded, 400);
+    assert.equal(r.body.data.totals.net, 3500,
+      'adding the gross figures and then subtracting would be right by luck; '
+      + 'this must be the sum of what each person actually sold');
+  });
+
+  await t.test('nothing refunded leaves every figure as it was', async () => {
+    const r = await call(c.getSummary);
+    const ama = r.body.data.staff.find((s) => s.username === 'ama');
+    assert.equal(ama.refunded, 0);
+    assert.equal(ama.net, ama.gross);
+    assert.equal(r.body.data.totals.net, r.body.data.totals.gross);
   });
 });

@@ -108,7 +108,16 @@ export default function StaffSales() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mb-5">
         {[
           { label: 'Sales', value: (totals.sales_count ?? 0).toLocaleString() },
-          { label: 'Taken', value: formatCurrency(totals.gross || 0) },
+          {
+            label: 'Taken',
+            // Net of what came back, like every other sales figure in
+            // the system. The gross is said underneath when there were
+            // refunds, so a smaller number explains itself.
+            value: formatCurrency(totals.net ?? totals.gross ?? 0),
+            hint: totals.refunded > 0
+              ? `${formatCurrency(totals.gross)} sold, ${formatCurrency(totals.refunded)} refunded`
+              : null,
+          },
           { label: 'Given away', value: formatCurrency(totals.discount_total || 0), warn: true },
         ].map(s => (
           <div key={s.label}
@@ -118,6 +127,9 @@ export default function StaffSales() {
             <p className={`text-lg sm:text-xl font-black tabular-nums ${s.warn ? 'text-amber-800' : 'text-gray-900'}`}>
               {s.value}
             </p>
+            {s.hint && (
+              <p className="text-[11px] font-bold text-gray-500 mt-0.5 leading-tight">{s.hint}</p>
+            )}
           </div>
         ))}
       </div>
@@ -158,7 +170,14 @@ export default function StaffSales() {
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="font-black text-gray-900 tabular-nums text-sm">{formatCurrency(s.gross)}</p>
+                    <p className="font-black text-gray-900 tabular-nums text-sm">
+                      {formatCurrency(s.net ?? s.gross)}
+                    </p>
+                    {s.refunded > 0 && (
+                      <p className="text-[11px] font-bold text-gray-500 tabular-nums">
+                        after {formatCurrency(s.refunded)} refunded
+                      </p>
+                    )}
                     {s.discount_total > 0 ? (
                       <p className="text-[11px] font-bold text-amber-700 tabular-nums">
                         −{formatCurrency(s.discount_total)} ({s.discount_pct}%)

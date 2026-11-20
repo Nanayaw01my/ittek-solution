@@ -120,9 +120,24 @@ const isConfinedFieldAgent = (user) => user?.role === 'Field Agent';
  * list of three role names: the server accepted a head of department's
  * payment while the screen gave them no button to make it with.
  */
-const maySettleFieldSheet = (user) =>
-  carriesFieldSheets(user) || (ROLE_LEVELS[user?.role] || 0) >= 2;
 const maySell = (role) => SELLING_ROLES.includes(role);
+
+const maySettleFieldSheet = (user) => carriesFieldSheets(user)
+  /**
+   * The counter takes money for field goods too.
+   *
+   * A rep comes back from Tarkwa with the cash and hands it over to
+   * whoever is on the till — which is a sales attendant, not a manager.
+   * Barring them meant the money sat unrecorded until somebody senior
+   * was free, and a payment recorded hours late against a sheet is a
+   * payment nobody can reconcile against the day's drawer.
+   *
+   * Taking money is what the counter does all day; the check that
+   * matters on a field sheet is the sheet itself — what went out
+   * against what came back — read at the weekly accounting.
+   */
+  || maySell(user?.role)
+  || (ROLE_LEVELS[user?.role] || 0) >= 2;
 
 /**
  * requireRoles(...roles)

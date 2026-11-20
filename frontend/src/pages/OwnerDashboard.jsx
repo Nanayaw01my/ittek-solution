@@ -149,12 +149,23 @@ export default function OwnerDashboard({ username }) {
           come to about 200px each and a month's takings does not fit in
           one. Three across below that, two on a phone. */}
       <div className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-3">
+        {/*
+          Net of refunds, and says so when there were any. The figure a
+          shop wants under "Today's Sales" is what it actually holds,
+          but a number that silently shrank by GH₵3,400 when somebody
+          returned a battery would read as a fault in the till.
+        */}
         <HeadlineCard tone="indigo" icon={FiShoppingBag} label="Today's Sales"
           value={cash(h.today_sales.value)} delta={h.today_sales.delta}
-          note="vs yesterday" series={salesSeries} />
+          note="vs yesterday" series={salesSeries}
+          footnote={h.today_sales.refunded > 0
+            ? `${cash(h.today_sales.gross)} sold, ${cash(h.today_sales.refunded)} refunded`
+            : null} />
         <HeadlineCard tone="green" icon={FiBarChart2} label="This Month"
           value={cash(h.month_sales.value)} delta={h.month_sales.delta}
-          note="vs last month" series={days.map((d) => d.sales)} />
+          note="vs last month" series={days.map((d) => d.sales)}
+          footnote={h.month_sales.refunded > 0
+            ? `${cash(h.month_sales.refunded)} refunded` : null} />
         <HeadlineCard tone="amber" icon={FiDollarSign} label="Today's Profit"
           value={cash(h.today_profit.value)} delta={h.today_profit.delta}
           note="vs yesterday" series={profitSeries} />

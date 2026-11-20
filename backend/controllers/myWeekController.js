@@ -1,4 +1,5 @@
 const Sale = require('../models/Sale');
+const Refund = require('../models/Refund');
 const Expense = require('../models/Expense');
 const Complaint = require('../models/Complaint');
 
@@ -156,19 +157,72 @@ const getMyToday = async (req, res) => {
       layaway_ref: { $in: [null, undefined] },
     });
 
-    const [todaySales, yesterdaySales, weekSales] = await Promise.all([
+    /**
+     * What this person handed back, by the day it went out of the
+     * drawer.
+     *
+     * Attributed to whoever MADE the sale, not whoever processed the
+     * return: the sale is being undone, and leaving it against the
+     * seller's name is the only way their day's figure matches the
+     * money. The date used is the refund's own — the cash left today
+     * whatever day the sale was rung up.
+     *
+     * Only approved refunds count. One waiting on a decision has
+     * returned nothing to anybody.
+     */
+    const myRefunds = async (from, to) => {
+      const rows = await Refund.aggregate([
+        {
+          $match: {
+            status: 'approved',
+            refund_date: { $gte: from, ...(to ? { $lt: to } : {}) },
+          },
+        },
+        {
+          $lookup: {
+            from: 'sales', localField: 'sale_id', foreignField: '_id', as: 'sale',
+          },
+        },
+        { $unwind: '$sale' },
+        { $match: { 'sale.user_id': me } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$refund_date' } },
+            total: { $sum: '$refund_amount' },
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+      return rows;
+    };
+
+    const dayKeyOf = (d) => {
+      const x = new Date(d);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+    };
+
+    const [todaySales, yesterdaySales, weekSales, refundRows, yesterdayRefunds] = await Promise.all([
       Sale.find(mine(startOfToday)).select('total_amount items payment_method payment_status sale_date customer_name invoice_no').lean(),
       Sale.find(mine(startOfYesterday, startOfToday)).select('total_amount payment_status').lean(),
       Sale.find(mine(weekStart)).select('total_amount payment_status sale_date').lean(),
+      myRefunds(weekStart < startOfToday ? weekStart : startOfToday),
+      myRefunds(startOfYesterday, startOfToday),
     ]);
+
+    const refundByDay = new Map(refundRows.map((r) => [r._id, r.total]));
+    const refundedToday = money(refundByDay.get(dayKeyOf(startOfToday)) || 0);
+    const refundedYesterday = money(
+      yesterdayRefunds.reduce((t, r) => t + (Number(r.total) || 0), 0));
 
     const counter = (rows) => rows.filter((s) => s.payment_status !== 'debt_payment');
     const sum = (rows) => money(rows.reduce((t, s) => t + (Number(s.total_amount) || 0), 0));
 
     const todayCounter = counter(todaySales);
     const yesterdayCounter = counter(yesterdaySales);
-    const takings = sum(todayCounter);
-    const before = sum(yesterdayCounter);
+    const grossToday = sum(todayCounter);
+    const takings = money(grossToday - refundedToday);
+    const before = money(sum(yesterdayCounter) - refundedYesterday);
 
     const pieces = todayCounter.reduce(
       (n, s) => n + (s.items || []).reduce((q, i) => q + (Number(i.quantity) || 0), 0), 0);
@@ -206,7 +260,7 @@ const getMyToday = async (req, res) => {
       return {
         day: day.slice(0, 3),
         future: from > now,
-        takings: sum(rows),
+        takings: money(sum(rows) - (refundByDay.get(dayKeyOf(from)) || 0)),
         sales: rows.length,
       };
     });
@@ -220,12 +274,19 @@ const getMyToday = async (req, res) => {
         as_of: now,
         today: {
           takings,
+          gross: grossToday,
+          refunded: refundedToday,
           delta: before ? Number((((takings - before) / before) * 100).toFixed(1)) : (takings ? 100 : 0),
           sales: todayCounter.length,
           pieces,
           average: todayCounter.length ? money(takings / todayCounter.length) : 0,
         },
-        week: { takings: sum(counter(weekSales)), sales: counter(weekSales).length, days },
+        week: {
+          takings: money(sum(counter(weekSales))
+            - refundRows.reduce((t, r) => t + (Number(r.total) || 0), 0)),
+          sales: counter(weekSales).length,
+          days,
+        },
         methods: [...byMethod.entries()]
           .map(([method, total]) => ({ method, total }))
           .sort((a, b) => b.total - a.total),
