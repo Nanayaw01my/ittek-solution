@@ -31,6 +31,9 @@ const buildForm = async (opts) => {
   const settings = (await Settings.findOne().lean()) || {};
   return generateBlankReceiptForm({
     logoUrl: settings.logo_url,
+    // The same terms the till prints, so a hand-written slip on the
+    // shop's own form does not promise something the printed one denies.
+    returnsPolicy: (settings.receipt_policy || '').trim() || undefined,
     company: {
       name: settings.company_name,
       address: settings.company_address,

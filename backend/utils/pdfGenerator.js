@@ -1,5 +1,6 @@
 const PDFDocument = require('pdfkit');
 const { modules } = require('./ean13');
+const { DEFAULT_RETURNS_POLICY } = require('../config/receiptPolicy');
 const https = require('https');
 const http = require('http');
 
@@ -1311,7 +1312,7 @@ const generateBlankReceiptForm = async (options = {}) => {
         doc.fontSize(8).font('Helvetica-Bold').fillColor('#111111')
           .text('Thank you for your business!', ML, fy + 8, { width: W, align: 'center' });
         doc.fontSize(7.5).font('Helvetica').fillColor(LGRAY)
-          .text('Goods returned are accepted subject to our terms and conditions. Please keep this receipt as proof of purchase.',
+          .text(options.returnsPolicy || DEFAULT_RETURNS_POLICY,
             ML, fy + 20, { width: W, align: 'center' });
         reset();
       };

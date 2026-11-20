@@ -62,7 +62,7 @@ const updateSettings = async (req, res) => {
   try {
     const {
       company_name, company_address, company_phone, company_email,
-      tax_rate, low_stock_alert, receipt_header, receipt_footer,
+      tax_rate, low_stock_alert, receipt_header, receipt_footer, receipt_policy,
       currency_symbol, notification_settings, logo_url,
       base_currency, currencies, loyalty_settings, fraud_settings, layaway_settings,
       receipt_width_mm, receipt_offset_mm, receipt_text_scale, gift_promo, auto_print_receipt,
@@ -81,6 +81,16 @@ const updateSettings = async (req, res) => {
     if (low_stock_alert !== undefined) settings.low_stock_alert = low_stock_alert;
     if (receipt_header !== undefined) settings.receipt_header = receipt_header;
     if (receipt_footer !== undefined) settings.receipt_footer = receipt_footer;
+    /**
+     * Cleared back to the shop's standard wording rather than to
+     * nothing: a receipt with no policy on it is worse than one with
+     * the default, and an empty box is the easiest thing in the world
+     * to leave behind by accident.
+     */
+    if (receipt_policy !== undefined) {
+      const text = String(receipt_policy).trim();
+      settings.receipt_policy = text || require('../config/receiptPolicy').DEFAULT_RETURNS_POLICY;
+    }
     if (currency_symbol !== undefined) settings.currency_symbol = currency_symbol;
     if (notification_settings !== undefined) {
       settings.notification_settings = { ...settings.notification_settings, ...notification_settings };

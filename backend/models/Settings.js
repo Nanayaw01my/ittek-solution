@@ -41,6 +41,19 @@ const SettingsSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    /**
+     * The returns policy printed on every receipt.
+     *
+     * Its own field rather than part of receipt_footer, because the two
+     * are different in kind: a footer is a pleasantry and this is the
+     * terms the sale was made on. A shop that clears its footer should
+     * not thereby delete its policy.
+     */
+    receipt_policy: {
+      type: String,
+      trim: true,
+      default: require('../config/receiptPolicy').DEFAULT_RETURNS_POLICY,
+    },
     currency_symbol: {
       type: String,
       default: 'GH₵',

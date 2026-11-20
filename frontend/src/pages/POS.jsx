@@ -30,6 +30,7 @@ import PayLaterModal from '../components/PayLaterModal'
 import { holdSale } from '../api/pos'
 import { useTranslation } from '../i18n'
 import { format, addDays } from 'date-fns'
+import { returnsPolicy } from '../utils/receiptPolicy'
 
 const PAYMENT_METHODS = ['Cash', 'Card', 'Mobile Money']
 
@@ -117,7 +118,7 @@ function CartItem({ item, onUpdateQty, onRemove }) {
 }
 
 function ReceiptModal({
-  isOpen, onClose, saleData, logoUrl, companyName, companyAddress, companyPhone,
+  isOpen, onClose, saleData, logoUrl, companyName, companyAddress, companyPhone, policy,
   receiptWidthMm, receiptOffsetMm, receiptTextScale, autoPrint,
 }) {
   const receiptRef = useRef(null)
@@ -351,12 +352,26 @@ function ReceiptModal({
             </div>
           )}
 
+          {/*
+            The terms the sale was made on, set in a box so it reads as
+            a condition rather than a pleasantry — and darker than the
+            rest of the footer, because thermal paper fades and this is
+            the line a customer will be shown in three weeks when they
+            come back wanting their money.
+
+            It sat under "Thank you for your business" in grey saying
+            "Returns are accepted subject to our terms and conditions",
+            which is the opposite of the shop's actual policy and had
+            been printed on every sale since the till was built.
+          */}
+          <div className="border border-gray-400 rounded p-2 mb-3">
+            <p className="text-[10px] leading-snug text-gray-900 text-center font-semibold">
+              {policy}
+            </p>
+          </div>
+
           <div className="text-center text-xs text-gray-500">
             <p className="font-semibold">Thank you for your business!</p>
-            <p className="mt-1">
-              Returns are accepted subject to our terms and conditions.
-              Please keep this receipt as proof of purchase.
-            </p>
             <p className="mt-1">Powered by ITTEK Solution</p>
           </div>
         </div>
@@ -1674,6 +1689,7 @@ export default function POS() {
         companyName={settings.company_name}
         companyAddress={settings.company_address}
         companyPhone={settings.company_phone}
+        policy={returnsPolicy(settings)}
       />
     </div>
   )

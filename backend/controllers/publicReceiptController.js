@@ -37,6 +37,16 @@ const getPublicReceipt = async (req, res) => {
           phone: settings.company_phone || '',
           logo_url: settings.logo_url || '',
           currency_symbol: settings.currency_symbol || 'GH₵',
+          /**
+           * The same terms as the paper slip.
+           *
+           * A customer who kept the link rather than the paper must not
+           * be told something different from one who kept the paper —
+           * and the link is the copy they are most likely to still have
+           * three weeks later, when the question actually comes up.
+           */
+          returns_policy: (settings.receipt_policy || '').trim()
+            || require('../config/receiptPolicy').DEFAULT_RETURNS_POLICY,
         },
         receipt: {
           invoice_no: sale.invoice_no,

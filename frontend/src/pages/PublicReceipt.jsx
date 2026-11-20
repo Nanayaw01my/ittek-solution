@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import Ean13 from '../components/Ean13'
+import { DEFAULT_RETURNS_POLICY } from '../utils/receiptPolicy'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
@@ -191,6 +192,13 @@ export default function PublicReceipt() {
         )}
 
         <div className="px-5 pb-6 text-center text-xs text-gray-400">
+          {/* The same terms as the paper slip. A customer who kept the
+              link rather than the paper must not be told something
+              different from a customer who kept the paper. */}
+          <p className="text-[11px] leading-snug text-gray-700 font-semibold
+                        border border-gray-300 rounded p-2 mb-2 text-center">
+            {shop.returns_policy || DEFAULT_RETURNS_POLICY}
+          </p>
           <p className="font-semibold text-gray-500">Thank you for your business!</p>
           <p>Powered by ITTEK Solution</p>
         </div>

@@ -43,6 +43,7 @@ const COMPANY_FIELDS = {
   companyEmail: 'company_email',
   receiptHeader: 'receipt_header',
   receiptFooter: 'receipt_footer',
+  receiptPolicy: 'receipt_policy',
   lowStockThreshold: 'low_stock_alert',
   taxRate: 'tax_rate',
 }
@@ -137,6 +138,24 @@ function CompanyTab({ settings, onSave, loading }) {
         <textarea {...register('receiptFooter')} rows={2}
           className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
           placeholder="e.g. Thank you for your business!" />
+      </div>
+      {/*
+        The terms the sale is made on, printed in a box on the slip, on
+        the PDF and on the link sent to the customer's phone. Its own
+        field rather than part of the footer: a footer is a pleasantry
+        and this is a condition, and a shop clearing one should not
+        thereby delete the other.
+      */}
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-1">
+          Returns Policy on Receipts
+        </label>
+        <textarea {...register('receiptPolicy')} rows={3}
+          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+          placeholder="GOODS SOLD ARE NOT RETURNABLE. Some items may be refunded under our returns policy — please ask in store." />
+        <p className="text-xs text-gray-500 mt-1">
+          Printed on every receipt. Left empty, the shop's standard wording is used.
+        </p>
       </div>
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1">Receipt Paper Width</label>
