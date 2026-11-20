@@ -92,6 +92,16 @@ const MeetingSchema = new mongoose.Schema(
     started_at: { type: Date, default: null },
     ended_at: { type: Date, default: null },
 
+    /**
+     * People the host has put out of the meeting.
+     *
+     * Held on the document rather than in the room's memory, because
+     * the whole point is that they cannot simply tap Join again — and
+     * a list that lives only in the running process forgets them the
+     * moment the server restarts.
+     */
+    removed_ids: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+
     /** What was decided, written afterwards. */
     notes: { type: String, trim: true, default: '' },
 
@@ -128,6 +138,8 @@ MeetingSchema.index({ status: 1, scheduled_for: -1 });
  */
 MeetingSchema.statics.invites = function invites(meeting, user) {
   if (!meeting || !user) return false;
+  // Put out of the room by the host, and not through the door again.
+  if ((meeting.removed_ids || []).some((id) => String(id) === String(user._id))) return false;
   if (String(meeting.created_by) === String(user._id)) return true;
   /**
    * The host is in the meeting they are running, whatever the audience
@@ -141,6 +153,20 @@ MeetingSchema.statics.invites = function invites(meeting, user) {
     return (meeting.roles || []).includes(user.role);
   }
   return (meeting.user_ids || []).some((id) => String(id) === String(user._id));
+};
+
+/**
+ * Who may silence or remove somebody.
+ *
+ * Whoever is running the meeting, and any owner as a backstop: a host
+ * whose phone dies mid-meeting would otherwise leave a noisy room with
+ * nobody able to quiet it.
+ */
+MeetingSchema.statics.moderatedBy = function moderatedBy(meeting, user, isOwnerRole) {
+  if (!meeting || !user) return false;
+  if (meeting.host_id && String(meeting.host_id) === String(user._id)) return true;
+  if (String(meeting.created_by) === String(user._id)) return true;
+  return Boolean(isOwnerRole);
 };
 
 /**

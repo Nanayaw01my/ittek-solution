@@ -357,3 +357,86 @@ test('Cloudflare relay credentials are passed through, in either shape, and cach
   delete process.env.CLOUDFLARE_TURN_KEY_ID;
   delete process.env.CLOUDFLARE_TURN_API_TOKEN;
 });
+
+test('a mute is enforced on the room, not merely asked of one phone', () => {
+  /**
+   * Asking somebody's phone to stop sending is the polite half of a
+   * mute and the only half most implementations have. It holds exactly
+   * as long as that phone cooperates. The other half — every other
+   * phone in the room refusing to play them — is the one that holds
+   * regardless, and the two together are what makes this a control
+   * rather than a request.
+   */
+  const signals = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'utils', 'meetingSignals.js'), 'utf8'
+  );
+  const silence = signals.slice(signals.indexOf('const silence ='), signals.indexOf("if (msg.type === 'mute')"));
+  assert.ok(silence.includes("type: on ? 'muted-by-host'"), 'the person is told');
+  assert.ok(silence.includes("type: 'peer-muted'"), 'and so is everybody else');
+  assert.ok(silence.includes('roomOf(roomKey).forEach'), 'the whole room, not just the two of them');
+
+  const room = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'frontend/src/pages/MeetingRoom.jsx'), 'utf8'
+  );
+  assert.ok(room.includes('el.muted = Boolean(peer.hostMuted)'),
+    'each listener must stop playing a muted person');
+});
+
+test('only the host or an owner may silence or remove anybody', () => {
+  const Meeting = require('../models/Meeting');
+  const m = { created_by: 'owner1', host_id: 'mgr1' };
+
+  assert.equal(Meeting.moderatedBy(m, { _id: 'mgr1' }, false), true, 'the host');
+  assert.equal(Meeting.moderatedBy(m, { _id: 'owner1' }, false), true, 'whoever called it');
+  assert.equal(Meeting.moderatedBy(m, { _id: 'ceo' }, true), true, 'an owner, as a backstop');
+  assert.equal(Meeting.moderatedBy(m, { _id: 'sales1' }, false), false, 'nobody else');
+
+  const signals = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'utils', 'meetingSignals.js'), 'utf8'
+  );
+  assert.ok(signals.includes('if (!me.moderates) return;'),
+    'the socket is checked before any of the powers run');
+  assert.ok(signals.includes('Meeting.moderatedBy('),
+    'and that flag is settled at the door from the account, never from what a client claims');
+  // A host cannot be silenced or removed by another host.
+  assert.ok((signals.match(/target\.moderates/g) || []).length >= 2,
+    'a moderator must be exempt from both powers');
+});
+
+test('somebody removed stays out', () => {
+  /**
+   * The whole point is that they cannot simply tap Join again, so the
+   * list lives on the document rather than in the room's memory, which
+   * a restart would forget.
+   */
+  const Meeting = require('../models/Meeting');
+  const m = {
+    created_by: 'owner1', audience: 'everyone', roles: [], user_ids: [],
+    removed_ids: ['sales1'],
+  };
+  assert.equal(Meeting.invites(m, { _id: 'sales1', role: 'Sales' }), false);
+  assert.equal(Meeting.invites(m, { _id: 'sales2', role: 'Sales' }), true);
+
+  const signals = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'utils', 'meetingSignals.js'), 'utf8'
+  );
+  assert.ok(signals.includes('$addToSet: { removed_ids:'),
+    'removal must be written down, not just a closed socket');
+});
+
+test('nobody can switch on somebody else’s microphone', () => {
+  /**
+   * No browser allows it and none should. Being allowed to talk again
+   * only lifts the refusal; the person taps to speak. A version that
+   * pretended otherwise would be both impossible and wrong.
+   */
+  const hook = require('fs').readFileSync(
+    require('path').join(__dirname, '..', '..', 'frontend/src/hooks/useMeetingRoom.js'), 'utf8'
+  );
+  const allowed = hook.slice(hook.indexOf("if (msg.type === 'allowed-to-talk')"));
+  const body = allowed.slice(0, allowed.indexOf('return'));
+  assert.ok(!body.includes('track.enabled = true'),
+    'lifting a host mute must not turn the microphone back on');
+  assert.ok(hook.includes('if (hostMuted) return'),
+    'and the person cannot undo a host mute from their own button');
+});

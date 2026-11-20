@@ -60,6 +60,18 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
    * shows as a camera that is on everywhere except on your own screen.
    */
   const [cameraStream, setCameraStream] = useState(null)
+  /** Whether this phone may silence or remove anybody. The server decides. */
+  const [moderates, setModerates] = useState(false)
+  /**
+   * Silenced by whoever is running the meeting.
+   *
+   * Kept apart from `muted`, which is the person's own choice. Both
+   * stop the microphone; only one of them can be undone by tapping the
+   * button, and a screen that showed them the same way would look
+   * broken to somebody jabbing at a mic button that will not come back
+   * on.
+   */
+  const [hostMuted, setHostMuted] = useState(false)
 
   const ws = useRef(null)
   const pcs = useRef(new Map())        // peerId -> RTCPeerConnection
@@ -279,7 +291,10 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
         }
 
         if (msg.type === 'welcome') {
-          setPeers(msg.peers.map((p) => ({ ...p, stream: null, speaking: false })))
+          setModerates(Boolean(msg.moderates))
+          setPeers(msg.peers.map((p) => ({
+            ...p, stream: null, speaking: false, hostMuted: Boolean(p.host_muted),
+          })))
           // The newcomer calls everybody already here.
           for (const p of msg.peers) await callPeer(p.id)
           return
@@ -288,7 +303,9 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
         if (msg.type === 'joined') {
           setPeers((list) => (list.some((p) => p.id === msg.peer.id)
             ? list
-            : [...list, { ...msg.peer, stream: null, speaking: false }]))
+            : [...list, {
+              ...msg.peer, stream: null, speaking: false, hostMuted: Boolean(msg.peer.host_muted),
+            }]))
           return
         }
 
@@ -308,6 +325,39 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
         }
 
         if (msg.type === 'camera') { patchPeer(msg.from, { camera: msg.on }); return }
+
+        if (msg.type === 'muted-by-host') {
+          const track = localStream.current?.getAudioTracks()[0]
+          if (track) track.enabled = false
+          setMuted(true)
+          setHostMuted(true)
+          return
+        }
+
+        if (msg.type === 'allowed-to-talk') {
+          /**
+           * The microphone is NOT switched back on here.
+           *
+           * No browser lets one person enable another's microphone, and
+           * none should. What the host can do is stop refusing, and the
+           * person taps to speak — which is also the only version of
+           * this that is honest about who is being recorded.
+           */
+          setHostMuted(false)
+          return
+        }
+
+        if (msg.type === 'peer-muted') {
+          patchPeer(msg.id, { hostMuted: msg.on })
+          return
+        }
+
+        if (msg.type === 'removed') {
+          closing.current = true
+          setStatus('refused')
+          setRefusal(`${msg.by || 'The host'} removed you from this meeting.`)
+          return
+        }
         if (msg.type === 'left') drop(msg.id)
       }
 
@@ -427,11 +477,19 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
   // ── The three controls ─────────────────────────────────────────────
 
   const toggleMute = useCallback(() => {
+    // Silenced by the host is not yours to undo.
+    if (hostMuted) return
     const track = localStream.current?.getAudioTracks()[0]
     if (!track) return
     track.enabled = !track.enabled
     setMuted(!track.enabled)
-  }, [])
+  }, [hostMuted])
+
+  /** The host's powers. Refused by the server for anybody else. */
+  const mutePeer = useCallback((peerId) => say({ type: 'mute', to: peerId }), [say])
+  const allowPeer = useCallback((peerId) => say({ type: 'allow', to: peerId }), [say])
+  const removePeer = useCallback((peerId) => say({ type: 'remove', to: peerId }), [say])
+  const muteEveryone = useCallback(() => say({ type: 'mute-all' }), [say])
 
   const camerasOn = peers.filter((p) => p.camera).length + (cameraOn ? 1 : 0)
 
@@ -477,6 +535,7 @@ export default function useMeetingRoom({ roomKey, iceServers, cameraLimit = 3, o
 
   return {
     peers, status, refusal, muted, cameraOn, speaking, micWorks,
+    moderates, hostMuted, mutePeer, allowPeer, removePeer, muteEveryone,
     camerasOn, cameraLimit,
     cameraStream,
     toggleMute, toggleCamera, hangUp,

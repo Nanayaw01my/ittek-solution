@@ -1,5 +1,6 @@
 const { WebSocketServer } = require('ws');
 const jwt = require('jsonwebtoken');
+const { OWNER_ROLES } = require('../middleware/rbac');
 const User = require('../models/User');
 const Meeting = require('../models/Meeting');
 
@@ -46,7 +47,8 @@ const others = (key, exceptId) =>
   [...roomOf(key).entries()].filter(([id]) => id !== exceptId);
 
 const describe = (id, peer) => ({
-  id, user_id: peer.userId, name: peer.name, role: peer.role, camera: peer.camera,
+  id, user_id: peer.userId, name: peer.name, role: peer.role,
+  camera: peer.camera, host_muted: peer.hostMuted,
 });
 
 /**
@@ -78,7 +80,20 @@ const authorise = async (token, roomKey) => {
   if (meeting.status === 'ended' || meeting.status === 'cancelled') return null;
   if (!Meeting.invites(meeting, { ...user, _id: payload.id })) return null;
 
-  return { userId: String(payload.id), name: user.username, role: user.role, meeting };
+  return {
+    userId: String(payload.id),
+    name: user.username,
+    role: user.role,
+    meeting,
+    /**
+     * Whether this socket may silence or remove anybody, decided once
+     * at the door from the account and the meeting — never from
+     * anything the client says about itself later.
+     */
+    moderates: Meeting.moderatedBy(
+      meeting, { _id: payload.id }, OWNER_ROLES.includes(user.role)
+    ),
+  };
 };
 
 /**
@@ -148,7 +163,10 @@ const attach = (server) => {
       }
     }
 
-    const me = { ws, userId: who.userId, name: who.name, role: who.role, camera: false };
+    const me = {
+      ws, userId: who.userId, name: who.name, role: who.role,
+      camera: false, hostMuted: false, moderates: who.moderates,
+    };
     room.set(id, me);
 
     // Who is already here. The newcomer calls them, not the other way
@@ -158,6 +176,7 @@ const attach = (server) => {
       type: 'welcome',
       id,
       title: who.meeting.title,
+      moderates: who.moderates,
       peers: others(roomKey, id).map(([pid, p]) => describe(pid, p)),
     });
 
@@ -185,6 +204,53 @@ const attach = (server) => {
 
       if (msg.type === 'bye') {
         return ws.close();
+      }
+
+      /**
+       * The host's powers.
+       *
+       * Checked against the socket's own `moderates`, settled at the
+       * door from the account and the meeting. A client that simply
+       * said it was the host would otherwise be the host, and the one
+       * thing a moderation feature must not be is advisory.
+       */
+      if (!me.moderates) return;
+
+      const silence = (peerId, on) => {
+        const target = room.get(String(peerId));
+        if (!target || target.moderates) return;   // nobody silences a host
+        target.hostMuted = on;
+        // Told to the person, so their own screen explains itself...
+        send(target.ws, { type: on ? 'muted-by-host' : 'allowed-to-talk', by: me.name });
+        // ...and to the room, so every other phone stops playing them.
+        // Asking their phone to stop sending is the polite half; this is
+        // the half that holds if it does not.
+        roomOf(roomKey).forEach((p) => send(p.ws, {
+          type: 'peer-muted', id: String(peerId), on,
+        }));
+      };
+
+      if (msg.type === 'mute') return silence(msg.to, true);
+      if (msg.type === 'allow') return silence(msg.to, false);
+
+      if (msg.type === 'mute-all') {
+        return [...room.keys()].forEach((pid) => { if (pid !== id) silence(pid, true); });
+      }
+
+      if (msg.type === 'remove') {
+        const target = room.get(String(msg.to));
+        if (!target || target.moderates) return;   // nor removes one
+        send(target.ws, { type: 'removed', by: me.name });
+        /**
+         * Written down before the socket closes, so tapping Join again
+         * is refused at the door rather than letting them straight back
+         * into the room they were just put out of.
+         */
+        Meeting.updateOne(
+          { room_key: roomKey },
+          { $addToSet: { removed_ids: target.userId } }
+        ).catch((err) => console.error('Meeting removal error:', err.message));
+        return target.ws.close();
       }
     });
 

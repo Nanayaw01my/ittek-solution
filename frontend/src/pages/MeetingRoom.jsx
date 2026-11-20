@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiAlertTriangle, FiWifiOff, FiVolume2,
+  FiUserX, FiSlash, FiX,
 } from 'react-icons/fi'
 import { joinMeeting, leaveMeeting } from '../api/meetings'
 import useMeetingRoom from '../hooks/useMeetingRoom'
@@ -41,7 +42,7 @@ import useMeetingRoom from '../hooks/useMeetingRoom'
  * been started — silent again, in the middle of a meeting, for the one
  * person who turned their camera on.
  */
-function PeerTile({ peer, onBlocked, hasRelay }) {
+function PeerTile({ peer, onBlocked, hasRelay, canModerate, onModerate }) {
   const mediaRef = useRef(null)
 
   const showsCamera = Boolean(peer.camera && peer.stream?.getVideoTracks?.().length)
@@ -59,7 +60,14 @@ function PeerTile({ peer, onBlocked, hasRelay }) {
     if (!el || !peer.stream) return undefined
 
     if (el.srcObject !== peer.stream) el.srcObject = peer.stream
-    el.muted = false
+    /**
+     * Silenced by the host means silenced here too.
+     *
+     * Asking their phone to stop sending is the polite half of a mute.
+     * This is the half that holds: every other phone in the room stops
+     * playing them, whatever their own app decides to do.
+     */
+    el.muted = Boolean(peer.hostMuted)
     el.volume = 1
 
     let dead = false
@@ -80,7 +88,7 @@ function PeerTile({ peer, onBlocked, hasRelay }) {
     // is what re-attaches it — a renegotiation that brings in another
     // person's tracks has been known to silence the ones already
     // playing, and re-attaching is the cure.
-  }, [peer.stream, onBlocked])
+  }, [peer.stream, peer.hostMuted, onBlocked])
 
   /** Do we actually have their voice yet? */
   const connected = Boolean(peer.stream?.getAudioTracks?.().length)
@@ -122,7 +130,10 @@ function PeerTile({ peer, onBlocked, hasRelay }) {
   return (
     <div className={`relative rounded-2xl overflow-hidden border-4 transition-colors
                      ${peer.speaking ? 'border-orange-400' : 'border-transparent'}
-                     bg-gray-800 aspect-[4/3]`}>
+                     bg-gray-800 aspect-[4/3]`}
+         onClick={canModerate ? () => onModerate(peer) : undefined}
+         role={canModerate ? 'button' : undefined}
+         aria-label={canModerate ? `Options for ${peer.name}` : undefined}>
       {/*
         Sound and picture both. Mounted always and never swapped, so it
         keeps playing when a camera goes on or off — and on screen even
@@ -143,7 +154,10 @@ function PeerTile({ peer, onBlocked, hasRelay }) {
       )}
 
       <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
-        <p className="text-white font-bold text-sm truncate">{peer.name}</p>
+        <p className="text-white font-bold text-sm truncate flex items-center gap-1.5">
+          {peer.name}
+          {peer.hostMuted && <FiMicOff className="text-red-400 shrink-0" size={13} />}
+        </p>
         {peer.role && <p className="text-white/60 font-semibold text-[11px] truncate">{peer.role}</p>}
       </div>
 
@@ -187,7 +201,7 @@ function PeerTile({ peer, onBlocked, hasRelay }) {
   )
 }
 
-function MeView({ name, speaking, cameraOn, stream, muted, micWorks, settled, hasCompany }) {
+function MeView({ name, speaking, cameraOn, stream, muted, micWorks, settled, hasCompany, hostMuted }) {
   const videoRef = useRef(null)
   useEffect(() => {
     if (videoRef.current && stream) videoRef.current.srcObject = stream
@@ -222,7 +236,16 @@ function MeView({ name, speaking, cameraOn, stream, muted, micWorks, settled, ha
         from "nobody is listening", and the two have nothing to do with
         each other.
       */}
-      {settled && !micWorks && !muted && hasCompany && (
+      {hostMuted && (
+        <div className="absolute top-2 inset-x-2">
+          <p className="text-[10.5px] font-bold text-red-300 bg-black/70 rounded-lg px-2 py-1
+                        text-center leading-tight">
+            The host has muted you
+          </p>
+        </div>
+      )}
+
+      {settled && !micWorks && !muted && !hostMuted && hasCompany && (
         <div className="absolute top-2 inset-x-2">
           <p className="text-[10.5px] font-bold text-amber-300 bg-black/70 rounded-lg px-2 py-1
                         text-center leading-tight">
@@ -230,6 +253,75 @@ function MeView({ name, speaking, cameraOn, stream, muted, micWorks, settled, ha
           </p>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * What the host can do to one person, asked for by tapping their tile.
+ *
+ * A sheet rather than buttons on the tile itself: at four people to a
+ * row on a phone there is no room for them, and putting a Remove button
+ * permanently under somebody's face invites the accidental tap.
+ */
+function ModerateSheet({ peer, onClose, onMute, onAllow, onRemove }) {
+  const [confirmRemove, setConfirmRemove] = useState(false)
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center"
+         onClick={onClose}>
+      <div className="bg-gray-900 border-t-2 sm:border-2 border-white/15 w-full sm:max-w-sm
+                      rounded-t-2xl sm:rounded-2xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+           onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <p className="text-white font-black text-base truncate">{peer.name}</p>
+            {peer.role && <p className="text-white/50 font-semibold text-xs">{peer.role}</p>}
+          </div>
+          <button onClick={onClose} className="text-white/60 p-1" aria-label="Close">
+            <FiX size={20} />
+          </button>
+        </div>
+
+        {peer.hostMuted ? (
+          <button onClick={() => { onAllow(peer.id); onClose() }}
+                  className="w-full py-3.5 rounded-xl font-bold bg-orange-500 text-white
+                             flex items-center justify-center gap-2">
+            <FiMic size={17} /> Let {peer.name} talk
+          </button>
+        ) : (
+          <button onClick={() => { onMute(peer.id); onClose() }}
+                  className="w-full py-3.5 rounded-xl font-bold bg-white/10 text-white
+                             flex items-center justify-center gap-2">
+            <FiMicOff size={17} /> Mute {peer.name}
+          </button>
+        )}
+
+        {peer.hostMuted && (
+          <p className="text-white/40 font-semibold text-[11px] text-center mt-2 leading-snug">
+            They tap their own microphone to speak — no app can switch on
+            somebody else's.
+          </p>
+        )}
+
+        {/*
+          Two taps, because it cannot be undone from here: they are out
+          of the room and the server will not let them back in.
+        */}
+        {confirmRemove ? (
+          <button onClick={() => { onRemove(peer.id); onClose() }}
+                  className="w-full mt-3 py-3.5 rounded-xl font-black bg-red-600 text-white
+                             flex items-center justify-center gap-2">
+            <FiUserX size={17} /> Yes, remove them for good
+          </button>
+        ) : (
+          <button onClick={() => setConfirmRemove(true)}
+                  className="w-full mt-3 py-3.5 rounded-xl font-bold border-2 border-red-500/60
+                             text-red-300 flex items-center justify-center gap-2">
+            <FiUserX size={17} /> Remove from the meeting
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -246,6 +338,9 @@ export default function MeetingRoom() {
    * attach-and-check cycle several times a second and never settling.
    */
   const blocked = useCallback(() => setSoundBlocked(true), [])
+
+  /** The person whose tile the host tapped, if any. */
+  const [moderating, setModerating] = useState(null)
 
   /** Long enough in the room that silence is worth remarking on. */
   const [settled, setSettled] = useState(false)
@@ -357,6 +452,27 @@ export default function MeetingRoom() {
         )}
       </div>
 
+      {moderating && (
+        <ModerateSheet
+          peer={room.peers.find((p) => p.id === moderating.id) || moderating}
+          onClose={() => setModerating(null)}
+          onMute={room.mutePeer} onAllow={room.allowPeer} onRemove={room.removePeer}
+        />
+      )}
+
+      {/*
+        One tap for a shop meeting where eight phones are each picking
+        up a different corner of the room. Everyone can be let back in
+        to speak one at a time.
+      */}
+      {room.moderates && room.peers.length > 0 && (
+        <button onClick={room.muteEveryone}
+                className="mx-3 mt-3 py-2.5 rounded-xl bg-white/10 text-white font-bold text-sm
+                           flex items-center justify-center gap-2">
+          <FiSlash size={15} /> Mute everyone
+        </button>
+      )}
+
       {soundBlocked && (
         <button
           onClick={() => {
@@ -381,10 +497,11 @@ export default function MeetingRoom() {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <MeView name="You" speaking={room.speaking} cameraOn={room.cameraOn}
                   stream={room.cameraStream} muted={room.muted}
-                  micWorks={room.micWorks} settled={settled}
+                  micWorks={room.micWorks} settled={settled} hostMuted={room.hostMuted}
                   hasCompany={room.peers.length > 0} />
           {room.peers.map((p) => (
-            <PeerTile key={p.id} peer={p} hasRelay={ticket?.has_relay} onBlocked={blocked} />
+            <PeerTile key={p.id} peer={p} hasRelay={ticket?.has_relay} onBlocked={blocked}
+                      canModerate={room.moderates} onModerate={setModerating} />
           ))}
         </div>
       </div>
@@ -396,10 +513,12 @@ export default function MeetingRoom() {
       */}
       <div className="p-4 border-t border-white/10 flex items-center justify-center gap-3
                       pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <button onClick={room.toggleMute}
+        <button onClick={room.toggleMute} disabled={room.hostMuted}
                 className={`w-14 h-14 rounded-full flex items-center justify-center
-                            ${room.muted ? 'bg-red-500 text-white' : 'bg-white/15 text-white'}`}
-                aria-label={room.muted ? 'Unmute' : 'Mute'}>
+                            ${room.muted ? 'bg-red-500 text-white' : 'bg-white/15 text-white'}
+                            ${room.hostMuted ? 'opacity-50' : ''}`}
+                aria-label={room.hostMuted ? 'Muted by the host'
+                  : room.muted ? 'Unmute' : 'Mute'}>
           {room.muted ? <FiMicOff size={22} /> : <FiMic size={22} />}
         </button>
 
