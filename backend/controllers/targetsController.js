@@ -78,11 +78,27 @@ const listTargets = async (req, res) => {
       const goal = row?.target_amount ?? null;
 
       /**
+       * Two sources, added, and shown apart.
+       *
+       * What this department sold on the road, out of the shop's own
+       * records, plus whatever another system has reported for it —
+       * which for IT is the money the phone app has actually collected,
+       * down payments and weekly payments alike.
+       *
+       * They are kept visible as two numbers because they are two
+       * different kinds of fact, and a single total hides which of them
+       * moved.
+       */
+      const fromField = money.net;
+      const fromOutside = Number(row?.external_amount ?? 0);
+      const total = Number((fromField + fromOutside).toFixed(2));
+
+      /**
        * The percentage the shop asked for, worked out here rather than
        * stored: it is the shop's own sales divided by the goal, and
        * both of those move.
        */
-      const percent = goal ? Math.round((money.net / goal) * 100) : null;
+      const percent = goal ? Math.round((total / goal) * 100) : null;
 
       const base = row ? forScreen(row) : {
         _id: null,
@@ -101,12 +117,15 @@ const listTargets = async (req, res) => {
       return {
         ...base,
         target_amount: goal,
-        earned: money.net,
+        earned: total,
+        earned_field: fromField,
+        earned_outside: fromOutside,
+        outside_by: row?.external_set_by || '',
         earned_gross: money.revenue,
         refunded: money.refunded,
         sales_count: money.sales,
         percent,
-        short_by: goal ? Math.max(0, Number((goal - money.net).toFixed(2))) : null,
+        short_by: goal ? Math.max(0, Number((goal - total).toFixed(2))) : null,
         /** Out on a sheet, not yet paid for. Beside the figure, never in it. */
         still_out: stillOut.get(key) || 0,
       };

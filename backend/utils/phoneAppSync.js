@@ -21,21 +21,36 @@ const { ASPECTS } = require('../config/aspects');
 
 /** Where a "sales summary for targets" usually lives. */
 const CANDIDATE_PATHS = [
+  /**
+   * Payments first, and payments are the point.
+   *
+   * A phone goes out on a plan: something down, then weekly. What
+   * counts towards IT's target is money that actually arrived, so the
+   * thing to read is the payments, not the sales. Reading the sales
+   * would credit the department with the whole value of a handset the
+   * week it was signed for and eleven weeks before it is paid off.
+   */
+  '/payments',
+  '/payments/summary',
+  '/collections',
+  '/transactions',
   '/sales',
   '/sales/summary',
   '/targets',
-  '/summary/sales',
-  '/sales/targets',
-  '/phone-sales',
-  '/reports/targets',
   '/summary',
 ];
 
 /** The same idea under whatever name the other system gave it. */
 /** Where a record says when it happened. */
 const DATE_FIELDS = [
-  'sale_date', 'sold_at', 'created_at', 'createdAt', 'date', 'timestamp',
+  'paid_at', 'payment_date', 'paidAt', 'sale_date', 'sold_at',
+  'created_at', 'createdAt', 'date', 'timestamp',
   'purchased_at', 'started_at', 'opened_at',
+];
+
+/** What a payment record calls the money. */
+const AMOUNT_FIELDS = [
+  'amount', 'amount_paid', 'paid', 'paid_amount', 'value', 'total', 'sum',
 ];
 
 const FIELD = {
@@ -122,18 +137,43 @@ const dateOf = (row) => {
   return null;
 };
 
-/** Records grouped into the months they happened in. */
+/** The money on a record, if it carries any. */
+const amountOf = (row) => {
+  for (const f of AMOUNT_FIELDS) {
+    const v = row?.[f];
+    if (v === undefined || v === null || v === '') continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+};
+
+/**
+ * Records grouped into the months they happened in, counted and added
+ * up.
+ *
+ * Both, because the two answer different questions and only one of
+ * them is the target: the money is what a department is measured on,
+ * and the count is what makes the money believable.
+ */
 const countRecords = (rows) => {
   const byMonth = new Map();
   for (const row of rows) {
     const d = dateOf(row);
     if (!d) continue;
     const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
-    byMonth.set(key, (byMonth.get(key) || 0) + 1);
+    const held = byMonth.get(key) || { count: 0, amount: 0, withMoney: 0 };
+    held.count += 1;
+    const amount = amountOf(row);
+    if (amount !== null) { held.amount += amount; held.withMoney += 1; }
+    byMonth.set(key, held);
   }
-  return [...byMonth.entries()].map(([key, count]) => {
+  return [...byMonth.entries()].map(([key, held]) => {
     const [year, month] = key.split('-').map(Number);
-    return { year, month, count };
+    return {
+      year, month, count: held.count,
+      amount: held.withMoney > 0 ? Number(held.amount.toFixed(2)) : null,
+    };
   });
 };
 
@@ -253,22 +293,33 @@ const syncFromPhoneApp = async ({ by = 'Phone system' } = {}) => {
       }
 
       const savedCounts = [];
-      for (const { year, month, count } of counted) {
+      for (const { year, month, count, amount } of counted) {
         const now = new Date();
+        const set = {
+          department: PHONE_DEPARTMENT, year, month,
+          achieved: count, achieved_source: 'api',
+          achieved_set_by: by, achieved_set_at: now,
+        };
+        /**
+         * The money, when the records carry any. This is what the
+         * target is measured on; the count rides along beside it.
+         */
+        if (amount !== null) {
+          set.external_amount = amount;
+          set.external_set_by = by;
+          set.external_set_at = now;
+        }
+
         // eslint-disable-next-line no-await-in-loop
         await Target.findOneAndUpdate(
           { department: PHONE_DEPARTMENT, year, month },
           {
-            $set: {
-              department: PHONE_DEPARTMENT, year, month,
-              achieved: count, achieved_source: 'api',
-              achieved_set_by: by, achieved_set_at: now,
-            },
-            $setOnInsert: { target: 0, unit: 'phone sales', created_at: now },
+            $set: set,
+            $setOnInsert: { target: 0, unit: 'payments', created_at: now },
           },
           { new: true, upsert: true }
         );
-        savedCounts.push({ year, month, achieved: count });
+        savedCounts.push({ year, month, achieved: count, amount });
       }
 
       return {
@@ -380,5 +431,5 @@ const syncFromPhoneApp = async ({ by = 'Phone system' } = {}) => {
 
 module.exports = {
   syncFromPhoneApp, CANDIDATE_PATHS, PHONE_DEPARTMENT, periodOf, rowsOf, FIELD,
-  dateOf, countRecords, pageNote,
+  dateOf, amountOf, countRecords, pageNote,
 };

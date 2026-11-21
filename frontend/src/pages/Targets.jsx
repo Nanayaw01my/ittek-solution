@@ -80,6 +80,19 @@ function Row({ row, onSave, saving }) {
               <p className="text-sm font-bold text-gray-700 mt-1">
                 {cash(row.earned)} of {cash(row.target_amount)}
               </p>
+              {/*
+                Where it came from, when it came from two places. One
+                total would hide which of them moved — and for IT the
+                two mean quite different things: goods sold on the road,
+                and instalments collected on handsets.
+              */}
+              {row.earned_outside > 0 && (
+                <p className="text-[12px] font-bold text-gray-500">
+                  {cash(row.earned_field)} on the road
+                  {' · '}{cash(row.earned_outside)} collected
+                  {row.outside_by ? ` (${row.outside_by})` : ''}
+                </p>
+              )}
               {row.short_by > 0 && (
                 <p className="text-[12px] font-bold text-gray-500">
                   {cash(row.short_by)} to go

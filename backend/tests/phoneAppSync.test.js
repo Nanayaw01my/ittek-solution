@@ -135,9 +135,9 @@ test('a list of sales is counted, because the figure is how many there are', () 
   ];
 
   assert.deepEqual(countRecords(rows), [
-    { year: 2026, month: 11, count: 2 },
-    { year: 2026, month: 10, count: 1 },
-  ], 'counted into the month each one happened in');
+    { year: 2026, month: 11, count: 2, amount: null },
+    { year: 2026, month: 10, count: 1, amount: null },
+  ], 'counted into the month each one happened in, with no money to add up');
 
   assert.ok(dateOf({ createdAt: '2026-11-03' }), 'camelCase dates are dates too');
   assert.equal(dateOf({ id: 'x' }), null, 'a record with no date is not guessed into a month');
@@ -168,4 +168,43 @@ test('counting never invents a target', () => {
     'and the goal stays the shop’s to set');
   assert.ok(branch.includes('$setOnInsert: { target: 0'),
     'a month with no goal still gets its row');
+});
+
+test('the phone side counts money received, not handsets signed for', () => {
+  /**
+   * A phone goes out on a plan: something down, then weekly. What
+   * counts towards IT's target is money that actually arrived — the
+   * down payment and the weekly payments — and not the value of the
+   * handset. Reading the sales instead would credit the department
+   * with the whole price the week it was signed for and eleven weeks
+   * before it is paid off, and a target met on paper with eleven weeks
+   * still owing is not met.
+   */
+  const { CANDIDATE_PATHS, amountOf, countRecords } = require('../utils/phoneAppSync');
+
+  assert.equal(CANDIDATE_PATHS[0], '/payments',
+    'payments are looked for before sales, because payments are the figure');
+  assert.ok(CANDIDATE_PATHS.indexOf('/payments') < CANDIDATE_PATHS.indexOf('/sales'));
+
+  assert.equal(amountOf({ amount: 300 }), 300);
+  assert.equal(amountOf({ amount_paid: '150.50' }), 150.5, 'a numeric string is money');
+  assert.equal(amountOf({ id: 'x' }), null, 'a record with no money carries none');
+
+  const rows = [
+    { paid_at: '2026-11-03', amount: 300 },   // a deposit
+    { paid_at: '2026-11-10', amount: 150 },   // a week
+    { paid_at: '2026-11-17', amount: 150 },   // another
+    { paid_at: '2026-10-28', amount: 500 },   // last month's
+  ];
+  assert.deepEqual(countRecords(rows), [
+    { year: 2026, month: 11, count: 3, amount: 600 },
+    { year: 2026, month: 10, count: 1, amount: 500 },
+  ], 'the month gets what was paid in it, deposits and weeks alike');
+});
+
+test('records with no money give a count and no figure', () => {
+  const { countRecords } = require('../utils/phoneAppSync');
+  const rows = [{ created_at: '2026-11-03', id: 'a' }, { created_at: '2026-11-04', id: 'b' }];
+  assert.deepEqual(countRecords(rows), [{ year: 2026, month: 11, count: 2, amount: null }],
+    'null, not nought: no amount reported is not an amount of nothing');
 });

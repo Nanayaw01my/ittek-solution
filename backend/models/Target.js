@@ -67,6 +67,22 @@ const TargetSchema = new mongoose.Schema(
      */
     achieved: { type: Number, default: null, min: 0 },
 
+    /**
+     * Money reported by another system, for a month.
+     *
+     * The phone side of the business is run on dandorsolar.site, and
+     * its takings never pass through this till — so for IT there is
+     * nothing here to add up and the figure has to be told to us.
+     *
+     * It is money RECEIVED: down payments and the weekly payments that
+     * follow. Not the value of the handsets signed for. A customer on a
+     * twelve-week plan has paid what they have paid, and a target met
+     * on paper with eleven weeks still owing is not met.
+     */
+    external_amount: { type: Number, default: null, min: 0 },
+    external_set_by: { type: String, trim: true, default: '' },
+    external_set_at: { type: Date, default: null },
+
     note: { type: String, trim: true, default: '' },
 
     /**

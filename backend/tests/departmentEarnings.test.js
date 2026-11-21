@@ -13,20 +13,25 @@ const path = require('path');
 const B = path.join(__dirname, '..');
 const src = fs.readFileSync(path.join(B, 'utils/departmentEarnings.js'), 'utf8');
 
-test('field dispatch is not counted twice', () => {
+test('only what was sold on the road counts', () => {
   /**
-   * Taking a rep's money with the Pay button writes a real sale with
-   * the products on it. Reading the dispatch sheets for revenue as
-   * well would count the same panel twice and flatter every department
-   * that sells on the road — which is exactly what "read the sales
-   * from field dispatch" sounds like it should mean, and is why this
-   * is written down here rather than left to be rediscovered.
+   * The shop's rule: goods sold over the counter are not part of a
+   * target. A head of department is measured on what their people took
+   * out and sold, not on walk-in trade the shop would have had anyway.
+   *
+   * Nothing on a Sale says it came from the road — the link lives on
+   * the dispatch sheet, which keeps the id of every sale raised
+   * against it. Following those ids is the whole of what separates the
+   * two, so a version that queried sales by date alone would silently
+   * count the counter as well.
    */
   const earnings = src.slice(src.indexOf('const earningsFor'), src.indexOf('const stillOutFor'));
-  assert.ok(!earnings.includes('Dispatch.find'),
-    'the month’s revenue must come from sales alone');
-  assert.ok(src.includes('quantity_sold'),
-    'the dispatch sheets are still read — for what is still out, not for revenue');
+  assert.ok(earnings.includes("Dispatch.find({ 'sales.0': { $exists: true } })"),
+    'the sheets name which sales came off the road');
+  assert.ok(earnings.includes('_id: { $in: fieldSaleIds }'),
+    'and only those sales may be counted');
+  assert.ok(earnings.includes('fieldSaleIds.length === 0 ? []'),
+    'no sheets means no field sales, not every sale in the shop');
 });
 
 test('what is still out is reported beside the figure, never inside it', () => {
@@ -38,7 +43,7 @@ test('what is still out is reported beside the figure, never inside it', () => {
     'still-out is what went out less what came back and less what was sold');
 
   const controller = fs.readFileSync(path.join(B, 'controllers/targetsController.js'), 'utf8');
-  const row = controller.slice(controller.indexOf('const percent ='), controller.indexOf('still_out'));
+  const row = controller.slice(controller.indexOf('const fromField ='), controller.indexOf('still_out:'));
   assert.ok(!row.includes('stillOut.get'),
     'the percentage must not include stock nobody has paid for');
 });
@@ -84,6 +89,6 @@ test('the percentage is worked out, never stored', () => {
     'progress must not be a stored figure somebody has to keep updating');
 
   const controller = fs.readFileSync(path.join(B, 'controllers/targetsController.js'), 'utf8');
-  assert.ok(controller.includes('Math.round((money.net / goal) * 100)'),
-    'it is the shop’s own sales divided by the goal');
+  assert.ok(controller.includes('Math.round((total / goal) * 100)'),
+    'it is what came in divided by the goal');
 });
