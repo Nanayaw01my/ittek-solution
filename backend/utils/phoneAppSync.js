@@ -256,7 +256,22 @@ const syncFromPhoneApp = async ({ by = 'Phone system' } = {}) => {
       // The address is right and the key is not. Worth stopping on:
       // trying five more addresses with a bad key tells nobody
       // anything and looks like a guessing attempt from their end.
-      return { ok: false, reason: 'The other system refused the key.', path, status: answer.status };
+      /**
+       * Say what to do about it. A key is refused for one of two
+       * reasons — it was never right, or it was rotated at the other
+       * end — and in both cases the remedy is the same and is not
+       * obvious from the words "refused the key". Renaming a key in
+       * that system turned out to generate a new one, which is exactly
+       * the case this sentence is for.
+       */
+      return {
+        ok: false,
+        reason: 'The other system refused the key.',
+        hint: 'Copy the key as it stands now from the phone app\u2019s settings into '
+          + 'PHONE_APP_API_KEY on the server. Renaming or remaking a key there gives it a new value.',
+        path,
+        status: answer.status,
+      };
     }
     if (answer.status >= 400) {
       tried.push({ path, status: answer.status });
