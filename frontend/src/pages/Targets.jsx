@@ -29,11 +29,14 @@ const shift = (year, month, by) => {
 
 /** Behind, on track, or done — decided once so the colours agree. */
 const standing = (row) => {
-  if (row.progress === null || row.progress === undefined) return 'unreported'
-  if (row.progress >= 100) return 'met'
-  if (row.progress >= 60) return 'close'
+  const pct = row.percent ?? row.progress
+  if (pct === null || pct === undefined) return 'unreported'
+  if (pct >= 100) return 'met'
+  if (pct >= 60) return 'close'
   return 'behind'
 }
+
+const cash = (n) => `GH₵ ${Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: 0 })}`
 
 const BAR = {
   met: 'bg-green-600',
@@ -44,23 +47,19 @@ const BAR = {
 
 function Row({ row, onSave, saving }) {
   const [editing, setEditing] = useState(false)
-  const [target, setTargetValue] = useState(row.target ?? '')
-  const [achieved, setAchieved] = useState(row.achieved ?? '')
-  const [unit, setUnit] = useState(row.unit || 'jobs')
+  const [amount, setAmount] = useState(row.target_amount ?? '')
 
   const state = standing(row)
   const pct = Math.min(100, Math.max(0, row.progress ?? 0))
 
   const save = () => {
-    const payload = {
-      department: row.department, year: row.year, month: row.month, unit,
-    }
-    if (String(target).trim() !== '') payload.target = Number(target)
-    if (String(achieved).trim() !== '') payload.achieved = Number(achieved)
-    if (payload.target === undefined && payload.achieved === undefined) {
-      return toast.error('Enter a target, a number done, or both.')
-    }
-    onSave(payload, () => setEditing(false))
+    if (String(amount).trim() === '') return toast.error('Enter the target in cedis.')
+    onSave({
+      department: row.department,
+      year: row.year,
+      month: row.month,
+      target_amount: Number(amount),
+    }, () => setEditing(false))
   }
 
   return (
@@ -68,14 +67,33 @@ function Row({ row, onSave, saving }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="font-black text-base">{row.department_label}</h3>
-          {row.target === null ? (
-            <p className="text-sm font-semibold text-gray-500 mt-0.5">No target set</p>
-          ) : (
-            <p className="text-sm font-bold text-gray-700 mt-0.5">
-              {row.achieved === null ? '—' : row.achieved} of {row.target} {row.unit}
-              {row.progress !== null && (
-                <span className="text-gray-400"> · {row.progress}%</span>
+
+          {row.target_amount ? (
+            <>
+              {/* The percentage first and biggest, because that is the
+                  question the shop asks: how far along are they. */}
+              <p className={`text-[30px] font-black leading-none mt-1 tabular-nums ${
+                state === 'met' ? 'text-green-700'
+                  : state === 'close' ? 'text-orange-600' : 'text-red-600'}`}>
+                {row.percent}%
+              </p>
+              <p className="text-sm font-bold text-gray-700 mt-1">
+                {cash(row.earned)} of {cash(row.target_amount)}
+              </p>
+              {row.short_by > 0 && (
+                <p className="text-[12px] font-bold text-gray-500">
+                  {cash(row.short_by)} to go
+                </p>
               )}
+              {row.refunded > 0 && (
+                <p className="text-[12px] font-bold text-gray-500">
+                  after {cash(row.refunded)} refunded
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm font-semibold text-gray-500 mt-0.5">
+              No target set · {cash(row.earned)} so far
             </p>
           )}
         </div>
@@ -88,22 +106,26 @@ function Row({ row, onSave, saving }) {
         )}
       </div>
 
-      {row.target !== null && (
+      {row.target_amount ? (
         <div className="mt-3">
           <div className="h-3 rounded-full bg-gray-100 overflow-hidden">
-            <div className={`h-full rounded-full ${BAR[state]}`} style={{ width: `${pct}%` }} />
+            <div className={`h-full rounded-full ${BAR[state]}`}
+                 style={{ width: `${Math.min(100, Math.max(0, row.percent || 0))}%` }} />
           </div>
-          {/*
-            A department that has not reported is not a department at
-            nothing. Saying so stops an owner chasing somebody who is
-            simply quiet about their paperwork.
-          */}
-          {state === 'unreported' && (
-            <p className="text-[12px] font-bold text-gray-500 mt-1.5">
-              Nothing reported yet this month
-            </p>
-          )}
         </div>
+      ) : null}
+
+      {/*
+        Goods out on a sheet with no money in yet. Beside the figure and
+        never inside it: a department two thousand short with eight
+        thousand in a rep's boot is in a different position from one two
+        thousand short with nothing out — but it is not money the shop
+        has, and the target is about money the shop has.
+      */}
+      {row.still_out > 0 && (
+        <p className="text-[12px] font-bold text-gray-500 mt-2">
+          {cash(row.still_out)} still out on field sheets, not yet paid for
+        </p>
       )}
 
       {row.achieved_source === 'api' && (
@@ -115,28 +137,20 @@ function Row({ row, onSave, saving }) {
       {editing && (
         <div className="mt-4 pt-4 border-t-2 border-gray-200 space-y-3">
           <div className="grid grid-cols-3 gap-2">
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1">Target</label>
-              <input type="number" min="0" value={target}
-                     onChange={(e) => setTargetValue(e.target.value)}
-                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-xl font-semibold
-                                focus:border-orange-500 outline-none" />
+            <div className="col-span-3">
+              <label className="block text-xs font-bold text-gray-600 mb-1">
+                Target for the month (GH₵)
+              </label>
+              <input type="number" min="0" step="100" value={amount}
+                     onChange={(e) => setAmount(e.target.value)}
+                     placeholder="70000"
+                     className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-xl font-black
+                                text-lg focus:border-orange-500 outline-none" />
+              <p className="text-[12px] font-semibold text-gray-500 mt-1">
+                Progress is worked out from this department's own sales — nothing to update by hand.
+              </p>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1">Done</label>
-              <input type="number" min="0" value={achieved}
-                     onChange={(e) => setAchieved(e.target.value)}
-                     placeholder="—"
-                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-xl font-semibold
-                                focus:border-orange-500 outline-none" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1">Counting</label>
-              <input value={unit} onChange={(e) => setUnit(e.target.value)}
-                     placeholder="jobs"
-                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-xl font-semibold
-                                focus:border-orange-500 outline-none" />
-            </div>
+
           </div>
           <div className="flex gap-2">
             <button onClick={() => setEditing(false)}

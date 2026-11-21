@@ -31,6 +31,7 @@ const forScreen = (row) => ({
   month_label: `${monthName(row.month)} ${row.year}`,
   unit: row.unit,
   target: row.target,
+  target_amount: row.target_amount ?? null,
   achieved: row.achieved,
   progress: Target.progressOf(row),
   note: row.note,
@@ -59,12 +60,31 @@ const listTargets = async (req, res) => {
     const year = Number(req.query.year) || now.getFullYear();
     const month = Number(req.query.month) || (now.getMonth() + 1);
 
-    const rows = await Target.find({ year, month }).lean();
+    const {
+      earningsFor, stillOutFor, installationsFor,
+    } = require('../utils/departmentEarnings');
+
+    const [rows, earned, stillOut, installations] = await Promise.all([
+      Target.find({ year, month }).lean(),
+      earningsFor(year, month),
+      stillOutFor(),
+      installationsFor(year, month),
+    ]);
     const byDept = new Map(rows.map((r) => [r.department, r]));
 
     const targets = DEPT_KEYS.map((key) => {
-      const row = byDept.get(key);
-      return row ? forScreen(row) : {
+      const row = byDept.get(key) || null;
+      const money = earned.get(key) || { revenue: 0, refunded: 0, net: 0, pieces: 0, sales: 0 };
+      const goal = row?.target_amount ?? null;
+
+      /**
+       * The percentage the shop asked for, worked out here rather than
+       * stored: it is the shop's own sales divided by the goal, and
+       * both of those move.
+       */
+      const percent = goal ? Math.round((money.net / goal) * 100) : null;
+
+      const base = row ? forScreen(row) : {
         _id: null,
         department: key,
         department_label: labelOf(key),
@@ -77,6 +97,19 @@ const listTargets = async (req, res) => {
         progress: null,
         note: '',
       };
+
+      return {
+        ...base,
+        target_amount: goal,
+        earned: money.net,
+        earned_gross: money.revenue,
+        refunded: money.refunded,
+        sales_count: money.sales,
+        percent,
+        short_by: goal ? Math.max(0, Number((goal - money.net).toFixed(2))) : null,
+        /** Out on a sheet, not yet paid for. Beside the figure, never in it. */
+        still_out: stillOut.get(key) || 0,
+      };
     });
 
     return res.status(200).json({
@@ -87,6 +120,13 @@ const listTargets = async (req, res) => {
         month_label: `${monthName(month)} ${year}`,
         targets,
         departments: DEPARTMENTS,
+        /**
+         * Installations booked this month, as a count for the whole
+         * shop. A count because an installation record carries no
+         * amount — the money for the job is on the sale that goes with
+         * it, and is already in the figures above.
+         */
+        installations,
       },
     });
   } catch (err) {
@@ -146,6 +186,14 @@ const readTarget = (body) => {
 
   const value = { department, year, month };
 
+  if (body?.target_amount !== undefined && body?.target_amount !== null) {
+    const amount = Number(body.target_amount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      return { error: 'The target must be an amount in cedis, zero or more.' };
+    }
+    value.target_amount = Number(amount.toFixed(2));
+  }
+
   if (body?.target !== undefined && body?.target !== null) {
     const target = Number(body.target);
     if (!Number.isFinite(target) || target < 0) {
@@ -174,7 +222,8 @@ const readTarget = (body) => {
   }
   if (typeof body?.note === 'string') value.note = body.note.trim().slice(0, 500);
 
-  if (value.target === undefined && value.achieved === undefined) {
+  if (value.target === undefined && value.achieved === undefined
+      && value.target_amount === undefined) {
     return { error: 'Send a target, a number achieved, or both.' };
   }
   return { value };
@@ -187,6 +236,12 @@ const writeTarget = async (value, { source, by }) => {
 
   if (value.unit !== undefined) set.unit = value.unit;
   if (value.note !== undefined) set.note = value.note;
+  if (value.target_amount !== undefined) {
+    set.target_amount = value.target_amount;
+    set.target_source = source;
+    set.target_set_by = by;
+    set.target_set_at = now;
+  }
 
   if (value.target !== undefined) {
     set.target = value.target;

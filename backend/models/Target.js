@@ -38,7 +38,24 @@ const TargetSchema = new mongoose.Schema(
     /** What is being counted — "installations", "sites", "call-outs". */
     unit: { type: String, trim: true, default: 'jobs' },
 
-    target: { type: Number, required: true, min: 0 },
+    /**
+     * The goal in cedis — what this side of the business is to bring in
+     * this month. The shop gives each head of department GH₵70,000,
+     * and asks how far along they are as a percentage of it.
+     *
+     * Progress against this is NOT stored. It is worked out from the
+     * shop's own sales every time the screen is opened, because a
+     * figure somebody has to keep updating by hand is out of date by
+     * Wednesday.
+     */
+    target_amount: { type: Number, default: null, min: 0 },
+
+    /**
+     * The older goal, counted in jobs rather than cedis. Kept because
+     * rows already exist with it, and because a count is still the
+     * right unit for some work — but the screen now leads with money.
+     */
+    target: { type: Number, required: true, min: 0, default: 0 },
 
     /**
      * How many are done.
