@@ -50,6 +50,12 @@ services:
         sync: false
       - key: TURN_PASSWORD
         sync: false
+      # The shared key the IT department's own system uses to push its
+      # targets in. Unset, the push endpoint is shut outright rather
+      # than left open. Generate a long random string; it is a password
+      # for a door with no login behind it.
+      - key: TARGETS_API_KEY
+        sync: false
       # How many cameras one meeting carries at once. Voice is the point;
       # every camera is another video stream every other phone must send
       # and receive. Defaults to 3.

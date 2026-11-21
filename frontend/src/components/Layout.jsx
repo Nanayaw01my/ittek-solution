@@ -10,8 +10,9 @@ import {
   FiHome, FiShoppingCart, FiPackage, FiTag, FiTruck, FiDollarSign, FiBriefcase, FiGrid,
   FiAlertCircle, FiUsers, FiShoppingBag, FiInbox, FiFileText,
   FiBarChart2, FiSettings, FiDatabase, FiBell, FiSearch, FiLogOut,
-  FiMenu, FiX, FiMonitor, FiImage, FiMic, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
+  FiMenu, FiX, FiMonitor, FiImage, FiMic, FiTarget, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
   FiArchive, FiShield, FiGlobe, FiTrash2, FiClipboard, FiSend, FiSmartphone, FiTool, FiAlertTriangle, FiLock, FiCheckSquare, FiPhone, FiUserCheck, FiPieChart, FiCalendar } from 'react-icons/fi'
+import { TARGET_ROLES } from '../config/pageAccess'
 import { logout as apiLogout } from '../api/auth'
 import toast from 'react-hot-toast'
 import OfflineBanner from './OfflineBanner'
@@ -48,7 +49,7 @@ export const HEAD_OF_DEPARTMENT_PAGES = [
 export const MANAGING_DIRECTOR_PAGES = [
   // The wall board: customer-safe whoever opens it.
   '/signage',
-  '/director', '/debts', '/credit-agreements', '/suppliers', '/stock-requests',
+  '/director', '/targets', '/debts', '/credit-agreements', '/suppliers', '/stock-requests',
   '/notifications', '/meetings',
 ]
 
@@ -158,6 +159,12 @@ const NAV_ITEMS = [
   // First in the list for the people who can open it: it is the screen
   // that says whether anything needs them.
   { to: '/director', label: "Director's Portal", icon: FiBriefcase, minLevel: 3, section: 'selling' },
+  /**
+   * What each side of the business is aiming for this month. Named
+   * roles rather than a level, because level 3 would include the COO
+   * and the shop named three people.
+   */
+  { to: '/targets', label: 'Targets', icon: FiTarget, minLevel: 3, roles: TARGET_ROLES, section: 'selling' },
   { to: '/dashboard', label: 'Dashboard', icon: FiHome, minLevel: 1, section: 'selling' },
   { to: '/expenses', label: 'Expenses', icon: FiDollarSign, minLevel: 1, section: 'money' },
   // Everybody's own week, on a sheet they can print.
@@ -329,7 +336,11 @@ export default function Layout() {
         || user?.role === 'Field Agent'
         || carriesFieldSheets(user)))
     : NAV_ITEMS.filter(item =>
-      userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1))
+      // A `roles` list, where one exists, is the whole rule: it is
+      // there precisely because a level would have let somebody in.
+      (item.roles ? item.roles.includes(user?.role) : false)
+      || (!item.roles
+        && (userLevel >= item.minLevel || canAccessPage(user, item.to.slice(1))))
     )
 
   useEffect(() => { if (!sidebarOpen) setNavFilter('') }, [sidebarOpen])

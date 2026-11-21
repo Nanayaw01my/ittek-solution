@@ -63,6 +63,7 @@ const MANAGING_DIRECTOR_ALLOWED = [
    * somebody to a screen they cannot open is worse than not telling them.
    */
   '/api/credit-agreements',
+  '/api/targets',         // what each department is aiming for this month
   '/api/stock-requests',  // and approving what the floor asks for
   '/api/products',        // the picker inside a stock request, and supplier lookups
   '/api/meetings',       // staff meetings: joining one, and being told about it

@@ -11,6 +11,7 @@ import Login from './pages/Login'
 import Welcome from './pages/Welcome'
 import Signage from './pages/Signage'
 import Meetings from './pages/Meetings'
+import Targets from './pages/Targets'
 import MeetingRoom from './pages/MeetingRoom'
 import Showcase from './pages/Showcase'
 import Dashboard from './pages/Dashboard'
@@ -211,6 +212,9 @@ export default function App() {
         {/* Everyone may walk into a meeting they were invited to; only an
             owner may call one, which the server refuses rather than the door. */}
         <Route path="meetings" element={<Meetings />} />
+        {/* The CEO, the MD and the Super Admin. The server checks the
+            role again and names who may look. */}
+        <Route path="targets" element={<ProtectedRoute minLevel={3}><Targets /></ProtectedRoute>} />
         {/* Open to anyone who may reach it: a Manager checking a price or
             a stock level has every reason to be here. Finishing a sale is
             the part that is restricted, and the restriction lives in the

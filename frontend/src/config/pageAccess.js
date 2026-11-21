@@ -147,6 +147,19 @@ export const seesStockCounts = (role) => role === 'CEO'
  * lists can open a page and then find half of it missing.
  */
 export const OWNER_ROLES = ['CEO', 'COO', 'Managing Director', 'Super Admin']
+
+/**
+ * Who may see the departments' targets — the browser's copy of
+ * backend/config/targets.js, kept in step by a test that reads both.
+ *
+ * Three named roles, not a level: level 3 would quietly include the
+ * COO, and the shop named the CEO, the Managing Director and the Super
+ * Admin. A rule that reaches one person more than was asked for is the
+ * kind nobody notices until the figures turn up somewhere they were not
+ * meant to.
+ */
+export const TARGET_ROLES = ['CEO', 'Managing Director', 'Super Admin']
+export const maySeeTargets = (role) => TARGET_ROLES.includes(role)
 export const isOwner = (role) => OWNER_ROLES.includes(role)
 
 /**

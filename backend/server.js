@@ -305,6 +305,7 @@ app.use('/api/upload', require('./routes/upload'));
 app.use('/api/data-admin', require('./routes/dataAdmin'));
 app.use('/api/forms', require('./routes/forms'));
 app.use('/api/meetings', require('./routes/meetings'));
+app.use('/api/targets', require('./routes/targets'));
 
 /**
  * An API path nobody serves is an error, not the app's front page.
