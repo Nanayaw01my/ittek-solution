@@ -230,6 +230,19 @@ export default function Targets() {
             row of 500s means their server. Without this the three look
             identical from here.
           */}
+          {/* The field names on their own, because that is the question:
+              what does their system call the thing we are looking for. */}
+          {Array.isArray(report.fields) && report.fields.length > 0 && (
+            <div className="mt-3">
+              <p className="text-[11px] font-black uppercase text-amber-700">
+                Fields it sent{report.path ? ` from ${report.path}` : ''}
+              </p>
+              <p className="text-[12px] font-semibold text-amber-900 mt-1 break-words">
+                {report.fields.join(', ')}
+              </p>
+            </div>
+          )}
+
           {Array.isArray(report.tried) && report.tried.length > 0 && (
             <div className="mt-3">
               <p className="text-[11px] font-black uppercase text-amber-700">Addresses tried</p>
@@ -248,8 +261,11 @@ export default function Targets() {
               <p className="text-[11px] font-black uppercase text-amber-700 mt-3">
                 What its front door says
               </p>
+              {/* Wrapped, not scrolled: on a phone a scrolling box shows
+                  the first forty characters and hides the rest, which is
+                  exactly the part worth reading. */}
               <pre className="text-[11px] bg-white border border-amber-200 rounded-lg p-2 mt-1
-                              overflow-x-auto text-gray-800">{report.sample}</pre>
+                              whitespace-pre-wrap break-all text-gray-800">{report.sample}</pre>
               <p className="text-[12px] font-semibold text-amber-800 mt-2">
                 Show this to whoever set up the link — it usually names the
                 right address, or the field names to match up.
@@ -259,10 +275,18 @@ export default function Targets() {
         </div>
       )}
 
-      {report?.ok && report.path && (
-        <p className="text-[12px] font-bold text-gray-500 mb-4">
-          Last brought in {report.saved} from {report.path}
-        </p>
+      {report?.ok && (
+        <div className="mb-5">
+          <p className="text-[12px] font-bold text-gray-500">
+            {report.counted
+              ? `Counted ${report.total_records} phone sales from ${report.path}`
+              : `Brought in ${report.saved} from ${report.path}`}
+          </p>
+          {/* A count that is really "the first page" is worse than none. */}
+          {report.page_note && (
+            <p className="text-[12px] font-bold text-amber-700 mt-1">{report.page_note}</p>
+          )}
+        </div>
       )}
 
       <div className="flex items-center justify-between gap-3 mb-5">

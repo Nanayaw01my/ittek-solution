@@ -117,3 +117,55 @@ test('nothing happens at all without a key', () => {
   assert.ok(fn.indexOf('if (!key)') < fn.indexOf('for (const path'),
     'no key means no request is made at all');
 });
+
+test('a list of sales is counted, because the figure is how many there are', () => {
+  /**
+   * The phone system's sales endpoint returns one object per sale — an
+   * id, a status, a customer — and no "achieved" field anywhere,
+   * because the answer is simply how many. Hunting for a number in
+   * those rows and giving up was looking for a summary that does not
+   * exist.
+   */
+  const { countRecords, dateOf } = require('../utils/phoneAppSync');
+
+  const rows = [
+    { id: '6af5e77aed5f831830fe15e2', status: 'active', created_at: '2026-11-03T10:00:00Z' },
+    { id: 'b1', status: 'active', created_at: '2026-11-20T09:00:00Z' },
+    { id: 'c2', status: 'closed', sale_date: '2026-10-02T09:00:00Z' },
+  ];
+
+  assert.deepEqual(countRecords(rows), [
+    { year: 2026, month: 11, count: 2 },
+    { year: 2026, month: 10, count: 1 },
+  ], 'counted into the month each one happened in');
+
+  assert.ok(dateOf({ createdAt: '2026-11-03' }), 'camelCase dates are dates too');
+  assert.equal(dateOf({ id: 'x' }), null, 'a record with no date is not guessed into a month');
+  assert.equal(dateOf({ created_at: 'not a date' }), null);
+});
+
+test('a count that is only the first page says so', () => {
+  /**
+   * A list endpoint usually hands back one page. "37 phone sales" that
+   * is really "the first 37 of 230" is worse than no figure at all,
+   * because it looks like an answer.
+   */
+  const { pageNote } = require('../utils/phoneAppSync');
+
+  assert.ok(pageNote({ total: 230 }, 50), 'a total larger than what arrived is a warning');
+  assert.ok(pageNote({ pagination: { total: 230 } }, 50), 'however it is nested');
+  assert.equal(pageNote({ total: 50 }, 50), null, 'everything sent is no warning');
+  assert.equal(pageNote([], 50), null, 'a bare array says nothing about itself');
+  assert.equal(pageNote(null, 0), null);
+});
+
+test('counting never invents a target', () => {
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'utils/phoneAppSync.js'), 'utf8');
+  const branch = src.slice(src.indexOf('if (!carriesFigures)'), src.indexOf('const saved = [];'));
+  assert.ok(branch.includes('achieved: count'), 'the count is the figure achieved');
+  assert.ok(!/target_source|target_set_by/.test(branch),
+    'and the goal stays the shop’s to set');
+  assert.ok(branch.includes('$setOnInsert: { target: 0'),
+    'a month with no goal still gets its row');
+});

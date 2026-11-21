@@ -32,6 +32,12 @@ const CANDIDATE_PATHS = [
 ];
 
 /** The same idea under whatever name the other system gave it. */
+/** Where a record says when it happened. */
+const DATE_FIELDS = [
+  'sale_date', 'sold_at', 'created_at', 'createdAt', 'date', 'timestamp',
+  'purchased_at', 'started_at', 'opened_at',
+];
+
 const FIELD = {
   department: ['department', 'dept', 'aspect', 'category', 'section', 'business_line', 'line'],
   year: ['year', 'yr'],
@@ -101,6 +107,49 @@ const rowsOf = (body) => {
   // A single object that looks like one row is one row.
   if (body && typeof body === 'object' && pick(body, [...FIELD.target, ...FIELD.achieved]) !== undefined) {
     return [body];
+  }
+  return null;
+};
+
+/** When a record happened, or null if it does not say. */
+const dateOf = (row) => {
+  for (const f of DATE_FIELDS) {
+    const v = row?.[f];
+    if (!v) continue;
+    const d = new Date(v);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  return null;
+};
+
+/** Records grouped into the months they happened in. */
+const countRecords = (rows) => {
+  const byMonth = new Map();
+  for (const row of rows) {
+    const d = dateOf(row);
+    if (!d) continue;
+    const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+    byMonth.set(key, (byMonth.get(key) || 0) + 1);
+  }
+  return [...byMonth.entries()].map(([key, count]) => {
+    const [year, month] = key.split('-').map(Number);
+    return { year, month, count };
+  });
+};
+
+/**
+ * Whether the reply admitted to being one page of several.
+ *
+ * A count that is really "the first fifty" is worse than no count, so
+ * whatever the other system said about its own size is passed on.
+ */
+const pageNote = (body, got) => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const total = Number(body.total ?? body.count ?? body.total_count
+    ?? body.pagination?.total ?? body.meta?.total);
+  if (Number.isFinite(total) && total > got) {
+    return `That system says it holds ${total} records and sent ${got}. `
+      + 'The count below is only what it sent — ask for the rest before trusting it.';
   }
   return null;
 };
@@ -180,6 +229,65 @@ const syncFromPhoneApp = async ({ by = 'Phone system' } = {}) => {
       continue;
     }
 
+    /**
+     * Does this reply carry figures, or records?
+     *
+     * The phone system's sales endpoint returns one object per sale —
+     * an id, a status, a customer — and there is no "achieved" field
+     * anywhere in it because the answer is simply how many there are.
+     * Looking for a number and giving up when none was found was
+     * looking for a summary that does not exist.
+     *
+     * So: if the rows carry a figure, read it. If they are records,
+     * count them, by the month each one happened in.
+     */
+    const carriesFigures = rows.some(
+      (r) => pick(r, [...FIELD.achieved, ...FIELD.target]) !== undefined
+    );
+
+    if (!carriesFigures) {
+      const counted = countRecords(rows);
+      if (counted.length === 0) {
+        tried.push({ path, status: answer.status, note: 'records with no date in them' });
+        continue;
+      }
+
+      const savedCounts = [];
+      for (const { year, month, count } of counted) {
+        const now = new Date();
+        // eslint-disable-next-line no-await-in-loop
+        await Target.findOneAndUpdate(
+          { department: PHONE_DEPARTMENT, year, month },
+          {
+            $set: {
+              department: PHONE_DEPARTMENT, year, month,
+              achieved: count, achieved_source: 'api',
+              achieved_set_by: by, achieved_set_at: now,
+            },
+            $setOnInsert: { target: 0, unit: 'phone sales', created_at: now },
+          },
+          { new: true, upsert: true }
+        );
+        savedCounts.push({ year, month, achieved: count });
+      }
+
+      return {
+        ok: true,
+        path,
+        counted: true,
+        saved: savedCounts.length,
+        rows: savedCounts,
+        total_records: rows.length,
+        /**
+         * Said plainly, because a list endpoint usually hands back one
+         * page. A count that is really "the first fifty" is worse than
+         * no count, so whatever the reply said about its own size is
+         * passed on rather than quietly ignored.
+         */
+        page_note: pageNote(answer.body, rows.length),
+      };
+    }
+
     const saved = [];
     const skipped = [];
     for (const row of rows) {
@@ -232,6 +340,7 @@ const syncFromPhoneApp = async ({ by = 'Phone system' } = {}) => {
         path,
         skipped: skipped.slice(0, 5),
         // The evidence, so the mismatch is visible rather than guessed.
+        fields: Object.keys(rows[0] || {}),
         sample: JSON.stringify(rows[0] || {}).slice(0, 400),
       };
     }
@@ -271,4 +380,5 @@ const syncFromPhoneApp = async ({ by = 'Phone system' } = {}) => {
 
 module.exports = {
   syncFromPhoneApp, CANDIDATE_PATHS, PHONE_DEPARTMENT, periodOf, rowsOf, FIELD,
+  dateOf, countRecords, pageNote,
 };
