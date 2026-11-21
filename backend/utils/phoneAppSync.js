@@ -21,10 +21,12 @@ const { ASPECTS } = require('../config/aspects');
 
 /** Where a "sales summary for targets" usually lives. */
 const CANDIDATE_PATHS = [
-  '/targets',
+  '/sales',
   '/sales/summary',
+  '/targets',
   '/summary/sales',
   '/sales/targets',
+  '/phone-sales',
   '/reports/targets',
   '/summary',
 ];
@@ -237,12 +239,33 @@ const syncFromPhoneApp = async ({ by = 'Phone system' } = {}) => {
     return { ok: true, path, saved: saved.length, rows: saved, skipped: skipped.slice(0, 5) };
   }
 
+  /**
+   * Nothing found, so ask the front door what it offers.
+   *
+   * An API's own base address very often answers with a list of its
+   * routes, or an error that names them. That is worth one more request
+   * and saves somebody hunting through another system's settings for a
+   * path we could simply have been told.
+   */
+  let front = null;
+  try {
+    const answer = await call(base, key);
+    front = {
+      status: answer.status,
+      body: answer.body ? JSON.stringify(answer.body).slice(0, 700) : answer.text,
+    };
+  } catch (err) {
+    front = { error: err.name === 'TimeoutError' ? 'timed out' : err.message };
+  }
+
   return {
     ok: false,
-    reason: 'Could not find the summary on that system.',
+    reason: 'Could not find the sales summary on that system.',
     tried,
-    hint: `Tried ${CANDIDATE_PATHS.join(', ')} under ${base}. `
-      + 'If the address is different, set PHONE_APP_API_PATH on the server.',
+    front_door: front,
+    sample: front?.body || null,
+    hint: `Tried ${paths.join(', ')} under ${base}. `
+      + 'If the real address is different, set PHONE_APP_API_PATH on the server.',
   };
 };
 

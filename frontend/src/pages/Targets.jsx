@@ -224,15 +224,35 @@ export default function Targets() {
             <FiAlertTriangle size={17} /> {report.reason}
           </p>
           {report.hint && <p className="text-sm font-semibold text-amber-800 mt-1">{report.hint}</p>}
+          {/*
+            Each address and what it answered. A row of 404s means the
+            path is simply elsewhere; a row of 401s means the key, and a
+            row of 500s means their server. Without this the three look
+            identical from here.
+          */}
+          {Array.isArray(report.tried) && report.tried.length > 0 && (
+            <div className="mt-3">
+              <p className="text-[11px] font-black uppercase text-amber-700">Addresses tried</p>
+              <ul className="mt-1 space-y-0.5">
+                {report.tried.map((t) => (
+                  <li key={t.path} className="text-[12px] font-semibold text-amber-900 tabular-nums">
+                    {t.path} — {t.error || t.note || `answered ${t.status}`}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {report.sample && (
             <>
               <p className="text-[11px] font-black uppercase text-amber-700 mt-3">
-                What it sent back
+                What its front door says
               </p>
               <pre className="text-[11px] bg-white border border-amber-200 rounded-lg p-2 mt-1
                               overflow-x-auto text-gray-800">{report.sample}</pre>
               <p className="text-[12px] font-semibold text-amber-800 mt-2">
-                Show this to whoever set up the link and they can match the names up.
+                Show this to whoever set up the link — it usually names the
+                right address, or the field names to match up.
               </p>
             </>
           )}
