@@ -307,6 +307,38 @@ const pushTarget = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/targets/sync
+ *
+ * Go and ask the phone system now, rather than waiting for the hourly
+ * sweep. The report comes back whole — including, when nothing could be
+ * read, a sample of what the other system actually sent — because the
+ * alternative is a spinner that stops and a screen that does not say
+ * why.
+ */
+const syncTargets = async (req, res) => {
+  try {
+    if (!maySeeTargets(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'Targets are for the CEO, the MD and the Super Admin.' });
+    }
+    const { syncFromPhoneApp } = require('../utils/phoneAppSync');
+    const report = await syncFromPhoneApp({ by: 'Phone system' });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...report,
+        message: report.ok
+          ? `Brought in ${report.saved} ${report.saved === 1 ? 'figure' : 'figures'}.`
+          : report.reason,
+      },
+    });
+  } catch (err) {
+    console.error('Sync targets error:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 module.exports = {
-  listTargets, setTarget, pushTarget, readTarget, keyAccepted, DEPT_KEYS,
+  listTargets, setTarget, pushTarget, syncTargets, readTarget, keyAccepted, DEPT_KEYS,
 };

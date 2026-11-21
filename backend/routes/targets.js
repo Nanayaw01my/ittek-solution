@@ -3,7 +3,9 @@ const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const { authenticate } = require('../middleware/auth');
 const { auditLog } = require('../middleware/auditLogger');
-const { listTargets, setTarget, pushTarget } = require('../controllers/targetsController');
+const {
+  listTargets, setTarget, pushTarget, syncTargets,
+} = require('../controllers/targetsController');
 
 /**
  * The push endpoint, which is the only route here with no login.
@@ -36,5 +38,7 @@ router.use(authenticate);
 
 router.get('/', listTargets);
 router.put('/', auditLog('SET_TARGET'), setTarget);
+// Fetch from the phone system now.
+router.post('/sync', auditLog('SYNC_TARGETS'), syncTargets);
 
 module.exports = router;

@@ -50,6 +50,21 @@ services:
         sync: false
       - key: TURN_PASSWORD
         sync: false
+      # Reading the phone side of the business — dandorsolar.site, which
+      # runs instalments, collections and handsets. Its settings screen
+      # makes API keys; one with "read sales" is all this needs. The
+      # figures land against IT on the Targets screen, as progress
+      # against whatever goal the CEO set there.
+      #
+      # PHONE_APP_API_PATH only matters if the summary is not at one of
+      # the addresses the sync already tries; the Targets screen says
+      # which it tried when it cannot find it.
+      - key: PHONE_APP_API_KEY
+        sync: false
+      - key: PHONE_APP_API_URL
+        sync: false
+      - key: PHONE_APP_API_PATH
+        sync: false
       # The shared key the IT department's own system uses to push its
       # targets in. Unset, the push endpoint is shut outright rather
       # than left open. Generate a long random string; it is a password

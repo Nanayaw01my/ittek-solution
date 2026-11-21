@@ -1,8 +1,11 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { FiTarget, FiChevronLeft, FiChevronRight, FiEdit3, FiCheck, FiX } from 'react-icons/fi'
-import { getTargets, setTarget } from '../api/targets'
+import {
+  FiTarget, FiChevronLeft, FiChevronRight, FiEdit3, FiCheck, FiX,
+  FiRefreshCw, FiAlertTriangle,
+} from 'react-icons/fi'
+import { getTargets, setTarget, syncTargets } from '../api/targets'
 import PageHeader from '../components/PageHeader'
 
 /**
@@ -172,11 +175,75 @@ export default function Targets() {
     onError: (e) => toast.error(e?.response?.data?.message || 'Could not save.'),
   })
 
+  /**
+   * The last word from the phone system.
+   *
+   * Kept on screen rather than flashed as a toast: when a sync cannot
+   * read the other system's reply it hands back a sample of it, and
+   * that is the one thing worth reading twice.
+   */
+  const [report, setReport] = useState(null)
+
+  const sync = useMutation({
+    mutationFn: syncTargets,
+    onSuccess: (res) => {
+      const r = res?.data || {}
+      setReport(r)
+      if (r.ok) {
+        toast.success(r.message || 'Brought in.')
+        qc.invalidateQueries({ queryKey: ['targets'] })
+      } else {
+        toast.error(r.message || 'Could not read the phone system.')
+      }
+    },
+    onError: (e) => toast.error(e?.response?.data?.message || 'Could not reach the phone system.'),
+  })
+
   const rows = data?.targets || []
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
-      <PageHeader title="Targets" subtitle="What each side of the business is aiming for" />
+      <PageHeader title="Targets" subtitle="What each side of the business is aiming for"
+        action={(
+          <button onClick={() => sync.mutate()} disabled={sync.isPending}
+                  className="px-4 py-2.5 rounded-xl font-black bg-orange-500 text-white
+                             flex items-center gap-2 disabled:opacity-60">
+            <FiRefreshCw size={16} className={sync.isPending ? 'animate-spin' : ''} />
+            {sync.isPending ? 'Asking…' : 'Sync now'}
+          </button>
+        )} />
+
+      {/*
+        What the phone system said, in full. A failed sync hands back a
+        sample of the reply it could not read; printing it is what turns
+        "it did not work" into something anybody can act on.
+      */}
+      {report && !report.ok && (
+        <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 mb-5">
+          <p className="font-black text-amber-900 flex items-center gap-2">
+            <FiAlertTriangle size={17} /> {report.reason}
+          </p>
+          {report.hint && <p className="text-sm font-semibold text-amber-800 mt-1">{report.hint}</p>}
+          {report.sample && (
+            <>
+              <p className="text-[11px] font-black uppercase text-amber-700 mt-3">
+                What it sent back
+              </p>
+              <pre className="text-[11px] bg-white border border-amber-200 rounded-lg p-2 mt-1
+                              overflow-x-auto text-gray-800">{report.sample}</pre>
+              <p className="text-[12px] font-semibold text-amber-800 mt-2">
+                Show this to whoever set up the link and they can match the names up.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {report?.ok && report.path && (
+        <p className="text-[12px] font-bold text-gray-500 mb-4">
+          Last brought in {report.saved} from {report.path}
+        </p>
+      )}
 
       <div className="flex items-center justify-between gap-3 mb-5">
         <button onClick={() => setWhen((w) => shift(w.year, w.month, -1))}

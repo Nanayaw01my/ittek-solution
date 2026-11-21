@@ -109,10 +109,17 @@ test('targets are for the three roles the shop named, and not the COO', () => {
   assert.equal(maySeeTargets('Manager'), false);
   for (const role of TARGET_ROLES) assert.equal(maySeeTargets(role), true);
 
-  // Both reading and writing check it, or the screen is a formality.
+  /**
+   * Every handler that takes a logged-in user checks, named one by one
+   * rather than counted: a count passes the day somebody adds a
+   * handler and removes a check in the same change.
+   */
   const src = fs.readFileSync(path.join(B, 'controllers/targetsController.js'), 'utf8');
-  assert.equal((src.match(/maySeeTargets\(req\.user\.role\)/g) || []).length, 2,
-    'listing and setting must both check');
+  for (const fn of ['listTargets', 'setTarget', 'syncTargets']) {
+    const body = src.slice(src.indexOf(`const ${fn} = async`));
+    const head = body.slice(0, 400);
+    assert.ok(head.includes('maySeeTargets(req.user.role)'), `${fn} does not check who is asking`);
+  }
 });
 
 test('the browser and the server agree on who may look', () => {
