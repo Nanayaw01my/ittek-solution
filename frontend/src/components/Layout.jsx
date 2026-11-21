@@ -12,7 +12,7 @@ import {
   FiBarChart2, FiSettings, FiDatabase, FiBell, FiSearch, FiLogOut,
   FiMenu, FiX, FiMonitor, FiImage, FiMic, FiTarget, FiCreditCard, FiUser, FiTrendingUp, FiRotateCcw, FiList,
   FiArchive, FiShield, FiGlobe, FiTrash2, FiClipboard, FiSend, FiSmartphone, FiTool, FiAlertTriangle, FiLock, FiCheckSquare, FiPhone, FiUserCheck, FiPieChart, FiCalendar } from 'react-icons/fi'
-import { TARGET_ROLES } from '../config/pageAccess'
+import { TARGET_ROLES, maySettleFieldSheet } from '../config/pageAccess'
 import { logout as apiLogout } from '../api/auth'
 import toast from 'react-hot-toast'
 import OfflineBanner from './OfflineBanner'
@@ -330,11 +330,21 @@ export default function Layout() {
   const confinedTo = pagesFor(user)
   const visibleNavItems = confinedTo
     ? NAV_ITEMS.filter(item => confinedTo.includes(item.to)
-      // Somebody with no field duty has no sheets, so the screen would
-      // only ever be empty. A Field Agent is the duty.
+      /**
+       * Field Dispatch is for people who carry a sheet, and for the
+       * people who handle one.
+       *
+       * It used to be the first alone, on the grounds that somebody
+       * with no field duty has no sheets and the screen would only
+       * ever be empty. That stopped being true when the counter
+       * started settling sheets and taking returns: a rep walks back
+       * in with money and unsold stock and hands both to whoever is on
+       * the till, and the screen they need was hidden from them.
+       */
       && (item.to !== '/field-dispatch'
         || user?.role === 'Field Agent'
-        || carriesFieldSheets(user)))
+        || carriesFieldSheets(user)
+        || maySettleFieldSheet(user)))
     : NAV_ITEMS.filter(item =>
       // A `roles` list, where one exists, is the whole rule: it is
       // there precisely because a level would have let somebody in.

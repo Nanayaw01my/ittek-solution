@@ -133,3 +133,43 @@ test('the client\'s role levels have not drifted from the server\'s', () => {
   const clientLevels = new Function(`return ${m[1]}`)();
   assert.deepStrictEqual(clientLevels, ROLE_LEVELS);
 });
+
+test('the counter can reach the screen it settles sheets on', () => {
+  /**
+   * A permission nobody can use is not a permission.
+   *
+   * Field Dispatch was shown only to people who carry a sheet, on the
+   * grounds that somebody with no field duty has no sheets and the
+   * screen would only ever be empty. That stopped being true when the
+   * counter started settling sheets and taking returns: a rep walks
+   * back in with money and unsold stock and hands both to whoever is
+   * on the till, and the screen they need was hidden from them.
+   */
+  const layout = fs.readFileSync(
+    path.join(B, '..', 'frontend/src/components/Layout.jsx'), 'utf8');
+  const rule = layout.slice(layout.indexOf("item.to !== '/field-dispatch'"), layout.indexOf('useEffect(() => { if (!sidebarOpen)'));
+
+  assert.ok(rule.includes('carriesFieldSheets(user)'), 'whoever carries a sheet still sees it');
+  assert.ok(rule.includes('maySettleFieldSheet(user)'),
+    'and so does whoever may settle one — otherwise the Pay and Returns buttons '
+    + 'exist on a screen that is not in their menu');
+});
+
+test('a sales attendant may take returns as well as money', () => {
+  /**
+   * Both halves of a rep coming back: the cash, and the stock that did
+   * not sell. Taking one without the other leaves goods in a boot with
+   * nobody able to put them back on the shelf.
+   */
+  const routes = fs.readFileSync(path.join(B, 'routes/dispatches.js'), 'utf8');
+  const line = routes.split('\n').find((l) => l.includes("'/:id/return'"));
+  assert.ok(line, 'the return route exists');
+  assert.ok(line.includes('shopStaffOnly'),
+    'and is open to shop staff — only the confined field agent is kept off it, '
+    + 'because a rep returning their own goods to themselves checks nothing');
+
+  const page = fs.readFileSync(
+    path.join(B, '..', 'frontend/src/pages/FieldDispatch.jsx'), 'utf8');
+  assert.ok(page.includes('const isAgent = user?.role === \'Field Agent\''),
+    'the screen draws Returns for everyone but the agent carrying the sheet');
+});
